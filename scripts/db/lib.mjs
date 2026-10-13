@@ -2,9 +2,11 @@
 // 环境变量（均可覆盖，默认值为 dev 口径）：
 //   LJR_PG_PORT     默认 5435（与 docker 轨映射端口一致）
 //   LJR_PG_USER     默认 postgres（dev 超级用户；staging 应改用专用迁移账号）
-//   LJR_PG_PASSWORD dev 占位口令，真值经 env 注入（密钥禁入文件，架构 §1.3）
+//   LJR_PG_PASSWORD 进程 env 优先；否则读 .secrets/dev.env（start.mjs 首跑生成随机口令写入）。
+//                   无任何源码兜底字面量（Mimosa 修复，架构 §1.3）；消费方经 requirePgPassword() fail-fast
 //   LJR_PG_DB       默认 ljr_dev（与 compose POSTGRES_DB 一致）
 import { spawnSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import process from 'node:process';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -20,14 +22,83 @@ export const PG_LOG = path.join(TOOLS, 'pg15.log');
 export const FLYWAY_HOME = path.join(TOOLS, 'flyway');
 export const FLYWAY_CONF = path.join(ROOT, 'services', 'core', 'flyway.conf');
 
+// ---- dev 凭据层（.secrets/dev.env，gitignored 本机状态；Mimosa 修复：凭据无源码字面量） ----
+
+export const SECRETS_DIR = path.join(ROOT, '.secrets');
+export const DEV_SECRETS_FILE = path.join(SECRETS_DIR, 'dev.env');
+
+/** 极简 env 解析（与 services/core/src/config/env-file.ts 同语法：KEY=VALUE + # 注释 + 引号剥离） */
+export function parseEnvText(text) {
+  const vars = {};
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (line === '' || line.startsWith('#')) continue;
+    const eq = line.indexOf('=');
+    if (eq <= 0) continue;
+    const key = line.slice(0, eq).trim();
+    let value = line.slice(eq + 1).trim();
+    if (
+      value.length >= 2 &&
+      ((value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'")))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (key !== '') vars[key] = value;
+  }
+  return vars;
+}
+
+export function readDevSecrets() {
+  if (!fs.existsSync(DEV_SECRETS_FILE)) return {};
+  return parseEnvText(fs.readFileSync(DEV_SECRETS_FILE, 'utf8'));
+}
+
+/** 合并式写入单个凭据键（保留文件内其他键/注释行；.secrets/ 已 gitignore，仅本机状态） */
+export function setDevSecret(key, value) {
+  fs.mkdirSync(SECRETS_DIR, { recursive: true });
+  const lines = fs.existsSync(DEV_SECRETS_FILE)
+    ? fs
+        .readFileSync(DEV_SECRETS_FILE, 'utf8')
+        .split(/\r?\n/)
+        .filter((l) => l.trim() !== '')
+    : [];
+  const kept = lines.filter((l) => !new RegExp(`^\\s*${key}\\s*=`).test(l));
+  kept.push(`${key}=${value}`);
+  fs.writeFileSync(DEV_SECRETS_FILE, kept.join('\n') + '\n');
+  try {
+    fs.chmodSync(DEV_SECRETS_FILE, 0o600); // POSIX 收紧到属主；Windows 近似 no-op（目录已 gitignore 且属当前用户）
+  } catch {
+    /* 权限收紧失败不阻断 */
+  }
+}
+
+/** 随机 dev 口令（32 hex）：仅写入 .secrets/dev.env，不回显日志、不进 argv */
+export function generateDbPassword() {
+  return crypto.randomBytes(16).toString('hex');
+}
+
+const devSecrets = readDevSecrets();
+
 export const env = {
   pgHost: '127.0.0.1',
   pgPort: process.env.LJR_PG_PORT ?? '5435',
   pgUser: process.env.LJR_PG_USER ?? 'postgres',
-  // dev 占位口令：仅本机演练；任何共享环境必须经环境变量注入真值
-  pgPassword: process.env.LJR_PG_PASSWORD ?? 'ljr-dev-only',
+  // 无代码兜底：start.mjs 首跑生成随机口令落 .secrets/dev.env；消费前经 requirePgPassword() fail-fast
+  pgPassword: process.env.LJR_PG_PASSWORD ?? devSecrets.LJR_PG_PASSWORD,
   pgDatabase: process.env.LJR_PG_DB ?? 'ljr_dev',
 };
+
+/** PG 口令 fail-fast：缺失（未跑 start.mjs 且未注入 env）即 die，不静默回落任何字面量 */
+export function requirePgPassword() {
+  if (!env.pgPassword) {
+    die(
+      'LJR_PG_PASSWORD 缺失：.secrets/dev.env 无该键且进程 env 未注入。' +
+        '先运行 node scripts/db/start.mjs（首跑自动生成随机口令写入 .secrets/dev.env 并轮换本地 PG）',
+    );
+  }
+  return env.pgPassword;
+}
 
 export const log = (...args) => process.stdout.write(`${args.join(' ')}\n`);
 export const die = (...args) => {
@@ -68,7 +139,7 @@ export function psql(statement, database = env.pgDatabase) {
     {
       stdio: ['ignore', 'pipe', 'pipe'],
       encoding: 'utf8',
-      env: { ...process.env, PGPASSWORD: env.pgPassword },
+      env: { ...process.env, PGPASSWORD: requirePgPassword() },
     },
   );
   if (r.error) die(`psql 无法执行: ${r.error.message}`);
@@ -117,7 +188,7 @@ export function flyway(args) {
         ...process.env,
         FLYWAY_URL: `jdbc:postgresql://${env.pgHost}:${env.pgPort}/${env.pgDatabase}`,
         FLYWAY_USER: env.pgUser,
-        FLYWAY_PASSWORD: env.pgPassword,
+        FLYWAY_PASSWORD: requirePgPassword(),
       },
     },
   );

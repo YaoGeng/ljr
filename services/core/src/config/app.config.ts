@@ -1,17 +1,21 @@
 /**
- * 类型化配置 schema 与三层装载（M0-8，docs/05 M0-8 / docs/plans/M0-8-环境与配置说明.md）。
+ * 类型化配置 schema 与分层装载（M0-8，docs/05 M0-8 / docs/plans/M0-8-环境与配置说明.md）。
  *
- * 分层优先级（高→低）：进程 env > config/<LJR_ENV>/app.env 文件 > 代码默认值。
+ * 分层优先级（高→低）：进程 env >（dev 专属：.secrets/dev.env 凭据键）> config/<LJR_ENV>/app.env
+ * 文件 > 代码非敏感默认值。
  *   - env 层：部署/CI 注入口（含全部密钥——密钥只有这一条合法通路）
+ *   - secrets 层（仅 dev，Mimosa 修复）：scripts/db/start.mjs 生成的 .secrets/dev.env（gitignored），
+ *     只装载凭据键白名单（withDevSecrets）；非 dev 环境不读该文件
  *   - 文件层：仅非敏感默认值（入库；config/README.md 划边界）
- *   - 默认层：dev 便携口径（与 scripts/db/*.mjs、docker/dev compose 一致）
+ *   - 默认层：dev 便携口径（与 scripts/db/*.mjs、docker/dev compose 一致）——凭据无代码兜底字面量
  *
  * 红线（架构 §1.3）：ENV_ONLY_KEYS 中的密钥键出现在文件层 → 抛 E_CONFIG_INVALID（fail-fast，
- * 防止真实凭据借 config/*.env 入库）；staging/prod 缺 LJR_PG_PASSWORD → 抛 E_CONFIG_MISSING。
+ * 防止真实凭据借 config/*.env 入库）；任何环境缺 LJR_PG_PASSWORD → 抛 E_CONFIG_MISSING
+ *（dev 由 start.mjs 生成的 .secrets/dev.env 兜住；staging/prod 走部署平台 secrets）。
  */
 import path from 'node:path';
 import { AppError, ErrorCode } from '@ljr/shared';
-import { readEnvFile } from './env-file';
+import { readEnvFile, type EnvFileVars } from './env-file';
 
 export type AppEnvName = 'dev' | 'staging' | 'prod';
 
@@ -79,6 +83,31 @@ export const ENV_ONLY_KEYS: readonly string[] = [
   ENV_KEYS.redisPassword,
 ];
 
+/** 凭据键白名单：dev 下允许从 .secrets/dev.env 装载的仅有键（其余键 secrets 文件说了不算） */
+const SECRET_FILE_KEYS: readonly string[] = [ENV_KEYS.pgPassword, ENV_KEYS.redisPassword];
+
+/** dev 专属凭据文件路径（scripts/db/start.mjs 首跑生成随机口令；.secrets/ 已 gitignored） */
+export function devSecretsFilePath(): string {
+  return path.resolve(__dirname, '..', '..', '..', '..', '.secrets', 'dev.env');
+}
+
+/** secrets 层合并（纯函数）：进程 env 已有值优先；只认凭据键白名单，其余键一概忽略 */
+export function withDevSecrets(env: NodeJS.ProcessEnv, secrets: EnvFileVars): NodeJS.ProcessEnv {
+  const fills: Record<string, string> = {};
+  for (const key of SECRET_FILE_KEYS) {
+    const fromSecrets = secrets[key];
+    const fromEnv = env[key];
+    if (
+      fromSecrets !== undefined &&
+      fromSecrets !== '' &&
+      (fromEnv === undefined || fromEnv === '')
+    ) {
+      fills[key] = fromSecrets;
+    }
+  }
+  return Object.keys(fills).length > 0 ? { ...env, ...fills } : env;
+}
+
 export interface ConfigSources {
   /** 进程 env（最高优先级） */
   readonly env: Record<string, string | undefined>;
@@ -118,11 +147,12 @@ export function resolveAppConfig({ env, file }: ConfigSources): AppConfig {
 
   const envName = normalizeEnvName(env[ENV_KEYS.env]);
 
-  const pgPassword = pick(ENV_KEYS.pgPassword) ?? (envName === 'dev' ? 'ljr-dev-only' : undefined);
+  const pgPassword = pick(ENV_KEYS.pgPassword);
   if (pgPassword === undefined) {
     throw new AppError(
       ErrorCode.ConfigMissing,
-      `环境 ${envName} 必须注入 ${ENV_KEYS.pgPassword}（密钥禁入配置文件，只走进程环境）`,
+      `环境 ${envName} 必须注入 ${ENV_KEYS.pgPassword}（密钥禁入配置文件与代码兜底；` +
+        'dev 先运行 node scripts/db/start.mjs 生成 .secrets/dev.env，staging/prod 走部署平台 secrets）',
     );
   }
 
@@ -139,7 +169,8 @@ export function resolveAppConfig({ env, file }: ConfigSources): AppConfig {
     redis: {
       host: pick(ENV_KEYS.redisHost) ?? '127.0.0.1',
       port: parsePort(pick(ENV_KEYS.redisPort) ?? '6380', ENV_KEYS.redisPort),
-      password: pick(ENV_KEYS.redisPassword) ?? (envName === 'dev' ? 'ljr-dev-only' : undefined),
+      /** 可选口令：有值时来自进程 env 或（dev）.secrets/dev.env；无代码兜底字面量（core M0 未消费 redis） */
+      password: pick(ENV_KEYS.redisPassword),
     },
     rocketmq: {
       namesrvAddr: pick(ENV_KEYS.rocketmqNamesrv) ?? '127.0.0.1:9876',
@@ -174,8 +205,13 @@ export function configFilePath(envName: AppEnvName): string {
   return path.resolve(__dirname, '..', '..', '..', '..', 'config', envName, 'app.env');
 }
 
-/** 装载入口：进程 env + 按 LJR_ENV 选文件 → 三层解析（每次调用现读文件，无缓存——调用频度=进程启动级） */
-export function loadAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
+/** 装载入口：进程 env +（dev：.secrets/dev.env 凭据层）+ 按 LJR_ENV 选文件 → 解析
+ *  （每次调用现读文件，无缓存——调用频度=进程启动级；devSecretsFile 参数仅测试注入临时文件） */
+export function loadAppConfig(
+  env: NodeJS.ProcessEnv = process.env,
+  devSecretsFile: string = devSecretsFilePath(),
+): AppConfig {
   const envName = normalizeEnvName(env[ENV_KEYS.env]);
-  return resolveAppConfig({ env, file: readEnvFile(configFilePath(envName)) });
+  const effectiveEnv = envName === 'dev' ? withDevSecrets(env, readEnvFile(devSecretsFile)) : env;
+  return resolveAppConfig({ env: effectiveEnv, file: readEnvFile(configFilePath(envName)) });
 }

@@ -80,7 +80,8 @@ describe('compose 观测段：四件 + alertmanager 占位齐备', () => {
   test('grafana 管理口令 ${VAR} 注入（密钥红线，架构 §1.3）', () => {
     const env = service('grafana').environment;
     expect(String(env.GF_SECURITY_ADMIN_PASSWORD)).toMatch(/^\$\{LJR_GRAFANA_PASSWORD/);
-    expect(read('.env.example')).toContain('LJR_GRAFANA_PASSWORD=ljr-dev-only');
+    // .env.example 提供非空占位值即可（断言不绑定具体占位字面量——Mimosa 修复：测试零凭据字面量）
+    expect(read('.env.example')).toMatch(/^LJR_GRAFANA_PASSWORD=\S+$/m);
   });
 
   test('头注标注【待 docker 环境补端到端演练】（降级口径留痕）', () => {

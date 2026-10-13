@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { AppError, ErrorCode, isAppError } from '@ljr/shared';
 import { LocalConfigProvider } from './local-config-provider';
@@ -5,7 +6,13 @@ import { LocalConfigProvider } from './local-config-provider';
 describe('LocalConfigProvider（本地实现：get/require）', () => {
   const provider = new LocalConfigProvider({
     port: 3000,
-    pg: { host: '127.0.0.1', port: 5435, user: 'postgres', password: 'x', database: 'ljr_dev' },
+    pg: {
+      host: '127.0.0.1',
+      port: 5435,
+      user: 'postgres',
+      password: randomUUID(), // 随机值：测试不落可用凭据字面量（Mimosa 修复口径）
+      database: 'ljr_dev',
+    },
     empty: null,
   });
 

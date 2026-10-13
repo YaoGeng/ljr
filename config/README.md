@@ -12,7 +12,7 @@ config/
 
 装载链路（`services/core/src/config/app.config.ts`，@nestjs/config 承载）：
 
-**优先级：进程 env > `config/<LJR_ENV>/app.env` > 代码默认值**
+**优先级：进程 env >（dev 专属：`.secrets/dev.env` 凭据键白名单）> `config/<LJR_ENV>/app.env` > 代码默认值**
 
 | 层           | 来源                             | 内容边界                                    | 示例                                                |
 | ------------ | -------------------------------- | ------------------------------------------- | --------------------------------------------------- |
@@ -31,7 +31,7 @@ config/
   - `LJR_ENV` 本身（环境选择是部署动作，不是仓库内容）
 - **机器强制**（非口头约定）：
   1. `ENV_ONLY_KEYS`（`app.config.ts`）中的键出现在任何 `app.env` → 启动抛 `E_CONFIG_INVALID`；
-  2. staging/prod 缺 `LJR_PG_PASSWORD` → 启动抛 `E_CONFIG_MISSING`（fail-fast）；
+  2. 任何环境缺 `LJR_PG_PASSWORD` → 启动抛 `E_CONFIG_MISSING`（fail-fast；dev 由 start.mjs 生成的 `.secrets/dev.env` 兜住）；
   3. CI gitleaks 全历史扫描兜底（`.gitleaks.toml`，豁免面只精确到两条 `.env.example` 路径）。
 
 > 命名提示：本目录文件叫 `app.env`（非 `.env*`）——`.gitignore` 的 `.env.*` 规则不吞它，
@@ -40,7 +40,7 @@ config/
 ## secrets 注入路径（与既有约定衔接）
 
 - **dev（docker 轨）**：`docker/dev/.env.example` 复制为 `docker/dev/.env`（gitignore）→ `docker compose --env-file` 注入；dev 占位口令 `ljr-dev-only` 仅限本机。
-- **dev（portable 轨）**：进程环境直接注入（`scripts/db/*.mjs` 的 `LJR_PG_*` 口径）。
+- **dev（portable 轨）**：`node scripts/db/start.mjs` 首跑生成随机口令写入 `.secrets/dev.env`（进程 env `LJR_PG_PASSWORD` 可覆盖）；core 装载层在 dev 分支从该文件补凭据键（白名单 `LJR_PG_PASSWORD`/`LJR_REDIS_PASSWORD`，见 `app.config.ts` 的 `withDevSecrets`）。
 - **本机真实凭据**：`.secrets/`（见 `.secrets/README.md`；对 git 与 agent/容器均不可见）；注入走 env 文件 + 进程环境，禁命令行参数（argv 对同机进程可见）。
 - **CI**：GitHub Actions secrets，不落盘（现有 workflow 尚未引用任何 secrets，属有意）。
 - **staging/prod**：部署平台密钥服务（架构 §5.2 KMS 口径）；staging 起接 Nacos 后，Nacos 侧访问凭据同样只走平台 secrets。
