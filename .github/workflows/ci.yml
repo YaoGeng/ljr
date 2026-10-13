@@ -1,0 +1,176 @@
+# M0-5 CI 流水线：六项检查 + 密钥扫描（docs/05 M0-5；CI 平台=GitHub Actions，ADR-0002 默认裁决）
+#
+# 检查项 → job 映射（六项语义一个不少，job 并行反馈）：
+#   1 lint              → job lint（eslint + prettier --check）
+#   2 typecheck         → job typecheck（各包 tsc --noEmit，core 含 *.spec.ts）
+#   3 test              → job db-check（core vitest 需真实 PG：先 PG service 容器 + flyway migrate，
+#                          其余包 bun test 无 DB 依赖同 job 跑完）
+#   4 build             → job build（pnpm -r build）
+#   5 跨 schema 静态检查 → job schema-refs（node scripts/check-schema-refs.mjs + bun test scripts/ 脚本自测）
+#   6 迁移检查           → job db-check（flyway migrate → validate → drop 业务 schema 整库重放演练，
+#                          ADR-0002「down=drop 业务 schema 后整库重放」，与 scripts/db/reset.mjs 同口径）
+#   + 密钥扫描          → job gitleaks（镜像锁 tag，全历史 detect，配置 .gitleaks.toml；呼应 M0-7）
+#
+# 工具版本固定（Review Focus #2）：node 24 / pnpm 12.11.2 / bun 1.3.13；
+#   镜像一律锁 tag：pgvector/pgvector:0.8.0-pg15（与 docker/dev/docker-compose.yml 同源）、
+#   flyway/flyway:13.10.0（与 compose 同 tag）、zricethezav/gitleaks:v8.24.3。
+#   action 引用钉主版本 tag（SHAs 离线不可核验；翻转为 SHA 钉定留待后续加固）。
+#
+# 密钥禁入 workflow：本文件不引用任何 secrets（口令均为一次性 CI 容器的非密钥值）。
+# 本机无 docker/不可达 GHA：YAML 语法与结构由 scripts/check-ci-workflow.test.mjs（bun test）断言，
+# 真实运行验证 = 推送后首次 GHA 跑（收尾阶段口径）。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.11.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+
+  typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.11.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.11.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+  schema-refs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.11.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+      - run: pnpm install --frozen-lockfile
+      - name: 跨 schema 静态检查（manifest 新鲜度 + 违规 exit 1）
+        run: node scripts/check-schema-refs.mjs
+      - name: 检查脚本自测（含本 workflow 结构与版本钉定断言）
+        run: bun test scripts/
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # 全历史扫描：gitleaks detect 依据 git 历史（浅检出会漏历史泄漏）
+          fetch-depth: 0
+      - name: gitleaks 密钥扫描（镜像锁 tag；豁免清单见 .gitleaks.toml）
+        run: >-
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.24.3
+          detect --source /repo --config /repo/.gitleaks.toml --redact --verbose --exit-code 1
+
+  db-check:
+    # 检查 3（test）+ 检查 6（迁移检查）合并：共享同一 PG service 容器，先迁移检查（含重放演练）后测试
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        # 与 docker/dev/docker-compose.yml 同 tag（T2 锁定）；service 容器映射到 127.0.0.1:5432
+        image: pgvector/pgvector:0.8.0-pg15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ljr_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d ljr_dev"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      # core vitest / PgPoolService 的连接口径（services/core/src/infrastructure/sql.ts pgConfigFromEnv）
+      LJR_PG_HOST: 127.0.0.1
+      LJR_PG_PORT: '5432'
+      LJR_PG_USER: postgres
+      LJR_PG_PASSWORD: postgres
+      LJR_PG_DB: ljr_dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.11.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: '迁移检查：migrate → validate → 整库重放演练（ADR-0002：drop 业务 schema 后整库重放）'
+        run: |
+          flyway() {
+            docker run --rm --network host \
+              -v "$PWD/services/core/flyway.conf:/flyway/conf/flyway.conf:ro" \
+              -v "$PWD/services/core/migrations:/flyway/migrations:ro" \
+              -e FLYWAY_URL=jdbc:postgresql://127.0.0.1:5432/ljr_dev \
+              -e FLYWAY_USER=postgres \
+              -e FLYWAY_PASSWORD=postgres \
+              flyway/flyway:13.10.0 -connectRetries=10 "$@"
+          }
+          # 等价 docker/dev compose 的 flyway 服务（镜像同 tag、同一份 conf/migrations 挂载）
+          flyway migrate
+          flyway validate
+          # 重放演练 = scripts/db/reset.mjs 的 CI 版：drop 13 业务 schema + platform/demo（清单取自 lib.mjs
+          # BUSINESS_SCHEMAS，不在此复制清单）→ flyway clean（清元数据）→ migrate 从零重放 → validate
+          DROP_SQL=$(node --input-type=module -e "const { BUSINESS_SCHEMAS } = await import('./scripts/db/lib.mjs'); process.stdout.write('DROP SCHEMA IF EXISTS ' + BUSINESS_SCHEMAS.join(', ') + ' CASCADE;')")
+          echo "$DROP_SQL"
+          docker run --rm --network host -e PGPASSWORD=postgres pgvector/pgvector:0.8.0-pg15 \
+            psql -h 127.0.0.1 -p 5432 -U postgres -d ljr_dev -v ON_ERROR_STOP=1 -c "$DROP_SQL"
+          flyway clean
+          flyway migrate
+          flyway validate
+      - name: '测试：core vitest（真实 PG，重放后的干净库）+ 其余包 bun test'
+        run: pnpm -r test

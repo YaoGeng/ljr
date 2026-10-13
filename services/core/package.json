@@ -5,6 +5,7 @@
   "description": "律聚人 Core API（NestJS 模块化单体：13 模块=13 schema+DB role，随 M1 起逐模块落位）",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
     "start": "node dist/main.js",
     "test": "vitest run"
   },

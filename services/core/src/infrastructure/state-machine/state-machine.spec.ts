@@ -77,7 +77,7 @@ describe('StateTransitionGuardService（守卫 + state_transition_log 留痕，�
   beforeAll(async () => {
     pool = await ensureTestDatabase();
     const poolSvc = new PgPoolService(pool);
-    svc = new StateTransitionGuardService(new StateTransitionLogService(poolSvc), poolSvc);
+    svc = new StateTransitionGuardService(new StateTransitionLogService(), poolSvc);
   });
 
   beforeEach(async () => {

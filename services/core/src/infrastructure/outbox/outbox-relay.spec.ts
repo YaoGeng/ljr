@@ -67,22 +67,23 @@ describe('OutboxRelayService（at-least-once 投递，需 PG）', () => {
     const t1 = await relay.tick();
     expect(t1.dispatched).toBe(0);
     expect(t1.retried).toBe(1);
-    let row = await pool.query<{ status: string; retry_count: number; last_error: string | null }>(
-      `SELECT status, retry_count, last_error FROM platform.outbox WHERE id = $1`,
-      [id],
-    );
+    const row = await pool.query<{
+      status: string;
+      retry_count: number;
+      last_error: string | null;
+    }>(`SELECT status, retry_count, last_error FROM platform.outbox WHERE id = $1`, [id]);
     expect(row.rows[0]?.status).toBe('PENDING');
     expect(row.rows[0]?.retry_count).toBe(1);
     expect(row.rows[0]?.last_error).toContain('第一次炸了');
 
     const t2 = await relay.tick(); // 第二次投递成功
     expect(t2.dispatched).toBe(1);
-    row = await pool.query<{ status: string; retry_count: number }>(
+    const rowSent = await pool.query<{ status: string; retry_count: number }>(
       `SELECT status, retry_count FROM platform.outbox WHERE id = $1`,
       [id],
     );
-    expect(row.rows[0]?.status).toBe('SENT');
-    expect(row.rows[0]?.retry_count).toBe(1); // 成功不再累计
+    expect(rowSent.rows[0]?.status).toBe('SENT');
+    expect(rowSent.rows[0]?.retry_count).toBe(1); // 成功不再累计
   });
 
   it('重试超上限入死信：status=DEAD + outbox_dead_letter 落一行（retry_count=1+maxRetry 次尝试后）', async () => {

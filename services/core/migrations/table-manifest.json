@@ -1,0 +1,28 @@
+{
+  "note": "表归属 manifest（scripts/gen-table-manifest.mjs 生成，勿手改）：新增迁移后重跑 pnpm gen:table-manifest 并提交",
+  "schemas": {
+    "agent_assist": "V1__schemas_roles.sql",
+    "benefits": "V1__schemas_roles.sql",
+    "credit": "V1__schemas_roles.sql",
+    "demo": "V3__state_transition_log.sql",
+    "fulfillment": "V1__schemas_roles.sql",
+    "identity": "V1__schemas_roles.sql",
+    "notify": "V1__schemas_roles.sql",
+    "ops": "V1__schemas_roles.sql",
+    "payment": "V1__schemas_roles.sql",
+    "platform": "V2__outbox.sql",
+    "pricing": "V1__schemas_roles.sql",
+    "review": "V1__schemas_roles.sql",
+    "schedule": "V1__schemas_roles.sql",
+    "settlement": "V1__schemas_roles.sql",
+    "trade": "V1__schemas_roles.sql"
+  },
+  "tables": {
+    "demo.consumed_events": "V3__state_transition_log.sql",
+    "demo.order_actions": "V3__state_transition_log.sql",
+    "demo.orders": "V3__state_transition_log.sql",
+    "platform.outbox": "V2__outbox.sql",
+    "platform.outbox_dead_letter": "V2__outbox.sql",
+    "platform.state_transition_log": "V3__state_transition_log.sql"
+  }
+}

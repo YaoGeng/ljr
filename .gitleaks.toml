@@ -1,0 +1,19 @@
+# gitleaks 配置（M0-5，呼应 M0-7 密钥治理）：默认规则集 + 本仓已申报豁免项。
+# 密钥红线（架构 §1.3）：密钥禁入代码与 workflow；本文件只豁免「非密钥的占位/示例值」。
+# CI：.github/workflows/ci.yml gitleaks job（镜像锁 tag 运行，detect 全历史扫描）。
+
+# 继承 gitleaks 官方默认规则集（v8.19+ 语法）
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "dev 占位口令 ljr-dev-only：仅本机/CI 一次性环境的非密钥占位符（flyway.conf 头注、docker/dev/.env.example、scripts/db/lib.mjs、sql.ts 默认值等多处申报使用）"
+regexes = [
+  '''ljr-dev-only''',
+]
+
+[[allowlists]]
+description = "示例环境文件：docker/dev/.env.example 本身即占位口令的申报处"
+paths = [
+  '''(^|/)docker/dev/\.env\.example$''',
+]
