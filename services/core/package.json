@@ -17,6 +17,7 @@
   },
   "devDependencies": {
     "@nestjs/testing": "^12.1.2",
+    "@types/node": "^26.6.5",
     "@types/supertest": "^7.2.1",
     "supertest": "^7.3.1",
     "typescript": "~5.9.3",
