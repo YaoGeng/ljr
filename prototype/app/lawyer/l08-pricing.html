@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>律聚人 · 律师端 · 价格与 1对1 配置</title>
+<link rel="stylesheet" href="../assets/app.css">
+<style>.tag.sel{background:var(--ink-700);color:#fff;border-color:var(--ink-700);}</style>
+</head>
+<body class="role-lawyer">
+<div class="desk">
+  <div class="desk-label"><b>律聚人 · 律师端</b><code>l08 价格配置</code><span>PRD §7.2.3 价格配置 / B3 版本化定价 · C6 1对1 服务配置</span></div>
+
+  <div class="phone">
+    <div class="statusbar"><span class="num">20:15</span><div class="notch"></div><span>5G&nbsp;▮▮▮</span></div>
+
+    <div class="appbar">
+      <a class="back" href="l10-profile.html"><svg class="ic" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></a>
+      <div class="title">价格与 1对1 配置</div>
+      <div class="spacer"></div>
+      <span class="tag tag-ok num" style="margin-right:2px;">当前 v2</span>
+    </div>
+
+    <div class="screen">
+      <!-- ① 默认价格 -->
+      <div class="sec">
+        <div class="sec-head"><h3>默认价格</h3><span class="more small">当前版本 v2 · 2026-09-30 生效</span></div>
+        <div class="card">
+          <div class="field">
+            <label>默认人头价（元 / 人）</label>
+            <div class="input-suffix">
+              <input class="input num" value="88" style="padding-right:70px;">
+              <span class="tag" style="position:absolute;right:8px;top:9px;">默认 ¥88</span>
+            </div>
+          </div>
+          <div class="field">
+            <label>默认场次总价（元 / 场）</label>
+            <input class="input num" value="440">
+            <div class="field-tip">场次总价 = 人头价 × 默认人数（¥88 × 5），可单独调整</div>
+          </div>
+          <div class="field">
+            <label>默认开团人数</label>
+            <div class="row-between">
+              <div class="stepper"><button type="button">−</button><span class="val num">5</span><button type="button">+</button></div>
+              <span class="small">可设 1 – 6 人</span>
+            </div>
+          </div>
+          <div class="field">
+            <label>接受拼团人数范围</label>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div class="stepper"><button type="button">−</button><span class="val num">4</span><button type="button">+</button></div>
+              <span class="small">至</span>
+              <div class="stepper"><button type="button">−</button><span class="val num">6</span><button type="button">+</button></div>
+              <span class="small">人</span>
+            </div>
+            <div class="field-tip">低于 4 人或高于 6 人的 C2B 拼团不会指名给你</div>
+          </div>
+          <div class="field" style="margin-bottom:0;">
+            <label>房间沟通形式（可多选）</label>
+            <div style="display:flex;gap:8px;">
+              <span class="tag sel" style="cursor:pointer;" onclick="tg(this)">文本</span>
+              <span class="tag" style="cursor:pointer;" onclick="tg(this)">语音</span>
+              <span class="tag" style="cursor:pointer;" onclick="tg(this)">视频</span>
+            </div>
+            <div class="field-tip">可多选，用户端按此展示你的房间沟通形式</div>
+          </div>
+        </div>
+        <div class="notice warn mt12">
+          <svg class="ic ic-sm" viewBox="0 0 24 24"><path d="M12 4l1.8 5.2L19 11l-5.2 1.8L12 18l-1.8-5.2L5 11l5.2-1.8z"/></svg>
+          <div>修改默认价格将生成新版本 <b>v3</b> 并通知已参与拼团用户；已参与用户维持加入时的快照价不变。</div>
+        </div>
+      </div>
+
+      <!-- ② 改价规则 -->
+      <div class="sec">
+        <div class="sec-head"><h3>改价规则</h3><span class="tag tag-warn num">30 天内已用 1 / 3 次</span></div>
+        <div class="notice ok">
+          <svg class="ic ic-sm" viewBox="0 0 24 24"><path d="M12 3.5 19 6v5.5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9 11.5l2 2 4-4"/></svg>
+          <div>无进行中拼团：<b>可自由改价</b>，保存后生成新版本</div>
+        </div>
+        <div class="notice warn" style="margin-top:8px;">
+          <svg class="ic ic-sm" viewBox="0 0 24 24"><path d="M4 19V10M12 19V4M20 19v-7"/></svg>
+          <div>有进行中拼团 · <b>涨价</b>：允许，信用 <b>-5</b></div>
+        </div>
+        <div class="notice warn" style="margin-top:8px;">
+          <svg class="ic ic-sm" viewBox="0 0 24 24"><path d="M4 19V10M12 19V4M20 19v-7"/></svg>
+          <div>有进行中拼团 · <b>降价 ≤10%</b>：需平台审批，信用 <b>-15</b></div>
+        </div>
+        <div class="notice seal" style="margin-top:8px;">
+          <svg class="ic ic-sm" viewBox="0 0 24 24"><path d="M12 4l1.8 5.2L19 11l-5.2 1.8L12 18l-1.8-5.2L5 11l5.2-1.8z"/></svg>
+          <div>有进行中拼团 · <b>降价 >10%</b>：需平台审批，信用 <b>-30</b> 并暂停接单 3 天</div>
+        </div>
+        <div class="hint">30 天内最多改价 3 次；新版本生成后 24h 内可撤销</div>
+      </div>
+
+      <!-- ③ 1对1 价格矩阵 -->
+      <div class="sec">
+        <div class="sec-head"><h3>1对1 价格矩阵</h3></div>
+        <div class="card card--pad0">
+          <div style="display:grid;grid-template-columns:1.15fr .7fr 1.15fr .8fr;padding:10px 14px;font-size:10.5px;color:var(--text-3);">
+            <span>服务类型</span><span>形式</span><span>价格</span><span style="text-align:right;">状态</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1.15fr .7fr 1.15fr .8fr;padding:9px 14px;font-size:12.5px;border-top:1px solid var(--line);align-items:center;">
+            <span style="font-weight:600;">深度解答</span><span>文字</span><span class="num" style="color:var(--seal-600);font-weight:700;">¥199/次</span><span style="text-align:right;"><span class="tag tag-ok">开通</span></span>
+          </div>
+          <div style="display:grid;grid-template-columns:1.15fr .7fr 1.15fr .8fr;padding:9px 14px;font-size:12.5px;border-top:1px solid var(--line);align-items:center;">
+            <span></span><span>语音</span><span class="num" style="color:var(--seal-600);font-weight:700;">¥299/15min</span><span style="text-align:right;"><span class="tag tag-ok">开通</span></span>
+          </div>
+          <div style="display:grid;grid-template-columns:1.15fr .7fr 1.15fr .8fr;padding:9px 14px;font-size:12.5px;border-top:1px solid var(--line);align-items:center;">
+            <span></span><span>视频</span><span class="num" style="color:var(--seal-600);font-weight:700;">¥399/15min</span><span style="text-align:right;"><span class="tag tag-ok">开通</span></span>
+          </div>
+          <div style="display:grid;grid-template-columns:1.15fr .7fr 1.15fr .8fr;padding:9px 14px;font-size:12.5px;border-top:1px solid var(--line);align-items:center;">
+            <span style="font-weight:600;">文书修改</span><span>文字</span><span class="num" style="color:var(--seal-600);font-weight:700;">¥299/次</span><span style="text-align:right;"><span class="tag tag-ok">开通</span></span>
+          </div>
+          <div style="display:grid;grid-template-columns:1.15fr .7fr 1.15fr .8fr;padding:9px 14px;font-size:12.5px;border-top:1px solid var(--line);align-items:center;color:var(--text-3);opacity:.75;">
+            <span></span><span>语音</span><span>—</span><span style="text-align:right;"><span class="tag">未开通</span></span>
+          </div>
+          <div style="display:grid;grid-template-columns:1.15fr .7fr 1.15fr .8fr;padding:9px 14px;font-size:12.5px;border-top:1px solid var(--line);align-items:center;color:var(--text-3);opacity:.75;">
+            <span></span><span>视频</span><span>—</span><span style="text-align:right;"><span class="tag">未开通</span></span>
+          </div>
+          <div style="display:grid;grid-template-columns:1.15fr .7fr 1.15fr .8fr;padding:9px 14px;font-size:12.5px;border-top:1px solid var(--line);align-items:center;">
+            <span style="font-weight:600;">策略建议</span><span>文字</span><span class="num" style="color:var(--seal-600);font-weight:700;">¥299/次</span><span style="text-align:right;"><span class="tag tag-ok">开通</span></span>
+          </div>
+          <div style="display:grid;grid-template-columns:1.15fr .7fr 1.15fr .8fr;padding:9px 14px;font-size:12.5px;border-top:1px solid var(--line);align-items:center;color:var(--text-3);opacity:.75;">
+            <span></span><span>语音</span><span>—</span><span style="text-align:right;"><span class="tag">未开通</span></span>
+          </div>
+          <div style="display:grid;grid-template-columns:1.15fr .7fr 1.15fr .8fr;padding:9px 14px;font-size:12.5px;border-top:1px solid var(--line);align-items:center;">
+            <span></span><span>视频</span><span class="num" style="color:var(--seal-600);font-weight:700;">¥499/15min</span><span style="text-align:right;"><span class="tag tag-ok">开通</span></span>
+          </div>
+        </div>
+        <div class="hint">平台区间参考：文字类 ¥50 – 300/次 · 语音 / 视频 ¥100 – 500/15min，超出区间需平台审核</div>
+      </div>
+
+      <!-- ④ 版本记录 -->
+      <div class="sec">
+        <div class="sec-head"><h3>版本记录</h3></div>
+        <div class="card">
+          <div style="display:flex;gap:10px;">
+            <div style="display:flex;flex-direction:column;align-items:center;">
+              <span style="width:9px;height:9px;border-radius:50%;background:var(--ink-600);flex:none;margin-top:4px;"></span>
+              <span style="width:2px;flex:1;min-height:16px;background:var(--ink-100);"></span>
+            </div>
+            <div style="flex:1;padding-bottom:14px;">
+              <div style="display:flex;align-items:center;gap:6px;"><span style="font-size:13px;font-weight:600;" class="num">v2 · 2026-09-30</span><span class="tag tag-ok">生效中</span></div>
+              <div class="small">人头价 ¥99 → ¥88（降价 10.1%，平台审批通过）· 差价补偿 ¥0.9 × 参与占比，已发放</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;">
+            <div style="display:flex;flex-direction:column;align-items:center;">
+              <span style="width:9px;height:9px;border-radius:50%;background:var(--ink-300);flex:none;margin-top:4px;"></span>
+            </div>
+            <div style="flex:1;">
+              <div style="font-size:13px;font-weight:600;" class="num">v1 · 2026-09-02</div>
+              <div class="small">初始定价：人头价 ¥99 · 场次总价 ¥495 · 默认 5 人团</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-block btn-lg" onclick="pop('m-save')">保存并生成新版本</button>
+      <div class="hint tac mt8">保存后生成 v3 · 通知已参与拼团用户 · 24h 内可撤销</div>
+    </div>
+
+    <!-- 保存确认弹层 -->
+    <div class="modal-mask" id="m-save" onclick="if(event.target===this)unpop(this)">
+      <div class="modal">
+        <h5>生成新版本 v3？</h5>
+        <p>保存后默认价格立即生效并生成 v3：已参与拼团用户将收到调价通知（其快照价不变）。生成后 <b>24 小时内可撤销</b>，本次为 30 天内第 2 次改价。</p>
+        <div class="btn-row mt12">
+          <button class="btn btn-ghost" onclick="unpop(this.closest('.modal-mask'))">暂不保存</button>
+          <button class="btn btn-primary" onclick="unpop(this.closest('.modal-mask'))">确认生成</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tabbar">
+      <a href="l02-workbench.html">
+        <svg class="ic" viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10.5V20h12v-9.5"/></svg>
+        工作台
+      </a>
+      <a href="l03-sessions.html">
+        <svg class="ic" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M4 10h16M8 4v4M16 4v4"/></svg>
+        场次管理
+      </a>
+      <a href="l06-hall.html">
+        <svg class="ic" viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3"/><path d="M3.5 19c.8-3 3-4.5 5.5-4.5s4.7 1.5 5.5 4.5"/><circle cx="16.8" cy="9.5" r="2.2"/><path d="M16 14.7c2.2.3 4 1.6 4.7 4.3"/></svg>
+        接单大厅
+      </a>
+      <a class="on" href="l10-profile.html">
+        <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19.5c1-3.4 3.5-5 6.5-5s5.5 1.6 6.5 5"/></svg>
+        我的
+      </a>
+    </div>
+    <div class="homebar"></div>
+  </div>
+</div>
+
+<script>
+function pop(id){document.getElementById(id).classList.add('show');}
+function unpop(el){el.classList.remove('show');}
+function tg(el){el.classList.toggle('sel');}
+</script>
+</body>
+</html>

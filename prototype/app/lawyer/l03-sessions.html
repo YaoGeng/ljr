@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>律聚人 · 律师端 · 场次管理</title>
+<link rel="stylesheet" href="../assets/app.css">
+</head>
+<body class="role-lawyer">
+<div class="desk">
+  <div class="desk-label"><b>律聚人 · 律师端</b><code>l03 场次管理</code><span>PRD §7.2.6 场次管理 / C1 开团-成团-交付-结算</span></div>
+
+  <div class="phone">
+    <div class="statusbar"><span class="num">20:15</span><div class="notch"></div><span>5G&nbsp;▮▮▮</span></div>
+
+    <div class="appbar">
+      <a class="back" href="l02-workbench.html"><svg class="ic" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></a>
+      <div class="title">场次管理</div>
+      <div class="spacer"></div>
+      <a class="btn btn-primary btn-sm" href="l04-create-session.html" style="height:32px;">
+        <svg class="ic ic-sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>创建场次
+      </a>
+    </div>
+
+    <div class="screen">
+      <div class="seg margin">
+        <button class="on" onclick="seg(this)">全部</button>
+        <button onclick="seg(this)">报名中</button>
+        <button onclick="seg(this)">已成团</button>
+        <button onclick="seg(this)">已结束</button>
+      </div>
+
+      <!-- 已成团 · 待开始 -->
+      <div class="card session-card">
+        <div class="seal">已成团</div>
+        <div class="topic">加班费与社保补缴实务答疑</div>
+        <div class="meta">
+          <span><svg class="ic ic-sm" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M4 10h16M8 4v4M16 4v4"/></svg>10-16 周五 20:00 – 21:00</span>
+          <span><svg class="ic ic-sm" viewBox="0 0 24 24"><path d="M4 5.5h16v10H9l-5 4z"/></svg>文本</span>
+          <span>5 人团</span>
+        </div>
+        <div class="foot">
+          <div class="progress">
+            <div class="bar done"><i style="width:100%"></i></div>
+            <div class="txt">5 / 5 已满 · <span class="st st-wait">待开始</span></div>
+          </div>
+          <div class="price"><small>¥</small>88<span class="per">/人</span></div>
+        </div>
+        <div class="btn-row mt12">
+          <a class="btn btn-primary btn-sm" href="l09-room.html">进入房间</a>
+          <a class="btn btn-ghost btn-sm" href="l05-stats.html">数据</a>
+        </div>
+      </div>
+
+      <!-- 报名中 -->
+      <div class="card session-card">
+        <div class="topic">试用期辞退答疑</div>
+        <div class="meta">
+          <span><svg class="ic ic-sm" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M4 10h16M8 4v4M16 4v4"/></svg>10-21 周三 20:00 · 90 分钟</span>
+          <span><svg class="ic ic-sm" viewBox="0 0 24 24"><path d="M4 5.5h16v10H9l-5 4z"/></svg>文本</span>
+          <span>5 人团</span>
+        </div>
+        <div class="foot">
+          <div class="progress">
+            <div class="bar"><i style="width:40%"></i></div>
+            <div class="txt">已报 2 / 5 · 还差 <b>3 人</b>成团</div>
+          </div>
+          <span class="countdown num">距成团截止 2 天 06:12</span>
+        </div>
+        <div class="btn-row mt12">
+          <button class="btn btn-ghost btn-sm" onclick="pop('m-share')">分享</button>
+          <button class="btn btn-danger btn-sm" onclick="pop('m-cancel')">取消场次</button>
+        </div>
+      </div>
+
+      <!-- 已结束 -->
+      <div class="card session-card">
+        <div class="row-between" style="align-items:flex-start;">
+          <div class="topic" style="padding-right:0;">拖欠工资夜谈</div>
+          <span class="st st-done">已结束</span>
+        </div>
+        <div class="meta">
+          <span><svg class="ic ic-sm" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M4 10h16M8 4v4M16 4v4"/></svg>10-08 周四 20:00</span>
+          <span>5 人团 · ¥88/人</span>
+        </div>
+        <div class="row-between mt12">
+          <span class="small">到场 4/5 · 1对1 转化 1 · <b style="color:var(--seal-600);">已结算 ¥387</b></span>
+          <a class="btn btn-ghost btn-sm" href="l05-stats.html">数据</a>
+        </div>
+      </div>
+
+      <!-- 已流标 -->
+      <div class="card session-card" style="opacity:.82;">
+        <div class="row-between" style="align-items:flex-start;">
+          <div class="topic" style="padding-right:0;">违约金专题</div>
+          <span class="st st-fail">已流标</span>
+        </div>
+        <div class="meta">
+          <span><svg class="ic ic-sm" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M4 10h16M8 4v4M16 4v4"/></svg>10-05 周一 20:00</span>
+          <span>5 人团 · ¥88/人</span>
+        </div>
+        <div class="small mt12">报名 2 人未成团 · 全额退款已处理（¥176 于 10-06 原路退回）</div>
+      </div>
+
+      <div class="hint tac">成团截止未满员将自动流标并全额退款用户，不影响信用分</div>
+    </div>
+
+    <!-- 分享弹层 -->
+    <div class="modal-mask" id="m-share" onclick="if(event.target===this)unpop(this)">
+      <div class="modal">
+        <h5>分享场次</h5>
+        <p>「试用期辞退答疑 · 10-21 周三 20:00 · ¥88/人」复制链接或生成海报，分享到微信群与朋友圈。</p>
+        <div class="btn-row mt12">
+          <button class="btn btn-ghost" onclick="unpop(this.closest('.modal-mask'))">生成海报</button>
+          <button class="btn btn-primary" onclick="unpop(this.closest('.modal-mask'))">复制链接</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 取消场次弹层 -->
+    <div class="modal-mask" id="m-cancel" onclick="if(event.target===this)unpop(this)">
+      <div class="modal">
+        <h5>取消该场次？</h5>
+        <p style="text-align:left;">距开始 ≥24h：信用 <b style="color:var(--seal-600);">-10</b>，用户自动全额退款<br>
+        距开始 &lt;24h：需平台审批，信用 <b style="color:var(--seal-600);">-30</b> + 20% 违约金<br>
+        <span class="small">本场距开始 8 天 04:12，取消将扣除信用 10 分</span></p>
+        <div class="btn-row mt12">
+          <button class="btn btn-ghost" onclick="unpop(this.closest('.modal-mask'))">保留场次</button>
+          <button class="btn btn-danger" onclick="unpop(this.closest('.modal-mask'))">确认取消</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tabbar">
+      <a href="l02-workbench.html">
+        <svg class="ic" viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10.5V20h12v-9.5"/></svg>
+        工作台
+      </a>
+      <a class="on" href="l03-sessions.html">
+        <svg class="ic" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M4 10h16M8 4v4M16 4v4"/></svg>
+        场次管理
+      </a>
+      <a href="l06-hall.html">
+        <svg class="ic" viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3"/><path d="M3.5 19c.8-3 3-4.5 5.5-4.5s4.7 1.5 5.5 4.5"/><circle cx="16.8" cy="9.5" r="2.2"/><path d="M16 14.7c2.2.3 4 1.6 4.7 4.3"/></svg>
+        接单大厅
+      </a>
+      <a href="l10-profile.html">
+        <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19.5c1-3.4 3.5-5 6.5-5s5.5 1.6 6.5 5"/></svg>
+        我的
+      </a>
+    </div>
+    <div class="homebar"></div>
+  </div>
+</div>
+
+<script>
+function seg(el){[...el.parentNode.children].forEach(b=>b.classList.remove('on'));el.classList.add('on');}
+function pop(id){document.getElementById(id).classList.add('show');}
+function unpop(el){el.classList.remove('show');}
+</script>
+</body>
+</html>

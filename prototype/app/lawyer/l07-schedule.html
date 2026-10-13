@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>律聚人 · 律师端 · 时间表</title>
+<link rel="stylesheet" href="../assets/app.css">
+</head>
+<body class="role-lawyer">
+<div class="desk">
+  <div class="desk-label"><b>律聚人 · 律师端</b><code>l07 时间表管理</code><span>PRD §7.2.2 时间表 / B1 时段供给与原子锁定</span></div>
+
+  <div class="phone">
+    <div class="statusbar"><span class="num">20:15</span><div class="notch"></div><span>5G&nbsp;▮▮▮</span></div>
+
+    <div class="appbar">
+      <a class="back" href="l03-sessions.html"><svg class="ic" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></a>
+      <div class="title">时间表</div>
+      <div class="spacer"></div>
+      <a class="btn btn-primary btn-sm" href="l07-schedule.html" style="height:32px;">
+        <svg class="ic ic-sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>添加时段
+      </a>
+    </div>
+
+    <div class="screen">
+      <!-- 时段设置 -->
+      <div class="card mb12">
+        <div class="row-between mb8">
+          <b style="font-size:13.5px;">单场时长</b>
+          <span class="small">时段按周重复开放</span>
+        </div>
+        <div class="seg">
+          <button onclick="seg(this)">60 分钟</button>
+          <button class="on" onclick="seg(this)">90 分钟</button>
+          <button onclick="seg(this)">120 分钟</button>
+        </div>
+        <div class="field-tip">调整时长与开放规则仅影响之后的新开团；时间表按周重复，可单独停用某一周</div>
+      </div>
+
+      <!-- 周视图 10-13 至 10-19 -->
+      <div class="sec">
+        <div class="sec-head"><h3>本周 · 10-13 至 10-19</h3><span class="more small num">周二</span></div>
+        <div class="card">
+          <div class="weekgrid">
+            <span class="wg-head"></span>
+            <span class="wg-head today">周二<b>13</b></span>
+            <span class="wg-head">周三<b>14</b></span>
+            <span class="wg-head">周四<b>15</b></span>
+            <span class="wg-head">周五<b>16</b></span>
+            <span class="wg-head">周六<b>17</b></span>
+            <span class="wg-head">周日<b>18</b></span>
+            <span class="wg-head">周一<b>19</b></span>
+
+            <span class="wg-time num">10:00</span>
+            <span class="slot free" onclick="pick(this)"></span>
+            <span class="slot free" onclick="pick(this)"></span>
+            <span class="slot free" onclick="pick(this)"></span>
+            <span class="slot free" onclick="pick(this)"></span>
+            <span class="slot free" onclick="pick(this)"></span>
+            <span class="slot seal">待确认拼团</span>
+            <span class="slot free" onclick="pick(this)"></span>
+
+            <span class="wg-time num">14:00</span>
+            <span class="slot free" onclick="pick(this)"></span>
+            <span class="slot free" onclick="pick(this)"></span>
+            <span class="slot free" onclick="pick(this)"></span>
+            <span class="slot free" onclick="pick(this)"></span>
+            <span class="slot locked">拼团锁定</span>
+            <span class="slot free" onclick="pick(this)"></span>
+            <span class="slot free" onclick="pick(this)"></span>
+
+            <span class="wg-time num">19:00</span>
+            <span class="slot free" onclick="pick(this)"></span>
+            <span class="slot free" onclick="pick(this)"></span>
+            <span class="slot free" onclick="pick(this)"></span>
+            <span class="slot free" onclick="pick(this)"></span>
+            <span class="slot free" onclick="pick(this)"></span>
+            <span class="slot free" onclick="pick(this)"></span>
+            <span class="slot free" onclick="pick(this)"></span>
+
+            <span class="wg-time num">20:00</span>
+            <span class="slot free" onclick="pick(this)"></span>
+            <span class="slot occupied">场次：夜谈</span>
+            <span class="slot selected" onclick="pick(this)">已选</span>
+            <span class="slot occupied">20:00 场次：加班费</span>
+            <span class="slot free" onclick="pick(this)"></span>
+            <span class="slot free" onclick="pick(this)"></span>
+            <span class="slot free" onclick="pick(this)"></span>
+
+            <span class="wg-time num">21:00</span>
+            <span class="slot free" onclick="pick(this)"></span>
+            <span class="slot free" onclick="pick(this)"></span>
+            <span class="slot free" onclick="pick(this)"></span>
+            <span class="slot free" onclick="pick(this)"></span>
+            <span class="slot free" onclick="pick(this)"></span>
+            <span class="slot free" onclick="pick(this)"></span>
+            <span class="slot free" onclick="pick(this)"></span>
+          </div>
+
+          <div class="divider"></div>
+          <div class="small" style="display:flex;flex-wrap:wrap;gap:8px 14px;">
+            <span style="display:inline-flex;align-items:center;gap:5px;"><i style="width:12px;height:12px;border-radius:4px;background:var(--ink-50);border:1px solid var(--ink-100);font-style:normal;"></i>空闲</span>
+            <span style="display:inline-flex;align-items:center;gap:5px;"><i style="width:12px;height:12px;border-radius:4px;background:var(--ink-700);font-style:normal;"></i>选中</span>
+            <span style="display:inline-flex;align-items:center;gap:5px;"><i style="width:12px;height:12px;border-radius:4px;background:#EEF2FA;border:1.5px dashed var(--ink-300);font-style:normal;"></i>已锁定</span>
+            <span style="display:inline-flex;align-items:center;gap:5px;"><i style="width:12px;height:12px;border-radius:4px;background:var(--paper);border:1px solid var(--line);font-style:normal;"></i>已占用</span>
+            <span style="display:inline-flex;align-items:center;gap:5px;"><i style="width:12px;height:12px;border-radius:4px;background:var(--seal-50);border:1px solid var(--seal-100);font-style:normal;"></i>待确认拼团</span>
+          </div>
+        </div>
+        <div class="notice mt12">
+          <svg class="ic ic-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 8v5M12 16.5v.01"/></svg>
+          <div>已排期场次（已占用）不受时间表变更影响；「已锁定 / 待确认」为 C2B 拼团占用或预留的时段。</div>
+        </div>
+      </div>
+
+      <!-- 快速开团 -->
+      <div class="card" style="display:flex;align-items:center;gap:10px;">
+        <span class="cell-ic"><svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>
+        <div style="flex:1;">
+          <div style="font-size:13.5px;font-weight:600;">点击空闲时段可快速开团</div>
+          <div class="small">选中后直接带入创建场次流程</div>
+        </div>
+        <a class="btn btn-primary btn-sm" href="l04-create-session.html">去开团</a>
+      </div>
+    </div>
+
+    <div class="tabbar">
+      <a href="l02-workbench.html">
+        <svg class="ic" viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10.5V20h12v-9.5"/></svg>
+        工作台
+      </a>
+      <a class="on" href="l03-sessions.html">
+        <svg class="ic" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M4 10h16M8 4v4M16 4v4"/></svg>
+        场次管理
+      </a>
+      <a href="l06-hall.html">
+        <svg class="ic" viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3"/><path d="M3.5 19c.8-3 3-4.5 5.5-4.5s4.7 1.5 5.5 4.5"/><circle cx="16.8" cy="9.5" r="2.2"/><path d="M16 14.7c2.2.3 4 1.6 4.7 4.3"/></svg>
+        接单大厅
+      </a>
+      <a href="l10-profile.html">
+        <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19.5c1-3.4 3.5-5 6.5-5s5.5 1.6 6.5 5"/></svg>
+        我的
+      </a>
+    </div>
+    <div class="homebar"></div>
+  </div>
+</div>
+
+<script>
+function seg(el){[...el.parentNode.children].forEach(b=>b.classList.remove('on'));el.classList.add('on');}
+function pick(el){document.querySelectorAll('.slot.selected').forEach(s=>s.classList.remove('selected'));el.classList.add('selected');}
+</script>
+</body>
+</html>

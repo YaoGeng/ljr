@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>律聚人 · 律师端 · 入驻与资质</title>
+<link rel="stylesheet" href="../assets/app.css">
+</head>
+<body class="role-lawyer">
+<div class="desk">
+  <div class="desk-label"><b>律聚人 · 律师端</b><code>l01 入驻与资质</code><span>PRD §7.2.1 律师入驻 / A3a 律所进件 · A3b 资质审核</span></div>
+
+  <div class="phone">
+    <div class="statusbar"><span class="num">10:08</span><div class="notch"></div><span>5G&nbsp;▮▮▮</span></div>
+
+    <div class="appbar">
+      <a class="back" href="l10-profile.html"><svg class="ic" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></a>
+      <div class="title">律师入驻</div>
+      <div class="spacer"></div>
+    </div>
+
+    <div class="screen">
+      <div class="steps">
+        <div class="stp on" data-n="1">资质信息</div>
+        <div class="stp" data-n="2">律所进件</div>
+        <div class="stp" data-n="3">等待审核</div>
+      </div>
+
+      <div class="notice mb12">
+        <svg class="ic ic-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 8v5M12 16.5v.01"/></svg>
+        <div>首发专项「劳动仲裁」· 平台前期 <b>0 抽佣</b>，收入统一结算至律所对公账户。</div>
+      </div>
+
+      <!-- 资质信息 -->
+      <div class="sec">
+        <div class="sec-head"><h3>资质信息</h3></div>
+        <div class="card">
+          <div class="field"><label>姓名<em>*</em></label><input class="input" placeholder="与执业证一致的真实姓名"></div>
+          <div class="field"><label>执业证号<em>*</em></label><input class="input num" placeholder="执业证号，提交后自动校验真实性"></div>
+          <div class="field" style="margin-bottom:0;">
+            <label>执业证照片<em>*</em></label>
+            <div style="display:flex;gap:10px;">
+              <div style="flex:1;height:92px;border:1.5px dashed var(--ink-200);border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:var(--text-3);font-size:11.5px;cursor:pointer;">
+                <svg class="ic" viewBox="0 0 24 24"><rect x="4" y="7" width="16" height="13" rx="2"/><path d="M8 7l1.5-2.5h5L16 7"/><circle cx="12" cy="13" r="3.2"/></svg>
+                执业证正面
+              </div>
+              <div style="flex:1;height:92px;border:1.5px dashed var(--ink-200);border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:var(--text-3);font-size:11.5px;cursor:pointer;">
+                <svg class="ic" viewBox="0 0 24 24"><rect x="4" y="7" width="16" height="13" rx="2"/><path d="M8 7l1.5-2.5h5L16 7"/><circle cx="12" cy="13" r="3.2"/></svg>
+                执业证反面
+              </div>
+            </div>
+            <div class="field-tip">支持 JPG / PNG，单个文件不超过 10MB，系统将自动识别证件信息</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 律所进件 -->
+      <div class="sec">
+        <div class="sec-head"><h3>律所进件</h3></div>
+        <div class="card">
+          <div class="field"><label>律所名称<em>*</em></label><input class="input" placeholder="如：北京拓维律师事务所"></div>
+          <div class="field" style="margin-bottom:0;"><label>律所授权函<em>*</em></label>
+            <div style="border:1.5px dashed var(--ink-200);border-radius:12px;height:76px;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--text-3);font-size:12px;cursor:pointer;">
+              <svg class="ic" viewBox="0 0 24 24"><path d="M7 3.5h7l4 4V20.5H7z"/><path d="M14 3.5v4h4M10 12h6M10 15.5h6"/></svg>
+              上传律所盖章授权函（PDF / 图片）
+            </div>
+            <div class="field-tip">授权函须载明同意该律师在平台执业及款项结算至律所对公账户</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 对公账户 -->
+      <div class="sec">
+        <div class="sec-head"><h3>律所对公账户</h3></div>
+        <div class="card">
+          <div class="field"><label>户名<em>*</em></label><input class="input" placeholder="须与律所名称一致"></div>
+          <div class="field"><label>开户行<em>*</em></label><input class="input" placeholder="开户银行 · 支行名称"></div>
+          <div class="field" style="margin-bottom:0;"><label>账号<em>*</em></label><input class="input num" placeholder="对公账户账号"></div>
+        </div>
+      </div>
+
+      <!-- 执业承诺 -->
+      <div class="sec">
+        <div class="sec-head"><h3>执业承诺</h3></div>
+        <div class="card">
+          <div class="check-row on" onclick="this.classList.toggle('on')">不得对案件处理结果作出任何承诺</div>
+          <div class="check-row on" style="margin-top:10px;" onclick="this.classList.toggle('on')">不得进行虚假宣传、夸大宣传</div>
+          <div class="check-row on" style="margin-top:10px;" onclick="this.classList.toggle('on')">不得引导用户绕过平台进行私下交易</div>
+          <div class="hint">违反承诺将按平台规则处置，情节严重者永久清退并通报所属律所</div>
+        </div>
+      </div>
+
+      <!-- 提交流程 -->
+      <div class="sec">
+        <div class="sec-head"><h3>提交流程</h3></div>
+        <div class="card">
+          <div style="display:flex;gap:10px;">
+            <div style="display:flex;flex-direction:column;align-items:center;">
+              <span style="width:9px;height:9px;border-radius:50%;background:var(--ink-600);flex:none;margin-top:4px;"></span>
+              <span style="width:2px;flex:1;min-height:16px;background:var(--ink-100);"></span>
+            </div>
+            <div style="flex:1;padding-bottom:13px;">
+              <div style="font-size:13px;font-weight:600;">提交申请</div>
+              <div class="small">填写资质信息并完成律所进件授权</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;">
+            <div style="display:flex;flex-direction:column;align-items:center;">
+              <span style="width:9px;height:9px;border-radius:50%;background:var(--ink-600);flex:none;margin-top:4px;"></span>
+              <span style="width:2px;flex:1;min-height:16px;background:var(--ink-100);"></span>
+            </div>
+            <div style="flex:1;padding-bottom:13px;">
+              <div style="font-size:13px;font-weight:600;">平台人工审核 · 3 个工作日</div>
+              <div class="small">审核资质、律所进件与对公账户，必要时要求补充材料</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;">
+            <div style="display:flex;flex-direction:column;align-items:center;">
+              <span style="width:9px;height:9px;border-radius:50%;background:var(--ink-300);flex:none;margin-top:4px;"></span>
+            </div>
+            <div style="flex:1;">
+              <div style="font-size:13px;font-weight:600;">审核通过</div>
+              <div class="small">自动出现在用户端场次列表与接单大厅，可开始创建场次与报价</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 审核状态示例 -->
+      <div class="sec">
+        <div class="sec-head"><h3>审核状态 · 示例</h3></div>
+        <div class="card">
+          <div class="row-between">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span class="avatar sm">刘</span>
+              <div>
+                <div style="font-size:13.5px;font-weight:600;">刘鹏 · 北京中简律师事务所</div>
+                <div class="small">提交于 10-11 · 剩余 1 个工作日</div>
+              </div>
+            </div>
+            <span class="tag tag-warn">审核中</span>
+          </div>
+          <div class="mt12"><a class="btn btn-ghost btn-sm" href="l01-onboard.html">查看审核进度</a></div>
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-block btn-lg" onclick="pop('m-submitted')">提交审核</button>
+      <div class="hint tac mt8">提交即表示同意《律聚人律师服务协议》与上述执业承诺</div>
+    </div>
+
+    <div class="modal-mask" id="m-submitted" onclick="if(event.target===this)unpop(this)">
+      <div class="modal">
+        <h5>已提交审核</h5>
+        <p>平台将在 <b>3 个工作日</b>内完成人工审核（资质 + 律所进件 + 对公账户），通过后你将出现在用户端场次列表与接单大厅，结果以短信与站内消息通知。</p>
+        <div class="btn-row mt12"><button class="btn btn-primary" onclick="unpop(this.closest('.modal-mask'))">知道了</button></div>
+      </div>
+    </div>
+
+    <div class="homebar"></div>
+  </div>
+</div>
+
+<script>
+function pop(id){document.getElementById(id).classList.add('show');}
+function unpop(el){el.classList.remove('show');}
+</script>
+</body>
+</html>

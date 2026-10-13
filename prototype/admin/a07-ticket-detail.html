@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>律聚人 · 运营后台 · 工单详情 · GD20261013-007</title>
+<link rel="stylesheet" href="assets/admin.css">
+</head>
+<body class="admin">
+<aside class="sidebar">
+  <div class="brand">
+    <div class="logo">律</div>
+    <div><b>律聚人</b><small>运营后台 · Operations</small></div>
+  </div>
+  <nav class="nav">
+    <div class="nav-group">总览</div>
+    <a href="a02-dashboard.html">
+      <svg class="ic" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="9" rx="1.5"/><rect x="13" y="4" width="7" height="5" rx="1.5"/><rect x="13" y="11" width="7" height="9" rx="1.5"/><rect x="4" y="15" width="7" height="5" rx="1.5"/></svg>
+      数据看板
+    </a>
+    <div class="nav-group">审核与风控</div>
+    <a href="a03-lawyer-audit.html">
+      <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19.5c1-3.4 3.5-5 6.5-5s5.5 1.6 6.5 5"/></svg>
+      律师与资质管理<span class="n-badge num">5</span>
+    </a>
+    <a href="a08-risk.html">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M12 4l7 2.5v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9v-5z"/></svg>
+      风控与敏感词
+    </a>
+    <div class="nav-group">交易与履约</div>
+    <a href="a05-monitor.html">
+      <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4.5l3 2"/></svg>
+      场次 / 房间监控
+    </a>
+    <a class="on" href="a06-tickets.html">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M4 5.5h16v10H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg>
+      纠纷工单与退款<span class="n-badge num">4</span>
+    </a>
+    <a href="a09-matching.html">
+      <svg class="ic" viewBox="0 0 24 24"><circle cx="8" cy="9" r="2.6"/><circle cx="16" cy="9" r="2.6"/><path d="M3 18c.7-2.4 2.6-3.6 5-3.6s4.3 1.2 5 3.6M13.5 14.8c2 .2 3.6 1.3 4.3 3.2"/></svg>
+      人工撮合台
+    </a>
+    <div class="nav-group">配置与合规</div>
+    <a href="a10-rules.html">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M7 3.5h7l4 4V20.5H7z"/><path d="M14 3.5v4h4M10 12h6M10 15.5h6"/></svg>
+      规则中心
+    </a>
+    <a href="a11-specialty.html">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M12 4l1.8 5.2L19 11l-5.2 1.8L12 18l-1.8-5.2L5 11l5.2-1.8z"/></svg>
+      专项与知识库
+    </a>
+    <a href="a12-recruit.html">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10.5V20h12v-9.5"/></svg>
+      招募与渠道
+    </a>
+    <a href="a13-compliance.html">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2.5h-15z"/><path d="M10 19a2 2 0 0 0 4 0"/><path d="M12 4V2.5"/></svg>
+      合规与审计
+    </a>
+    <div class="nav-group">财务</div>
+    <a href="a14-settlement.html">
+      <svg class="ic" viewBox="0 0 24 24"><rect x="3.5" y="6.5" width="17" height="11" rx="2"/><path d="M3.5 10h17"/><circle cx="17" cy="14" r="1.2"/></svg>
+      资金与结算
+    </a>
+  </nav>
+  <div class="side-foot">律聚人运营后台 v1.0<br>只读角色操作全程留痕</div>
+</aside>
+
+<div class="main">
+  <header class="topbar">
+    <div class="crumb">交易与履约 / <a href="a06-tickets.html" style="color:var(--text-3);">纠纷工单与退款审核</a> / <b>GD20261013-007</b></div>
+    <div class="spacer"></div>
+    <div class="search">
+      <svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5 20 20"/></svg>
+      搜索场次 / 律师 / 用户 / 工单
+    </div>
+    <div class="who"><span class="avatar">赵</span>赵谦 · 平台运营</div>
+  </header>
+
+  <div class="page">
+    <div class="page-head">
+      <div>
+        <h1 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">GD20261013-007 · 改价审批（降价 &gt;10%）
+          <span class="badge badge-warn">待处理</span>
+        </h1>
+        <div class="desc">H3 审批 · 规则依据 C6 R-01 三档矩阵（PRD §8.2）· 发起 2026-10-13 09:12 · 处理人 赵谦（运营）· SLA 剩 2 天</div>
+      </div>
+      <div class="actions">
+        <a class="btn btn-ghost" href="a06-tickets.html">
+          <svg class="ic" viewBox="0 0 24 24"><path d="M14 6l-6 6 6 6"/></svg>
+          返回列表
+        </a>
+        <button class="btn btn-primary" onclick="openM('mApprove')">同意降价</button>
+        <button class="btn btn-danger" onclick="openM('mReject')">驳回</button>
+      </div>
+    </div>
+
+    <div class="grid-3-2">
+      <!-- 左列 -->
+      <div>
+        <!-- 申请信息 -->
+        <div class="panel">
+          <div class="panel-head">
+            <h3>申请信息</h3>
+            <div class="ph-act"><span class="small">来源：律师 App 改价申请</span></div>
+          </div>
+          <div class="panel-body">
+            <dl class="kv">
+              <dt>律师</dt>
+              <dd><b>李慧敏</b>（衡诚律师事务所 · 信用 95）</dd>
+              <dt>场次</dt>
+              <dd>被违法解除劳动合同怎么办 <span class="mono">#S2041</span>（10-18 开场）</dd>
+              <dt>价格调整</dt>
+              <dd class="num">原场次总价 <b>¥449</b> → 新 <b>¥399</b></dd>
+              <dt>降幅</dt>
+              <dd><span class="seal-text num">11.2%</span>（DOWN &gt;10% 档 · 需平台审批）</dd>
+              <dt>30 天内改价</dt>
+              <dd class="num">第 <b>2</b> 次（限 3 次 · R-03，未超限）</dd>
+              <dt>价格快照</dt>
+              <dd><span class="mono">v5</span> · 已锁定用户按快照价执行（R-02）</dd>
+            </dl>
+          </div>
+        </div>
+
+        <!-- 补偿测算 -->
+        <div class="panel">
+          <div class="panel-head">
+            <h3>补偿测算</h3>
+            <div class="ph-act"><span class="small">补偿 =（449 − 399）× 支付金额占比</span></div>
+          </div>
+          <div class="table-wrap">
+            <table class="table">
+              <thead><tr><th>受影响用户</th><th>支付金额</th><th>支付占比</th><th>补偿金额</th><th>补偿形式</th></tr></thead>
+              <tbody>
+                <tr><td class="t-strong">张三</td><td class="num">¥112.25</td><td class="num">25%</td><td class="num t-strong">¥12.50</td><td class="t-dim">积分 1,250 + 优惠券</td></tr>
+                <tr><td class="t-strong">李四</td><td class="num">¥112.25</td><td class="num">25%</td><td class="num t-strong">¥12.50</td><td class="t-dim">积分 1,250 + 优惠券</td></tr>
+                <tr><td class="t-strong">周女士</td><td class="num">¥112.25</td><td class="num">25%</td><td class="num t-strong">¥12.50</td><td class="t-dim">积分 1,250 + 优惠券</td></tr>
+                <tr><td class="t-strong">吴先生</td><td class="num">¥112.25</td><td class="num">25%</td><td class="num t-strong">¥12.50</td><td class="t-dim">积分 1,250 + 优惠券</td></tr>
+                <tr>
+                  <td class="t-strong">合计（4 人）</td><td class="num">¥449.00</td><td class="num">100%</td>
+                  <td class="num t-strong seal-text">¥50.00</td>
+                  <td class="t-dim">积分 5,000 · 24h 内发放</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="panel-body" style="border-top:1px solid var(--line);padding-top:12px;">
+            <div class="small" style="line-height:1.9;">
+              · 补偿分母口径 = <b>paid_amount 全额（cash + points/100）</b>，已裁决口径（C6 §11）<br>
+              · 积分 1 元 = 100 分 · 有效期 180 天，可用于拼单抵扣、不可提现；积分数值为<b>手动示例</b>，发放前由 F4 二次复核<br>
+              · 优惠券为 &gt;10% 档附加项（示例 ¥5/人），随积分 24h 内由 F4 发放
+            </div>
+          </div>
+        </div>
+
+        <!-- 影响与规则 -->
+        <div class="panel">
+          <div class="panel-head">
+            <h3>影响与规则</h3>
+            <div class="ph-act"><a class="link" href="a10-rules.html" style="color:var(--ink-600);">规则中心</a></div>
+          </div>
+          <div class="table-wrap">
+            <table class="table">
+              <thead><tr><th>规则</th><th>条款</th><th>本单影响</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td class="mono t-strong">C6 R-01</td>
+                  <td class="t-dim">三档矩阵：UP −5；DOWN≤10% 审批+积分 −15；DOWN&gt;10% 审批+积分+券 −30 + 停接 3 天</td>
+                  <td><span class="badge badge-seal">−30 + 停接 3 天</span></td>
+                </tr>
+                <tr>
+                  <td class="mono t-strong">C6 R-02</td>
+                  <td class="t-dim">已锁定用户不受改价影响（快照）</td>
+                  <td><span class="badge badge-ok">快照保护</span></td>
+                </tr>
+                <tr>
+                  <td class="mono t-strong">C6 R-03</td>
+                  <td class="t-dim">30 天最多 3 次（含涨降），超限走审批</td>
+                  <td><span class="badge badge-info">第 2 次 · 未超限</span></td>
+                </tr>
+                <tr>
+                  <td class="mono t-strong">C6 R-05</td>
+                  <td class="t-dim">补偿 =（原−新）× 支付占比 · 24h 内发放</td>
+                  <td><span class="badge badge-info">¥50 · 24h SLA</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="banner seal" style="margin:14px 16px 16px;">
+            <svg class="ic" viewBox="0 0 24 24"><path d="M12 4l7 2.5v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9v-5z"/></svg>
+            同意后律师信用 <b>95 → 65</b>，并<b>暂停接单 3 天</b>（10-14 至 10-16）；进行中拼团按新价继续，已锁定用户不受影响。
+          </div>
+        </div>
+      </div>
+
+      <!-- 右列 -->
+      <div>
+        <!-- 处理时间线 -->
+        <div class="panel">
+          <div class="panel-head">
+            <h3>处理时间线</h3>
+          </div>
+          <div class="panel-body">
+            <div class="timeline">
+              <div class="tl-item">
+                <div class="tl-time num">2026-10-13 09:12</div>
+                <div class="tl-title">工单创建</div>
+                <div class="tl-desc">规则引擎自动生成 · 来源：律师 App 改价申请</div>
+              </div>
+              <div class="tl-item">
+                <div class="tl-time num">2026-10-13 09:15</div>
+                <div class="tl-title">规则引擎预校验通过</div>
+                <div class="tl-desc">DOWN 11.2% → 判定 &gt;10% 档需审批；30 天第 2 次 ≤ 3 次；在团用户 4 人锁定快照 v5</div>
+              </div>
+              <div class="tl-item on">
+                <div class="tl-time num">当前 · 2026-10-13</div>
+                <div class="tl-title">待处理 · 等待运营审批（赵谦）</div>
+                <div class="tl-desc">SLA 剩 2 天 · ①期人工兜底 approval_source=manual</div>
+              </div>
+              <div class="tl-item">
+                <div class="tl-time num">审批后（预览）</div>
+                <div class="tl-title">动作链执行</div>
+                <div class="tl-desc">通知 4 名在团用户（三档话术）→ F4 补偿 24h 内发放 → G1 信用 −30 → 暂停接单 3 天 → B3 新价 v6 生效</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 关联信息 -->
+        <div class="panel">
+          <div class="panel-head">
+            <h3>关联信息</h3>
+          </div>
+          <div class="panel-body">
+            <dl class="kv">
+              <dt>价格版本</dt>
+              <dd><span class="mono">v5 → v6</span>（审批通过后生效，PricingHistory 留痕）</dd>
+              <dt>领域事件</dt>
+              <dd class="mono" style="font-size:11.5px;">PriceChangeApproved → G1 / F4 / I1 / B3</dd>
+            </dl>
+            <div class="small mt12 mb8" style="font-weight:600;color:var(--text-2);">通知话术预览（I1 · PRD §8.2 三档原文）</div>
+            <div style="border-left:3px solid var(--ink-200);padding:8px 12px;background:var(--ink-50);border-radius:0 var(--r-sm) var(--r-sm) 0;margin-bottom:8px;">
+              <div class="small" style="color:var(--text-3);">① 涨价时（已锁定用户）</div>
+              <div style="font-size:12.5px;margin-top:3px;">"您已锁定原价，当前律师已调价，您享受的是涨价前的价格，不受影响。"</div>
+            </div>
+            <div style="border-left:3px solid var(--ink-200);padding:8px 12px;background:var(--ink-50);border-radius:0 var(--r-sm) var(--r-sm) 0;margin-bottom:8px;">
+              <div class="small" style="color:var(--text-3);">② 降价时（已锁定用户）</div>
+              <div style="font-size:12.5px;margin-top:3px;">"您参与的服务价格有所调整，您已锁定的原价不受影响。为感谢您的信任，我们已为您申请平台积分补偿，将在 24 小时内到账。"</div>
+            </div>
+            <div style="border-left:3px solid var(--seal-500);padding:8px 12px;background:var(--seal-50);border-radius:0 var(--r-sm) var(--r-sm) 0;">
+              <div class="small" style="color:var(--seal-600);font-weight:600;">③ 降价 &gt;10% 时（已锁定用户）· 本单使用</div>
+              <div style="font-size:12.5px;margin-top:3px;">"您参与的服务价格大幅调整。您已锁定的原价不受影响，我们已为您申请积分补偿 + 额外平台优惠券，将在 24 小时内到账。感谢您的信任与支持。"</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 同意降价确认 -->
+<div class="modal-mask" id="mApprove" onclick="if(event.target===this)closeM('mApprove')">
+  <div class="modal" style="width:520px;">
+    <h4>同意降价确认</h4>
+    <p>确认同意 <b>李慧敏</b> 场次 <span class="mono">#S2041</span> 降价 <b class="num">¥449 → ¥399</b>（−11.2%，&gt;10% 档）？确认后将触发以下动作链：</p>
+    <div style="margin-top:12px;background:var(--ink-50);border:1px solid var(--ink-100);border-radius:var(--r-md);padding:12px 14px;font-size:12.5px;line-height:2;">
+      1. <b>通知已参与用户</b>（4 人 · PRD §8.2 三档话术 · 本单用"降价 &gt;10%"档）<br>
+      2. <b>积分 + 优惠券补偿</b> 24h 内发放（合计 ¥50 · 积分 5,000 · F4 执行）<br>
+      3. <b>信用 −30</b>（G1 · 95 → 65）<br>
+      4. <b>暂停接单 3 天</b>（10-14 至 10-16）· 新价 v6 生效
+    </div>
+    <p class="small mt12">本操作为 ①期人工兜底审批（approval_source=manual），全程留痕，不可撤销（律师侧 24h 撤销窗口独立计算）。</p>
+    <div class="m-foot">
+      <button class="btn btn-ghost" onclick="closeM('mApprove')">取消</button>
+      <button class="btn btn-primary" onclick="closeM('mApprove')">确认同意并执行</button>
+    </div>
+  </div>
+</div>
+
+<!-- 驳回确认 -->
+<div class="modal-mask" id="mReject" onclick="if(event.target===this)closeM('mReject')">
+  <div class="modal">
+    <h4>驳回申请</h4>
+    <div class="form-row" style="margin-top:12px;">
+      <label class="req">驳回原因</label>
+      <select class="select" style="width:100%;">
+        <option>降幅不合理</option>
+        <option>补充说明不足</option>
+        <option>其他（备注说明）</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>备注</label>
+      <textarea class="input" placeholder="将随驳回通知发送给律师"></textarea>
+    </div>
+    <p class="small">驳回后价格维持 v5 生效，触发 PriceChangeRejected 事件并通知律师；本操作全程留痕。</p>
+    <div class="m-foot">
+      <button class="btn btn-ghost" onclick="closeM('mReject')">取消</button>
+      <button class="btn btn-danger" onclick="closeM('mReject')">确认驳回</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function openM(id){document.getElementById(id).classList.add('show');}
+function closeM(id){document.getElementById(id).classList.remove('show');}
+</script>
+</body>
+</html>

@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>律聚人 · HTML 原型总入口</title>
+<style>
+  :root {
+    --ink-950:#0C1826; --ink-900:#12233A; --ink-700:#1D3A5F; --ink-600:#2A4E7E;
+    --ink-500:#3E6CA8; --ink-200:#C9D6E6; --ink-100:#E6EDF5; --ink-50:#F4F7FA;
+    --seal-600:#B23A2C; --seal-50:#FBF0EE; --seal-100:#F6DDD8;
+    --gold-600:#A67C16; --paper:#fff; --line:#E3E9F0; --t2:#5A6B80; --t3:#93A2B4;
+    --fd: "Songti SC","STSong","NSimSun","SimSun",serif;
+    --fb: -apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:var(--fb); background:var(--ink-50); color:#1B2A3D; font-size:14px; line-height:1.6; }
+  a { text-decoration:none; color:inherit; }
+  .hero-band {
+    background:linear-gradient(150deg,var(--ink-950),var(--ink-700));
+    color:#EDF2F8; padding:52px 24px 88px;
+  }
+  .wrap { max-width:1180px; margin:0 auto; padding:0 24px; }
+  .brandline { display:flex; align-items:center; gap:14px; }
+  .seal-logo {
+    width:56px;height:56px;border-radius:14px;background:var(--seal-600);color:#fff;
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--fd);font-size:30px;font-weight:700;
+    box-shadow:inset 0 0 0 2px rgba(255,255,255,.25), 0 8px 24px rgba(178,58,44,.35);
+  }
+  .hero-band h1 { font-family:var(--fd); font-size:34px; letter-spacing:6px; font-weight:700; }
+  .hero-band .slogan { color:#9FB6D0; font-size:13.5px; margin-top:4px; letter-spacing:1px; }
+  .hero-band .desc { margin-top:22px; max-width:640px; color:#C3D3E4; font-size:13.5px; }
+  .quick { display:flex; gap:10px; margin-top:26px; flex-wrap:wrap; }
+  .quick a {
+    padding:10px 18px; border-radius:10px; font-size:13.5px; font-weight:600;
+    background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.18); color:#E8EFF7;
+  }
+  .quick a.hot { background:var(--seal-600); border-color:var(--seal-600); }
+  main { margin-top:-56px; padding-bottom:70px; }
+  section.sec { margin-bottom:34px; }
+  .sechead { display:flex; align-items:baseline; gap:12px; margin:26px 0 14px; }
+  .sechead h2 { font-family:var(--fd); font-size:22px; letter-spacing:2px; color:var(--ink-900); }
+  .sechead .cnt { font-size:12px; color:var(--t3); }
+  .sechead .note { margin-left:auto; font-size:12px; color:var(--t3); }
+  .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(215px,1fr)); gap:12px; }
+  a.pg {
+    background:var(--paper); border:1px solid var(--line); border-radius:14px;
+    padding:14px 16px; display:block; box-shadow:0 1px 2px rgba(18,35,58,.05);
+    transition:border-color .15s, transform .15s; position:relative;
+  }
+  a.pg:hover { border-color:var(--ink-500); transform:translateY(-2px); }
+  a.pg .code {
+    font-size:10.5px; color:var(--ink-600); background:var(--ink-50);
+    border:1px solid var(--ink-100); border-radius:5px; padding:1px 7px; display:inline-block;
+  }
+  a.pg b { display:block; font-size:14.5px; margin-top:7px; color:#1B2A3D; }
+  a.pg span { display:block; font-size:11.5px; color:var(--t3); margin-top:3px; }
+  a.pg .role {
+    position:absolute; top:12px; right:12px; font-size:10px; letter-spacing:1px;
+    padding:2px 8px; border-radius:10px;
+  }
+  .role.u { background:#E8F0FA; color:var(--ink-600); }
+  .role.l { background:#EAEDF3; color:#3B4757; }
+  .role.a { background:var(--seal-50); color:var(--seal-600); }
+  .spec {
+    background:var(--paper); border:1px solid var(--line); border-radius:16px;
+    padding:22px 24px; box-shadow:0 1px 2px rgba(18,35,58,.05);
+  }
+  .spec h3 { font-family:var(--fd); font-size:17px; letter-spacing:2px; color:var(--ink-900); margin-bottom:12px; }
+  .spec .row { display:flex; gap:26px; flex-wrap:wrap; }
+  .spec dl { display:grid; grid-template-columns:88px 1fr; gap:6px 12px; font-size:12.5px; }
+  .spec dt { color:var(--t3); }
+  .spec dd { color:#33455C; }
+  .sw { display:inline-block; width:11px; height:11px; border-radius:3px; vertical-align:-1px; margin-right:5px; border:1px solid rgba(0,0,0,.08); }
+  footer { text-align:center; color:var(--t3); font-size:12px; padding:26px 0 44px; }
+</style>
+</head>
+<body>
+
+<div class="hero-band">
+  <div class="wrap">
+    <div class="brandline">
+      <div class="seal-logo">律</div>
+      <div>
+        <h1>律聚人 · HTML 原型</h1>
+        <div class="slogan">AI 增强型法律服务交易平台 · 首发专项：劳动仲裁 · 2026-10-13</div>
+      </div>
+    </div>
+    <div class="desc">
+      覆盖三端：App 用户端（浏览报名、发起拼团、房间履约、申请 1对1、评价）、App 律师端（入驻、时间表、开团、接单、Agent 草稿工作台）、Web 运营后台（审核、监控、工单、风控、规则、合规、结算）。
+      设计概念「契约与印章」：契约墨蓝为基底，印章朱红仅用于价格、主行动与已成团印章。
+    </div>
+    <div class="quick">
+      <a class="hot" href="app/user/u02-home.html">从用户首页开始走查</a>
+      <a href="app/lawyer/l02-workbench.html">律师工作台</a>
+      <a href="admin/a02-dashboard.html">运营后台看板</a>
+      <a href="admin/a01-login.html">后台登录</a>
+    </div>
+  </div>
+</div>
+
+<main class="wrap">
+
+  <section class="sec">
+    <div class="sechead"><h2>设计规范</h2><span class="cnt">app.css / admin.css 共用一套令牌</span></div>
+    <div class="spec">
+      <h3>契约与印章</h3>
+      <div class="row">
+        <dl>
+          <dt>墨蓝</dt><dd><span class="sw" style="background:#12233A"></span>#12233A 契约墨蓝（基底 / 侧栏 / 主按钮）</dd>
+          <dt>印章朱红</dt><dd><span class="sw" style="background:#B23A2C"></span>#B23A2C 仅用于：价格、主 CTA、已成团印章、危险状态</dd>
+          <dt>金色</dt><dd><span class="sw" style="background:#A67C16"></span>#A67C16 积分与信用</dd>
+          <dt>纸面</dt><dd><span class="sw" style="background:#F4F7FA;border-color:#C9D6E6"></span>#F4F7FA 冷灰蓝纸面（卡片 #FFFFFF）</dd>
+        </dl>
+        <dl>
+          <dt>标题字体</dt><dd>宋体系衬线（Songti SC / STSong / SimSun）——仅标题、品牌、印章</dd>
+          <dt>正文字体</dt><dd>系统无衬线（PingFang SC / Microsoft YaHei）</dd>
+          <dt>签名组件</dt><dd>已成团「印章」圆形戳 · Agent 草稿气泡（AI 辅助 · 仅供参考）· 成团进度条</dd>
+          <dt>合规表达</dt><dd>Agent 永不直发公屏；缺席/取消/改价规则在对应屏显著提示</dd>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sechead"><h2>App · 用户端</h2><span class="cnt">14 屏</span><span class="note">目录 app/user/ · Tab：首页 / 我的拼单 / 消息 / 我的</span></div>
+    <div class="cards">
+      <a class="pg" href="app/user/u01-login.html"><span class="role u">用户</span><span class="code">u01</span><b>登录注册</b><span>手机验证码 · 律师入驻入口</span></a>
+      <a class="pg" href="app/user/u02-home.html"><span class="role u">用户</span><span class="code">u02</span><b>首页</b><span>专项 · 律师开团 · 用户拼团</span></a>
+      <a class="pg" href="app/user/u03-session-detail.html"><span class="role u">用户</span><span class="code">u03</span><b>场次详情</b><span>价格 · 成团进度 · 报名须知</span></a>
+      <a class="pg" href="app/user/u04-lawyer-profile.html"><span class="role u">用户</span><span class="code">u04</span><b>律师主页</b><span>资质 · 场次 · 评价 · 时间表</span></a>
+      <a class="pg" href="app/user/u05-groupbuy-create.html"><span class="role u">用户</span><span class="code">u05</span><b>发起拼团</b><span>选律师 · 子范围 · 价格快照</span></a>
+      <a class="pg" href="app/user/u06-realname.html"><span class="role u">用户</span><span class="code">u06</span><b>实名认证</b><span>支付前闸口</span></a>
+      <a class="pg" href="app/user/u07-payment.html"><span class="role u">用户</span><span class="code">u07</span><b>报名支付</b><span>积分抵扣 · 支付即冻结</span></a>
+      <a class="pg" href="app/user/u08-consent.html"><span class="role u">用户</span><span class="code">u08</span><b>数据授权</b><span>训练语料独立授权 · 可拒绝</span></a>
+      <a class="pg" href="app/user/u09-room.html"><span class="role u">用户</span><span class="code">u09</span><b>咨询房间</b><span>@Agent @律师 · 房间须知</span></a>
+      <a class="pg" href="app/user/u10-one-on-one.html"><span class="role u">用户</span><span class="code">u10</span><b>申请 1对1</b><span>服务类型 × 沟通方式</span></a>
+      <a class="pg" href="app/user/u11-join.html"><span class="role u">用户</span><span class="code">u11</span><b>我的拼单</b><span>报名记录 · 拼团任务 · 重新发起</span></a>
+      <a class="pg" href="app/user/u12-review.html"><span class="role u">用户</span><span class="code">u12</span><b>评价</b><span>四维互评 · 匿名</span></a>
+      <a class="pg" href="app/user/u13-messages.html"><span class="role u">用户</span><span class="code">u13</span><b>消息中心</b><span>成团 · 提醒 · 调价 · 退款</span></a>
+      <a class="pg" href="app/user/u14-profile.html"><span class="role u">用户</span><span class="code">u14</span><b>我的</b><span>信用 · 积分 · 导出 · 同意管理</span></a>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sechead"><h2>App · 律师端</h2><span class="cnt">10 屏</span><span class="note">目录 app/lawyer/ · Tab：工作台 / 场次管理 / 接单大厅 / 我的</span></div>
+    <div class="cards">
+      <a class="pg" href="app/lawyer/l01-onboard.html"><span class="role l">律师</span><span class="code">l01</span><b>入驻与资质</b><span>执业证 · 律所进件 · 审核 SLA</span></a>
+      <a class="pg" href="app/lawyer/l02-workbench.html"><span class="role l">律师</span><span class="code">l02</span><b>工作台</b><span>待办 · Agent 健康 · 收入概览</span></a>
+      <a class="pg" href="app/lawyer/l03-sessions.html"><span class="role l">律师</span><span class="code">l03</span><b>场次管理</b><span>报名进度 · 取消 · 结算状态</span></a>
+      <a class="pg" href="app/lawyer/l04-create-session.html"><span class="role l">律师</span><span class="code">l04</span><b>创建场次</b><span>选时段 · 本次开团配置</span></a>
+      <a class="pg" href="app/lawyer/l05-stats.html"><span class="role l">律师</span><span class="code">l05</span><b>场次数据看板</b><span>报名率 · 到场率 · 1对1 转化</span></a>
+      <a class="pg" href="app/lawyer/l06-hall.html"><span class="role l">律师</span><span class="code">l06</span><b>接单大厅</b><span>C2B 12h 响应 · 双向转化</span></a>
+      <a class="pg" href="app/lawyer/l07-schedule.html"><span class="role l">律师</span><span class="code">l07</span><b>时间表管理</b><span>周视图 · 空闲/锁定/占用</span></a>
+      <a class="pg" href="app/lawyer/l08-pricing.html"><span class="role l">律师</span><span class="code">l08</span><b>价格配置</b><span>默认价 · 1对1 矩阵 · 改价规则</span></a>
+      <a class="pg" href="app/lawyer/l09-room.html"><span class="role l">律师</span><span class="code">l09</span><b>咨询房间 · Agent 草稿</b><span>审查发送 · 多用户并行 · 快捷回复</span></a>
+      <a class="pg" href="app/lawyer/l10-profile.html"><span class="role l">律师</span><span class="code">l10</span><b>我的</b><span>收入结算 · 信用 · 资质</span></a>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sechead"><h2>Web 运营后台</h2><span class="cnt">14 页</span><span class="note">目录 admin/ · 覆盖 H1–H9 + E3 + 财务视图</span></div>
+    <div class="cards">
+      <a class="pg" href="admin/a01-login.html"><span class="role a">后台</span><span class="code">a01</span><b>登录</b><span>三角色 RBAC</span></a>
+      <a class="pg" href="admin/a02-dashboard.html"><span class="role a">后台</span><span class="code">a02</span><b>数据看板</b><span>H4 · 核心与健康指标 · Agent 采用率</span></a>
+      <a class="pg" href="admin/a03-lawyer-audit.html"><span class="role a">后台</span><span class="code">a03</span><b>律师与资质管理</b><span>H1 · 审核工作台 3 日 SLA</span></a>
+      <a class="pg" href="admin/a04-lawyer-detail.html"><span class="role a">后台</span><span class="code">a04</span><b>律师详情</b><span>资质 · 进件 · 信用 · 盖章通过</span></a>
+      <a class="pg" href="admin/a05-monitor.html"><span class="role a">后台</span><span class="code">a05</span><b>场次/房间实时监控</b><span>H2 · 只读 + 审计 · 会话流</span></a>
+      <a class="pg" href="admin/a06-tickets.html"><span class="role a">后台</span><span class="code">a06</span><b>纠纷工单与退款审核</b><span>H3 · 分类 · SLA · 死信</span></a>
+      <a class="pg" href="admin/a07-ticket-detail.html"><span class="role a">后台</span><span class="code">a07</span><b>工单详情 · 改价审批</b><span>C6 三档 · 补偿测算 · 话术预览</span></a>
+      <a class="pg" href="admin/a08-risk.html"><span class="role a">后台</span><span class="code">a08</span><b>风控与敏感词</b><span>H5 · 双词库 · 分级处置 · 人审</span></a>
+      <a class="pg" href="admin/a09-matching.html"><span class="role a">后台</span><span class="code">a09</span><b>人工撮合台</b><span>H6 · 供需视图 · 引导确认</span></a>
+      <a class="pg" href="admin/a10-rules.html"><span class="role a">后台</span><span class="code">a10</span><b>规则中心</b><span>H7 · 版本化 · 公示 7 日 · 房间须知</span></a>
+      <a class="pg" href="admin/a11-specialty.html"><span class="role a">后台</span><span class="code">a11</span><b>专项与知识库</b><span>E3 · 知识库/问题树/提示词</span></a>
+      <a class="pg" href="admin/a12-recruit.html"><span class="role a">后台</span><span class="code">a12</span><b>招募与渠道归因</b><span>H8 · utm · 漏斗 · 条件台账</span></a>
+      <a class="pg" href="admin/a13-compliance.html"><span class="role a">后台</span><span class="code">a13</span><b>PIA 与合规审计</b><span>H9 · 发布门禁 · 撤回链路 · 审计</span></a>
+      <a class="pg" href="admin/a14-settlement.html"><span class="role a">后台</span><span class="code">a14</span><b>资金与结算</b><span>F1/F3 · 分账批次 · 缺席 70/30</span></a>
+    </div>
+  </section>
+
+  <footer>律聚人原型 v1.0 · 2026-10-13 · 需求依据 docs/01-产品设计.md（PRD）与 docs/04-功能模块设计.md · 样例数据均为虚构</footer>
+</main>
+
+</body>
+</html>

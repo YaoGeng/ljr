@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>律聚人 · 运营后台 · 专项与知识库</title>
+<link rel="stylesheet" href="assets/admin.css">
+</head>
+<body class="admin">
+<aside class="sidebar">
+  <div class="brand">
+    <div class="logo">律</div>
+    <div><b>律聚人</b><small>运营后台 · Operations</small></div>
+  </div>
+  <nav class="nav">
+    <div class="nav-group">总览</div>
+    <a href="a02-dashboard.html">
+      <svg class="ic" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="9" rx="1.5"/><rect x="13" y="4" width="7" height="5" rx="1.5"/><rect x="13" y="11" width="7" height="9" rx="1.5"/><rect x="4" y="15" width="7" height="5" rx="1.5"/></svg>
+      数据看板
+    </a>
+    <div class="nav-group">审核与风控</div>
+    <a href="a03-lawyer-audit.html">
+      <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19.5c1-3.4 3.5-5 6.5-5s5.5 1.6 6.5 5"/></svg>
+      律师与资质管理<span class="n-badge num">5</span>
+    </a>
+    <a href="a08-risk.html">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M12 4l7 2.5v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9v-5z"/></svg>
+      风控与敏感词
+    </a>
+    <div class="nav-group">交易与履约</div>
+    <a href="a05-monitor.html">
+      <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4.5l3 2"/></svg>
+      场次 / 房间监控
+    </a>
+    <a href="a06-tickets.html">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M4 5.5h16v10H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg>
+      纠纷工单与退款<span class="n-badge num">4</span>
+    </a>
+    <a href="a09-matching.html">
+      <svg class="ic" viewBox="0 0 24 24"><circle cx="8" cy="9" r="2.6"/><circle cx="16" cy="9" r="2.6"/><path d="M3 18c.7-2.4 2.6-3.6 5-3.6s4.3 1.2 5 3.6M13.5 14.8c2 .2 3.6 1.3 4.3 3.2"/></svg>
+      人工撮合台
+    </a>
+    <div class="nav-group">配置与合规</div>
+    <a href="a10-rules.html">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M7 3.5h7l4 4V20.5H7z"/><path d="M14 3.5v4h4M10 12h6M10 15.5h6"/></svg>
+      规则中心
+    </a>
+    <a class="on" href="a11-specialty.html">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M12 4l1.8 5.2L19 11l-5.2 1.8L12 18l-1.8-5.2L5 11l5.2-1.8z"/></svg>
+      专项与知识库
+    </a>
+    <a href="a12-recruit.html">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10.5V20h12v-9.5"/></svg>
+      招募与渠道
+    </a>
+    <a href="a13-compliance.html">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2.5h-15z"/><path d="M10 19a2 2 0 0 0 4 0"/><path d="M12 4V2.5"/></svg>
+      合规与审计
+    </a>
+    <div class="nav-group">财务</div>
+    <a href="a14-settlement.html">
+      <svg class="ic" viewBox="0 0 24 24"><rect x="3.5" y="6.5" width="17" height="11" rx="2"/><path d="M3.5 10h17"/><circle cx="17" cy="14" r="1.2"/></svg>
+      资金与结算
+    </a>
+  </nav>
+  <div class="side-foot">律聚人运营后台 v1.0<br>只读角色操作全程留痕</div>
+</aside>
+
+<div class="main">
+  <header class="topbar">
+    <div class="crumb">配置与合规 / <b>专项与知识库</b></div>
+    <div class="spacer"></div>
+    <div class="search">
+      <svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5 20 20"/></svg>
+      搜索场次 / 律师 / 用户 / 工单
+    </div>
+    <div class="who"><span class="avatar">赵</span>赵谦 · 平台运营</div>
+  </header>
+
+  <div class="page">
+    <div class="page-head">
+      <div>
+        <h1>专项配置与知识库</h1>
+        <div class="desc">E3 · 专项为一级配置：问题树 / 提示词模板 / 知识库随专项版本联动</div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-ghost" disabled>新建专项</button>
+        <span class="small">V2 开放</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h3>专项列表</h3>
+        <div class="ph-act"><span>V1 单专项打透 · 多专项 V2 开放</span></div>
+      </div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>专项</th><th>状态</th><th>知识库</th><th>问题树</th><th>提示词模板</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="t-strong">劳动仲裁</td>
+              <td><span class="badge badge-ok">启用</span></td>
+              <td class="num">1,284 条</td>
+              <td class="num">v9</td>
+              <td class="num">v4</td>
+              <td><a class="link">配置（当前）</a></td>
+            </tr>
+            <tr>
+              <td class="t-strong">民间借贷</td>
+              <td><span class="badge badge-gray">停用</span></td>
+              <td class="t-dim">—</td>
+              <td class="t-dim">—</td>
+              <td class="t-dim">—</td>
+              <td class="t-dim">V2 上线</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button class="on" onclick="tab('sg','kb',this)">知识库</button>
+      <button onclick="tab('sg','tree',this)">问题树</button>
+      <button onclick="tab('sg','prompt',this)">提示词模板</button>
+      <span class="small" style="margin-left:auto;align-self:center">当前配置对象：<b>劳动仲裁</b></span>
+    </div>
+
+    <!-- 知识库 -->
+    <div data-tg="sg" data-tk="kb">
+      <div class="banner info">
+        <svg class="ic" viewBox="0 0 24 24"><path d="M12 4l7 2.5v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9v-5z"/><path d="M9 11.5l2 2 4-4"/></svg>
+        语料授权状态登记——所有入库语料均取得用户明示授权，<b>脱敏后入库</b>；用户撤回授权的语料按 <span class="mono">source_msg_id</span> <b>物理删除</b>并触发 TrainingDataPurged 事件，删除结果回传 H9 留痕。
+      </div>
+      <div class="panel">
+        <div class="panel-head">
+          <h3>知识库文档 · 劳动仲裁</h3>
+          <div class="ph-act"><span class="num">生效 23 篇 · 1,284 条</span><span>最近上传在前</span></div>
+        </div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>文档名</th><th>条目数</th><th>上传时间</th><th>上传人</th><th>状态</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr>
+                <td class="t-strong">《加班费计算指引 v3》</td>
+                <td class="num">86</td>
+                <td class="num">2026-09-28</td>
+                <td>赵谦</td>
+                <td><span class="badge badge-ok">生效</span></td>
+                <td><div class="t-ops"><a class="link">替换</a><a class="link">下线</a></div></td>
+              </tr>
+              <tr>
+                <td class="t-strong">《违法解除赔偿案例汇编》</td>
+                <td class="num">214</td>
+                <td class="num">2026-09-15</td>
+                <td>钱安</td>
+                <td><span class="badge badge-ok">生效</span></td>
+                <td><div class="t-ops"><a class="link">替换</a><a class="link">下线</a></div></td>
+              </tr>
+              <tr>
+                <td class="t-strong">《社保补缴实务问答》</td>
+                <td class="num">152</td>
+                <td class="num">2026-08-30</td>
+                <td>赵谦</td>
+                <td><span class="badge badge-ok">生效</span></td>
+                <td><div class="t-ops"><a class="link">替换</a><a class="link">下线</a></div></td>
+              </tr>
+              <tr>
+                <td class="t-strong">《工伤认定流程手册 v2》</td>
+                <td class="num">178</td>
+                <td class="num">2026-08-12</td>
+                <td>钱安</td>
+                <td><span class="badge badge-ok">生效</span></td>
+                <td><div class="t-ops"><a class="link">替换</a><a class="link">下线</a></div></td>
+              </tr>
+              <tr>
+                <td class="t-strong">《试用期辞退风险清单 v1》</td>
+                <td class="num">63</td>
+                <td class="num">2026-07-26</td>
+                <td>赵谦</td>
+                <td><span class="badge badge-gray">已归档</span></td>
+                <td><div class="t-ops"><a class="link">查看</a></div></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="panel-body" style="padding-top:14px">
+          <div style="border:1.5px dashed var(--ink-200);border-radius:var(--r-md);padding:24px;text-align:center;background:var(--ink-50)">
+            <button class="btn btn-ghost">
+              <svg class="ic" viewBox="0 0 24 24"><path d="M12 16V5M7.5 9.5 12 5l4.5 4.5"/><path d="M5 16v3.5h14V16"/></svg>
+              上传知识文档（PDF / DOCX / MD）
+            </button>
+            <div class="small mt8">自动切分条目并脱敏 → 合规抽检通过后生效（挂载至知识库当前版本）</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 问题树 -->
+    <div data-tg="sg" data-tk="tree" style="display:none">
+      <div class="panel">
+        <div class="panel-head">
+          <h3>问题树 · 劳动仲裁 v9</h3>
+          <div class="ph-act"><span class="num">5 分支 · 17 叶子问题</span><button class="btn btn-sm btn-ghost">编辑问题树</button></div>
+        </div>
+        <div class="panel-body">
+          <div class="row" style="gap:8px">
+            <svg class="ic" viewBox="0 0 24 24"><path d="M4 5.5h6l1.5 2H20v11H4z"/></svg>
+            <b style="font-size:14px">劳动仲裁</b>
+            <span class="small">专项根节点 · v9（2026-09-28 更新）</span>
+          </div>
+          <div style="margin:12px 0 0 10px;border-left:1px solid var(--ink-100);padding-left:18px;display:flex;flex-direction:column;gap:12px">
+            <div>
+              <div class="row" style="gap:7px"><svg class="ic" viewBox="0 0 24 24"><path d="M4 5.5h6l1.5 2H20v11H4z"/></svg><b>拖欠工资</b></div>
+              <div class="chips mt8">
+                <span class="chip">未签劳动合同</span><span class="chip">拖欠多月工资</span><span class="chip">离职后追讨</span><span class="chip">工资流水举证</span>
+              </div>
+            </div>
+            <div>
+              <div class="row" style="gap:7px"><svg class="ic" viewBox="0 0 24 24"><path d="M4 5.5h6l1.5 2H20v11H4z"/></svg><b>违法解除</b></div>
+              <div class="chips mt8">
+                <span class="chip">无理由辞退</span><span class="chip">协商解除 N+1</span><span class="chip">试用期违法辞退</span><span class="chip">调岗降薪变相辞退</span>
+              </div>
+            </div>
+            <div>
+              <div class="row" style="gap:7px"><svg class="ic" viewBox="0 0 24 24"><path d="M4 5.5h6l1.5 2H20v11H4z"/></svg><b>加班费</b></div>
+              <div class="chips mt8">
+                <span class="chip">计算基数与倍率</span><span class="chip">值班与加班区别</span><span class="chip">加班事实举证</span>
+              </div>
+            </div>
+            <div>
+              <div class="row" style="gap:7px"><svg class="ic" viewBox="0 0 24 24"><path d="M4 5.5h6l1.5 2H20v11H4z"/></svg><b>社保补缴</b></div>
+              <div class="chips mt8">
+                <span class="chip">未缴与断缴补缴</span><span class="chip">缴费基数不符</span><span class="chip">社保与经济补偿联动</span>
+              </div>
+            </div>
+            <div>
+              <div class="row" style="gap:7px"><svg class="ic" viewBox="0 0 24 24"><path d="M4 5.5h6l1.5 2H20v11H4z"/></svg><b>工伤</b></div>
+              <div class="chips mt8">
+                <span class="chip">工伤认定申请</span><span class="chip">停工留薪期工资</span><span class="chip">工伤赔偿标准</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="banner info">
+        <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4.5l3 2"/></svg>
+        <span class="mono">GET /specialty/question-tree</span> —— 供 C2 发起拼团时消费：用户点选叶子问题 → 自动带出专项归属、推荐话术与匹配场次标签（结构化标签引导）。
+      </div>
+    </div>
+
+    <!-- 提示词模板 -->
+    <div data-tg="sg" data-tk="prompt" style="display:none">
+      <div class="panel">
+        <div class="panel-head">
+          <h3>提示词模板 · 劳动仲裁 v4</h3>
+          <div class="ph-act"><span>变更须同步评估输出安全性</span><button class="btn btn-sm btn-ghost">编辑新版本</button></div>
+        </div>
+        <div class="panel-body">
+          <dl class="kv" style="grid-template-columns:120px 1fr">
+            <dt>模板 ID</dt><dd class="mono">tpl-labor-arb-v4</dd>
+            <dt>关联知识库</dt><dd>劳动仲裁 · 1,284 条（按文档生效状态实时检索）</dd>
+            <dt>违禁词联动</dt><dd>敏感词库 v12（输出前强制过滤，词库热更新经规则中心）</dd>
+            <dt>适用环节</dt><dd>D5 会话草稿生成 · E3 检索增强</dd>
+            <dt>更新时间</dt><dd class="num">2026-09-28 · 赵谦</dd>
+          </dl>
+          <pre class="mt12" style="font-family:Consolas,'JetBrains Mono',monospace;font-size:12px;background:var(--ink-950);color:#D7E3F2;border-radius:var(--r-md);padding:16px 18px;overflow:auto;line-height:1.75;margin-bottom:0">【角色】
+你是劳动仲裁专项的律师助理，基于知识库检索结果为执业律师草拟回复草稿，
+不直接面向用户输出最终法律意见。
+
+【约束】
+1. 仅引用检索命中的条款 / 判例 / 指引，逐条标注来源 doc_id；
+2. 禁止承诺结果，输出前经敏感词库 v12 过滤（包赢 / 保证胜诉 / 百分百成功一律拦截）；
+3. 涉及金额必须列出计算公式与代入过程，不得给区间外结论；
+4. 无法确认的事实以「待律师确认」占位，不得编造。
+
+【输出格式】
+{ "draft": "草稿正文",
+  "sources": [{ "doc_id": "...", "quote": "..." }],
+  "uncertain": ["待律师确认事项"],
+  "confidence": 0.00-1.00 }</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function show(id){document.getElementById(id).classList.add('show');}
+function hide(id){document.getElementById(id).classList.remove('show');}
+function tab(g,k,btn){
+  document.querySelectorAll('[data-tg="'+g+'"]').forEach(function(p){
+    p.style.display = p.getAttribute('data-tk')===k ? '' : 'none';
+  });
+  var ts=btn.parentNode.children;
+  for(var i=0;i<ts.length;i++){ts[i].classList.remove('on');}
+  btn.classList.add('on');
+}
+</script>
+</body>
+</html>
