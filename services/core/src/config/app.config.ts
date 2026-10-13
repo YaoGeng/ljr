@@ -44,6 +44,15 @@ export interface AppConfig {
     /** Nacos 控制台/客户端地址（host:port；ConfigProvider 的 Nacos 实现自 staging 起接入） */
     readonly serverAddr: string;
   };
+  readonly observability: {
+    /**
+     * OTel 装配总开关（LJR_OBS_ENABLED，默认 true；M0-9）。
+     * 关 = 不注册 tracer provider、不插桩 http/pg、日志行不注入 trace_id——进程零观测开销。
+     * OTLP 接收端不在此处：走 OTel 标准键 OTEL_EXPORTER_OTLP_ENDPOINT（仅进程 env，
+     * 见 observability/otel.setup.ts——端点未设时装配降级为 noop 处理器，本地不炸不外发）。
+     */
+    readonly enabled: boolean;
+  };
 }
 
 /** env 键名（LJR_ 前缀沿用 T3 的 scripts/db 与 sql.ts 口径；PORT 沿用 main.ts 既有键） */
@@ -60,6 +69,7 @@ export const ENV_KEYS = {
   redisPassword: 'LJR_REDIS_PASSWORD',
   rocketmqNamesrv: 'LJR_ROCKETMQ_NAMESRV_ADDR',
   nacosServerAddr: 'LJR_NACOS_SERVER_ADDR',
+  obsEnabled: 'LJR_OBS_ENABLED',
 } as const;
 
 /** 密钥与环境选择键：禁止出现在文件层（出现即 E_CONFIG_INVALID，防凭据入库） */
@@ -137,6 +147,9 @@ export function resolveAppConfig({ env, file }: ConfigSources): AppConfig {
     nacos: {
       serverAddr: pick(ENV_KEYS.nacosServerAddr) ?? '127.0.0.1:8848',
     },
+    observability: {
+      enabled: parseBoolean(pick(ENV_KEYS.obsEnabled) ?? 'true', ENV_KEYS.obsEnabled),
+    },
   };
 }
 
@@ -147,6 +160,13 @@ function parsePort(raw: string, key: string): number {
     throw new AppError(ErrorCode.ConfigInvalid, `${key} 必须是 1-65535 的整数，收到：${raw}`);
   }
   return n;
+}
+
+/** 布尔解析：仅 true/false 字面量（M0-9 观测开关；其余取值 fail-fast 防歧义静默） */
+function parseBoolean(raw: string, key: string): boolean {
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  throw new AppError(ErrorCode.ConfigInvalid, `${key} 须为 true/false，收到：${raw}`);
 }
 
 /** config/<env>/app.env 路径（src/config 与 dist/config 同深：上溯 4 级即仓库根） */

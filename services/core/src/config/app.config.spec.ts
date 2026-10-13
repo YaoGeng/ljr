@@ -106,6 +106,26 @@ describe('取值校验（fail-fast）', () => {
   });
 });
 
+describe('观测开关（M0-9：observability.enabled）', () => {
+  it('默认 true；env 层可关（false）', () => {
+    expect(resolveAppConfig(sources({})).observability.enabled).toBe(true);
+    expect(
+      resolveAppConfig(sources({ env: { LJR_OBS_ENABLED: 'false' } })).observability.enabled,
+    ).toBe(false);
+  });
+
+  it('文件层同键生效（非敏感开关，可入库）', () => {
+    const cfg = resolveAppConfig(sources({ file: { ...baseFile, LJR_OBS_ENABLED: 'false' } }));
+    expect(cfg.observability.enabled).toBe(false);
+  });
+
+  it('非 true/false 字面量 → E_CONFIG_INVALID（fail-fast 防歧义静默）', () => {
+    expect(() => resolveAppConfig(sources({ env: { LJR_OBS_ENABLED: 'yes' } }))).toThrowError(
+      expect.objectContaining({ code: ErrorCode.ConfigInvalid }) as AppError,
+    );
+  });
+});
+
 describe('loadAppConfig（装载入口：env + 按 LJR_ENV 选文件）', () => {
   it('缺省 LJR_ENV=dev：读真实 config/dev/app.env，非敏感项来自文件层', () => {
     const cfg = loadAppConfig({});

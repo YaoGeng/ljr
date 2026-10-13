@@ -1,0 +1,15 @@
+# M0-9 grafana dashboard 预配（挂载于 /etc/grafana/provisioning/dashboards/）。
+# JSON 面板从 /var/lib/grafana/dashboards/（compose 挂载 ./grafana/dashboards）装载。
+apiVersion: 1
+
+providers:
+  - name: ljr-m0
+    orgId: 1
+    folder: LJR
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

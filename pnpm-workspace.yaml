@@ -2,3 +2,8 @@ packages:
   - services/*
   - apps/*
   - packages/*
+
+# 允许跑安装期脚本的依赖（pnpm 默认拦截，防供应链攻击；M0-9）：
+#   protobufjs —— OTel OTLP 导出链的传递依赖，postinstall 仅生成 version.js 自述文件（无网络/无写仓外）
+allowBuilds:
+  protobufjs: true

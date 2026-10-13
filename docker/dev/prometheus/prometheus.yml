@@ -1,0 +1,27 @@
+# M0-9 dev prometheus 抓取与告警口径（挂载于 prom/prometheus 容器 /etc/prometheus/prometheus.yml）。
+# 抓取面刻意收敛为两 job：自监控 + collector 的 prometheus exporter——
+# core 只外发 OTLP（无 /metrics 端口），指标统一经 collector 8889 转 pull，trace/指标同一出口。
+# 告警：evaluation 驱动 rules/ljr-alerts.yml（占位规则），触发后送 alertmanager（webhook 预留）。
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/rules/ljr-alerts.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ['127.0.0.1:9090']
+
+  - job_name: otel-collector
+    # OTLP 指标经 collector 的 prometheus exporter 暴露（含 http/pg 插桩指标）。
+    # 面板/告警查询语句中的指标名（http_server_* 等）待 docker 首跑按实际 semconv 校准
+    #（见 grafana/dashboards/ljr-m0-overview.json 同款标注）。
+    static_configs:
+      - targets: ['otel-collector:8889']

@@ -1,4 +1,5 @@
-// scripts/check-compose.test.mjs —— docker/dev compose 结构断言（M0-8 本机验证口径的固化）
+// scripts/check-compose.test.mjs —— docker/dev compose 结构断言（M0-8 本机验证口径的固化；
+// M0-9 扩展服务清单与常驻清单，观测段细节断言在 check-observability.test.mjs）
 //
 // 本机无容器运行时（Ruling-6）：「一键 up 全栈绿」降级为结构断言（控制者裁定）——
 // compose 文件的任何改动若丢了服务/丢了 tag 锁定/丢了 healthcheck/把端口暴露到非回环/塞进密钥字面量，
@@ -21,12 +22,36 @@ const service = (id) => services[id];
 const image = (id) => service(id)?.image ?? '';
 
 /** 常驻服务清单（flyway 是 run-once 迁移 job，无 healthcheck 属正确形态） */
-const LONG_RUNNING = ['postgres', 'redis', 'rocketmq-namesrv', 'rocketmq-broker', 'nacos'];
+const LONG_RUNNING = [
+  'postgres',
+  'redis',
+  'rocketmq-namesrv',
+  'rocketmq-broker',
+  'nacos',
+  // M0-9 观测段四件 + alertmanager 占位
+  'otel-collector',
+  'jaeger',
+  'prometheus',
+  'grafana',
+  'alertmanager',
+];
 
-describe('compose：M0-8 全栈服务齐备（服务语义映射）', () => {
-  test('六服务齐全：pg/flyway（M0-3 既有）+ redis/rocketmq 双容器/nacos（M0-8 扩展）', () => {
+describe('compose：M0-8+M0-9 全栈服务齐备（服务语义映射）', () => {
+  test('十一服务齐全：pg/flyway/redis/rocketmq 双容器/nacos + 观测四件/alertmanager 占位', () => {
     expect(Object.keys(services).sort()).toEqual(
-      ['flyway', 'nacos', 'postgres', 'redis', 'rocketmq-broker', 'rocketmq-namesrv'].sort(),
+      [
+        'flyway',
+        'nacos',
+        'postgres',
+        'redis',
+        'rocketmq-broker',
+        'rocketmq-namesrv',
+        'otel-collector',
+        'jaeger',
+        'prometheus',
+        'grafana',
+        'alertmanager',
+      ].sort(),
     );
   });
 

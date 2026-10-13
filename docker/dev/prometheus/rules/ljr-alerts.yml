@@ -1,0 +1,12 @@
+# M0-9 占位告警规则：仅验证 evaluation→alertmanager 链路可用。
+# 真实告警面（SLO/烧钱率/调度逾期等）随 M1 各模块的观测需求逐条补——先接线不发明规则。
+groups:
+  - name: ljr-m0
+    rules:
+      - alert: LjrScrapeTargetDown
+        expr: up == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: '抓取目标 {{ $labels.instance }}（job={{ $labels.job }}）失联超 5 分钟（M0 占位告警，通道待接线）'

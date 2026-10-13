@@ -1,0 +1,46 @@
+# M0-9 otel-collector（contrib）dev 配置（挂载于容器 /etc/otelcol-contrib/config.yaml）。
+# 管道：otlp(4317/4318) → batch → traces: otlp/jaeger；metrics: prometheus(8889)。
+# core 侧口径见 services/core/src/observability/otel.setup.ts（OTLP http，端点 http://127.0.0.1:4318）。
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 512
+
+exporters:
+  otlp/jaeger:
+    # jaeger v2 OTLP-native：容器网内 grpc 直投（dev 无 TLS）
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+  prometheus:
+    # OTLP 指标转 pull 口径：prometheus 抓 8889（仅 compose 网内，不暴露宿主机）
+    endpoint: 0.0.0.0:8889
+    resource_to_telemetry_conversion:
+      enabled: true # service.name 等资源属性转 label，面板/告警可按服务聚合
+
+extensions:
+  health_check:
+    endpoint: 127.0.0.1:13133
+
+service:
+  extensions: [health_check]
+  telemetry:
+    logs:
+      level: info
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/jaeger]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus]

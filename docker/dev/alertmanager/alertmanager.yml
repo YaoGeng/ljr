@@ -1,0 +1,20 @@
+# M0-9 alertmanager 占位配置（挂载于 prom/alertmanager 容器 /etc/alertmanager/alertmanager.yml）。
+# 通道口径：webhook 预留——url 指向本机占位端点（127.0.0.1:5001，无真实服务；M1 通知中心 N1
+# 落位时替换为真实接收端）。
+# 电话级通道仅注释占位：供应商与升级策略 PRD/架构未定义（docs/04 §8 待澄清点），
+# 不擅自发明——届时裁决后在本文件补 receiver（如 voice/sms 通道）与路由分级。
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: ljr-webhook
+  group_by: ['alertname', 'job']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: ljr-webhook
+    webhook_configs:
+      - url: http://127.0.0.1:5001/alerts # 占位端点（dev 仅验证投递链路，无真实消费方）
+        send_resolved: true

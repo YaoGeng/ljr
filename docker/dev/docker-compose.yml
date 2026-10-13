@@ -1,13 +1,19 @@
-# M0-3 dev 数据库栈（docker 轨，ADR-0002）；M0-8 扩展 redis/RocketMQ/Nacos（dev 全栈容器化）。
+# M0-3 dev 数据库栈（docker 轨，ADR-0002）；M0-8 扩展 redis/RocketMQ/Nacos（dev 全栈容器化）；
+# M0-9 扩展观测段（otel-collector/jaeger/prometheus/grafana + alertmanager 占位）。
 # 注意：本仓库当前开发机无容器运行时（Ruling-6），本文件未在本机运行验证（YAML 已做 Node 解析自检，
-#       结构断言固化在 scripts/check-compose.test.mjs）；实际运行验证留待 GitHub Actions 容器环境
-#       与后续 docker 环境全栈演练——【待 docker 环境补全栈演练】。
+#       结构断言固化在 scripts/check-compose.test.mjs 与 scripts/check-observability.test.mjs）；
+#       实际运行验证留待 GitHub Actions 容器环境与后续 docker 环境全栈演练——【待 docker 环境补全栈演练】。
+#       观测链路端到端（core→collector→jaeger/prometheus→grafana 面板）另见
+#       【待 docker 环境补端到端演练】（docs/plans/M0-9-观测基座说明.md §6 演练清单）。
 # 口径：
 #   - 镜像一律锁 tag 禁 latest（ADR-0002 施工约束）；本机无法访问 Docker Hub 复核 tag 存在性，
-#     新增三件（redis 7.4.2 / apache/rocketmq 5.3.1 / nacos v2.4.3）与既有 pgvector 同口径：docker 环境首跑确认
-#   - 口令占位 + env 注入：LJR_PG_PASSWORD / LJR_REDIS_PASSWORD（见 .env.example），密钥禁入文件
+#     新增件（redis 7.4.2 / apache/rocketmq 5.3.1 / nacos v2.4.3 / prometheus v3.5.0 /
+#     otel-collector-contrib 0.130.0 / jaeger 2.6.0 / grafana 12.1.0 / alertmanager v0.28.1）
+#     与既有 pgvector 同口径：docker 环境首跑确认
+#   - 口令占位 + env 注入：LJR_PG_PASSWORD / LJR_REDIS_PASSWORD / LJR_GRAFANA_PASSWORD（见 .env.example），
+#     密钥禁入文件
 #   - 与 portable 轨（scripts/db/*.mjs）共用 services/core/flyway.conf 与 127.0.0.1:5435 端口口径；
-#     redis 沿用「避开本机常用端口」惯例映射 127.0.0.1:6380
+#     redis 沿用「避开本机常用端口」惯例映射 127.0.0.1:6380；grafana 因 core 默认占用 3000 映射 3300
 #   - 全部端口仅绑 127.0.0.1（dev 单机口径；staging 起由部署平台网络策略接管）
 name: ljr-dev
 
@@ -149,6 +155,99 @@ services:
       timeout: 5s
       retries: 30
       start_period: 15s
+
+  # ── 观测段（M0-9，docs/plans/M0-9-观测基座说明.md）─────────────────────────────
+  # 链路：core(宿主进程) --OTLP http 4318--> otel-collector --otlp/grpc--> jaeger(16686 可查)
+  #                                            └─ prometheus exporter 8889 <── prometheus 抓取
+  #                                            → grafana(3300，预配 prometheus+jaeger 数据源+占位面板)
+  # core 侧只外发 OTLP（OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318，进程 env 注入），
+  # 不开 /metrics 端口——pull 交给 collector 的 prometheus exporter，指标与 trace 同一条出口。
+  # 本段 Ruling-6 降级：未在本机运行，结构断言固化在 scripts/check-observability.test.mjs。
+
+  otel-collector:
+    # contrib 发行版（含 prometheus exporter；核心版无）。config 见 ./otel-collector/config.yaml
+    image: otel/opentelemetry-collector-contrib:0.130.0
+    command: ['--config=/etc/otelcol-contrib/config.yaml']
+    volumes:
+      - ./otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - '127.0.0.1:4317:4317' # OTLP gRPC（留给需要 grpc 的服务；core 走 http）
+      - '127.0.0.1:4318:4318' # OTLP http/protobuf ← core 的 OTEL_EXPORTER_OTLP_ENDPOINT
+      # 8889（prometheus exporter）不暴露宿主机：仅 compose 网内被 prometheus 抓取
+    healthcheck:
+      # health_check 扩展监听 13133（容器自带 wget；待 docker 环境演练复核，口径同文件头）
+      test: ['CMD-SHELL', 'wget -q --spider http://127.0.0.1:13133/ || exit 1']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  jaeger:
+    # Jaeger v2 all-in-one：OTLP-native（容器网内 4317/4318 直收 collector 转发），内存存储
+    #（dev 免外部依赖；staging 起换 ES/Cassandra 后端）。dev 无鉴权——仅 127.0.0.1 暴露
+    image: jaegertracing/all-in-one:2.6.0
+    ports:
+      - '127.0.0.1:16686:16686' # UI/查询 API（trace 检索入口）
+    healthcheck:
+      # 查询端口可答即存活（待 docker 环境演练复核：v2 镜像内建 wget 与端点形态）
+      test: ['CMD-SHELL', 'wget -q --spider http://127.0.0.1:16686/ || exit 1']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+
+  prometheus:
+    # 抓取面=collector 的 8889（OTLP 指标转 pull 口径）+ 自监控；告警规则占位见
+    # ./prometheus/rules/ljr-alerts.yml；alertmanager 联动配置见 ./prometheus/prometheus.yml
+    image: prom/prometheus:v3.5.0
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules/ljr-alerts.yml:/etc/prometheus/rules/ljr-alerts.yml:ro
+    ports:
+      - '127.0.0.1:9090:9090'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q --spider http://127.0.0.1:9090/-/healthy || exit 1']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  grafana:
+    # provisioning 预配：datasources（prometheus 默认+jaeger）+ 一块 M0 占位面板
+    #（./grafana/provisioning/ 与 ./grafana/dashboards/）；面板查询语句待 docker 首跑校准指标名
+    image: grafana/grafana:12.1.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      # 占位口令 env 注入（同 PG/Redis 口径；真实值只存 .secrets/）
+      GF_SECURITY_ADMIN_PASSWORD: ${LJR_GRAFANA_PASSWORD:-ljr-dev-only}
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - '127.0.0.1:3300:3000' # core 默认占 3000 → grafana 让位（惯例同 5435/6380）
+    healthcheck:
+      # 镜像内建 curl（待 docker 环境演练复核）
+      test: ['CMD-SHELL', 'curl -fs http://127.0.0.1:3000/api/health || exit 1']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+
+  alertmanager:
+    # 告警占位（M0-9）：通道=webhook 预留（./alertmanager/alertmanager.yml 的 ljr-webhook 接收器）。
+    # 电话级通道仅注释占位——供应商/升级策略 PRD 未定义（docs/04 §8 待澄清点），不擅自发明；
+    # M1 通知中心（N1）落位时一并裁决通道形态。
+    image: prom/alertmanager:v0.28.1
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - '127.0.0.1:9093:9093'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q --spider http://127.0.0.1:9093/-/healthy || exit 1']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
 
 volumes:
   pgdata:
