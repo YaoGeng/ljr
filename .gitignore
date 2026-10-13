@@ -17,9 +17,6 @@ coverage/
 .tools/
 .mimosa/
 
-# 工作区指南（用户文件，保持不入库；防 git add -A 误入）
-AGENTS.md
-
 # Expo
 .expo/
 .expo-shared/
