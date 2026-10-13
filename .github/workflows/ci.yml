@@ -148,6 +148,10 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+      # pnpm -r test 会跑 6 个包的 bun test：bun 也钉版（RF#2，不依赖 runner 预装版本的漂移）
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
       - run: pnpm install --frozen-lockfile
       - name: '迁移检查：migrate → validate → 整库重放演练（ADR-0002：drop 业务 schema 后整库重放）'
         run: |

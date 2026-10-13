@@ -63,7 +63,8 @@ describe('CI workflow：六项检查齐备（job/step 语义映射）', () => {
 
   test('gitleaks 密钥扫描 job：全历史检出 + 指定配置', () => {
     const steps = job('gitleaks').steps;
-    expect(steps[0].with?.['fetch-depth']).toBe(0);
+    const checkout = steps.find((s) => s.uses?.startsWith('actions/checkout@'));
+    expect(checkout?.with?.['fetch-depth']).toBe(0);
     const scan = steps.find((s) => typeof s.run === 'string');
     expect(scan.run).toContain('zricethezav/gitleaks:');
     expect(scan.run).toContain('--config /repo/.gitleaks.toml');
@@ -78,9 +79,11 @@ describe('CI workflow：工具与镜像版本钉定（Review Focus #2）', () =>
     }
   });
 
-  test('bun 1.3.13（schema-refs job 的脚本自测轨）', () => {
-    const bun = job('schema-refs').steps.find((s) => s.uses?.startsWith('oven-sh/setup-bun@'));
-    expect(String(bun?.with?.['bun-version'])).toBe('1.3.13');
+  test('bun 1.3.13：凡跑 bun test 的 job（schema-refs 脚本自测 + db-check 的 pnpm -r test）均钉版', () => {
+    for (const id of ['schema-refs', 'db-check']) {
+      const bun = job(id).steps.find((s) => s.uses?.startsWith('oven-sh/setup-bun@'));
+      expect(String(bun?.with?.['bun-version'])).toBe('1.3.13');
+    }
   });
 
   test('镜像锁 tag：pgvector 0.8.0-pg15（service 与 psql 同）、flyway 13.10.0、gitleaks v8.24.3', () => {
@@ -89,7 +92,8 @@ describe('CI workflow：工具与镜像版本钉定（Review Focus #2）', () =>
     const run = stepRun('db-check', 'flyway migrate')[0].run;
     expect(run).toContain('flyway/flyway:13.10.0'); // 与 compose 的 flyway 服务同 tag
     expect(run).toContain('pgvector/pgvector:0.8.0-pg15');
-    expect(job('gitleaks').steps[1].run).toContain('zricethezav/gitleaks:v8.24.3');
+    const gitleaksRun = job('gitleaks').steps.find((s) => typeof s.run === 'string')?.run ?? '';
+    expect(gitleaksRun).toContain('zricethezav/gitleaks:v8.24.3');
   });
 });
 
