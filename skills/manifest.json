@@ -1,5 +1,5 @@
 {
-  "$schema_note": "仓库 skills/ = 技能唯一事实源（技能指南 §8.1）。校验口径：count=目录文件数；sha256=按相对路径排序，逐文件 (path + 文件内容sha256) 串接后再 sha256，取前 16 hex。",
+  "$schema_note": "仓库 skills/ = 技能唯一事实源（技能指南 §8.1）。校验口径（与 skills/verify-manifest.mjs 实现逐字一致，可用其复算）：对每个技能目录（skills/<name>/）递归收集全部文件，按相对路径 rel（正斜杠，形如 /<name>/<file>）字典序升序；对每个文件先算 hex = sha256(文件字节) 的十六进制小写；把每个文件的 rel + 换行符(\n) + hex + 换行符(\n) 按序以 UTF-8 送入同一 sha256 上下文，最终摘要十六进制前 16 位记为该技能 sha256；count = 目录文件总数。",
   "generated_at": "2026-10-13",
   "load_batch": "①（技能指南 §9.2：P0 六件套 + 自建三件起步 + agent-scan）",
   "skills": {
@@ -67,7 +67,7 @@
       "kind": "lj",
       "source": "自建（docs/02-架构设计.md v2.1 提炼）",
       "count": 1,
-      "sha256": "ec23f3397d65f2f5"
+      "sha256": "4203672a2caff014"
     },
     "lj-data-security": {
       "kind": "lj",
