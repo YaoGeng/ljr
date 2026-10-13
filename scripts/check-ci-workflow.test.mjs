@@ -108,6 +108,18 @@ describe('CI workflow：编排卫生', () => {
     }
   });
 
+  test('构建序：typecheck/db-check 在装包后先构建 @ljr/shared（dist 不入库、job 间不共享产物）', () => {
+    for (const id of ['typecheck', 'db-check']) {
+      const runs = job(id)
+        .steps.filter((s) => typeof s.run === 'string')
+        .map((s) => s.run.trim());
+      const installIdx = runs.indexOf('pnpm install --frozen-lockfile');
+      const sharedIdx = runs.indexOf('pnpm --filter @ljr/shared build');
+      expect(installIdx).toBeGreaterThanOrEqual(0);
+      expect(sharedIdx).toBeGreaterThan(installIdx); // 缺此步=core 解析 @ljr/shared 即红（TS2307/模块解析失败）
+    }
+  });
+
   test('core 测试连接指到 CI PG（LJR_PG_PORT=5432 service 映射）', () => {
     const env = job('db-check').env;
     expect(env.LJR_PG_PORT).toBe('5432');

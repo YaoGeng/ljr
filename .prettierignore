@@ -1,6 +1,8 @@
 # 文档体系、原型与技能库有自己的格式约定，不参与 prettier
 docs/
 prototype/
+# AGENTS.md：用户带外维护的工作区指南（不入库），防本地 prettier 误检用户文件
+AGENTS.md
 # skills/：M0-6 技能库（vendor 快照原样保留 + 自建 SKILL.md 中文排版）
 skills/
 
