@@ -125,8 +125,9 @@ export function flyway(args) {
   if (r.status !== 0) die(`flyway 失败（exit ${r.status}）: flyway ${args.join(' ')}`);
 }
 
-// 13 个业务 schema（V1__schemas_roles.sql 的镜像清单；仅 reset.mjs 的 drop 演练用，
-// 增删须同步 V1 迁移——事实源仍是架构 §3.2）
+// reset 演练要 drop 的全部 schema（V1-V3 迁移的镜像清单；增删须同步对应迁移）：
+//   V1：13 个业务 schema（事实源=架构 §3.2）；
+//   V2/V3（M0-4）：infra schema platform（Outbox/死信/state_transition_log，Ruling-4）+ demo（验收脚手架）。
 export const BUSINESS_SCHEMAS = [
   'identity',
   'schedule',
@@ -141,4 +142,7 @@ export const BUSINESS_SCHEMAS = [
   'benefits',
   'agent_assist',
   'ops',
+  // ---- V2/V3（M0-4）----
+  'platform',
+  'demo',
 ];
