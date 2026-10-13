@@ -16,6 +16,7 @@ export default [
       '.superpowers/**',
       '.zcode/**',
       '.tools/**', // M0-3 portable 数据库工具栈（本地解压，已 gitignore）
+      'skills/**', // M0-6 技能库：给 agent 读的（vendor 原样快照 + 自建 SKILL.md），非 tsc/eslint 编译对象
     ],
   },
   eslint.configs.recommended,

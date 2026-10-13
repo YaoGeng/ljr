@@ -1,0 +1,94 @@
+{
+  "$schema_note": "仓库 skills/ = 技能唯一事实源（技能指南 §8.1）。校验口径：count=目录文件数；sha256=按相对路径排序，逐文件 (path + 文件内容sha256) 串接后再 sha256，取前 16 hex。",
+  "generated_at": "2026-10-13",
+  "load_batch": "①（技能指南 §9.2：P0 六件套 + 自建三件起步 + agent-scan）",
+  "skills": {
+    "test-driven-development": {
+      "kind": "vendor",
+      "upstream": "https://github.com/obra/superpowers",
+      "license": "MIT",
+      "version_note": "本地快照（源无 git 元数据），复制日期 2026-10-13，源路径 C:/Users/yg/.agents/skills/test-driven-development（经 ~/.agents/superpowers 分发）",
+      "count": 2,
+      "sha256": "c1459af321b2b1ac"
+    },
+    "systematic-debugging": {
+      "kind": "vendor",
+      "upstream": "https://github.com/obra/superpowers",
+      "license": "MIT",
+      "version_note": "本地快照（源无 git 元数据），复制日期 2026-10-13，源路径 C:/Users/yg/.agents/skills/systematic-debugging",
+      "count": 11,
+      "sha256": "9ba7203a1cd65969"
+    },
+    "verification-before-completion": {
+      "kind": "vendor",
+      "upstream": "https://github.com/obra/superpowers",
+      "license": "MIT",
+      "version_note": "本地快照（源无 git 元数据），复制日期 2026-10-13，源路径 C:/Users/yg/.agents/skills/verification-before-completion",
+      "count": 1,
+      "sha256": "bcdbc8ba834821c6"
+    },
+    "writing-plans": {
+      "kind": "vendor",
+      "upstream": "https://github.com/obra/superpowers",
+      "license": "MIT",
+      "version_note": "本地快照（源无 git 元数据），复制日期 2026-10-13，源路径 C:/Users/yg/.agents/skills/writing-plans",
+      "count": 1,
+      "sha256": "456fb99597911146"
+    },
+    "requesting-code-review": {
+      "kind": "vendor",
+      "upstream": "https://github.com/obra/superpowers",
+      "license": "MIT",
+      "version_note": "本地快照（源无 git 元数据），复制日期 2026-10-13，源路径 C:/Users/yg/.agents/skills/requesting-code-review",
+      "count": 2,
+      "sha256": "957ebf40a48ea8ab"
+    },
+    "receiving-code-review": {
+      "kind": "vendor",
+      "upstream": "https://github.com/obra/superpowers",
+      "license": "MIT",
+      "version_note": "本地快照（源无 git 元数据），复制日期 2026-10-13，源路径 C:/Users/yg/.agents/skills/receiving-code-review",
+      "count": 1,
+      "sha256": "88c55d86eb98f70e"
+    },
+    "lj-domain-rules": {
+      "kind": "lj",
+      "source": "自建（docs/02-架构设计.md v2.1 提炼）",
+      "count": 1,
+      "sha256": "807736fb9cce3e41"
+    },
+    "lj-payment-invariants": {
+      "kind": "lj",
+      "source": "自建（docs/02-架构设计.md v2.1 提炼）",
+      "count": 1,
+      "sha256": "3c62483753199021"
+    },
+    "lj-compliance-guards": {
+      "kind": "lj",
+      "source": "自建（docs/02-架构设计.md v2.1 提炼）",
+      "count": 1,
+      "sha256": "ec23f3397d65f2f5"
+    },
+    "lj-data-security": {
+      "kind": "lj",
+      "source": "自建（docs/02-架构设计.md v2.1 提炼）",
+      "count": 1,
+      "sha256": "ff328573c1fc5e5d"
+    },
+    "lj-test-matrix": {
+      "kind": "lj",
+      "source": "自建（docs/02-架构设计.md v2.1 提炼）",
+      "count": 1,
+      "sha256": "0a2bacecec13da10"
+    }
+  },
+  "pending": [
+    {
+      "name": "agent-scan",
+      "upstream": "https://github.com/snyk/agent-scan",
+      "license": "Apache-2.0",
+      "status": "待 vendor",
+      "reason": "本机技能源（C:/Users/yg/.agents/skills/）无 agent-scan，本次离线复制不可得，不得伪造——按技能指南 §7-2 装前扫描纪律，任何新技能（含本件）入库前必须先经 agent-scan 扫描+人工审读；待可联网核实 upstream commit 后补齐"
+    }
+  ]
+}

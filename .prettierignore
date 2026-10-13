@@ -1,6 +1,8 @@
-# 文档体系与原型有自己的格式约定，不参与 prettier
+# 文档体系、原型与技能库有自己的格式约定，不参与 prettier
 docs/
 prototype/
+# skills/：M0-6 技能库（vendor 快照原样保留 + 自建 SKILL.md 中文排版）
+skills/
 
 # 产物与本地状态
 node_modules/
