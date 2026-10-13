@@ -13,7 +13,7 @@ regexes = [
 ]
 
 [[allowlists]]
-description = "示例环境文件：docker/dev/.env.example 本身即占位口令的申报处"
+description = "示例环境文件（占位值申报处）：docker/dev/.env.example 与根 .env.example（M0-7 凭据注入约定样张，值一律为 FAKE-TOKEN-FOR-DRILL 类显式占位）；真实 .env/.secrets/ 已 gitignore、永不入库"
 paths = [
-  '''(^|/)docker/dev/\.env\.example$''',
+  '''(^|/)\.env\.example$''',
 ]

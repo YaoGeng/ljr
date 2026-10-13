@@ -87,8 +87,8 @@
       "name": "agent-scan",
       "upstream": "https://github.com/snyk/agent-scan",
       "license": "Apache-2.0",
-      "status": "待 vendor",
-      "reason": "本机技能源（C:/Users/yg/.agents/skills/）无 agent-scan，本次离线复制不可得，不得伪造——按技能指南 §7-2 装前扫描纪律，任何新技能（含本件）入库前必须先经 agent-scan 扫描+人工审读；待可联网核实 upstream commit 后补齐"
+      "status": "待引入（上游已核实：工具型 CLI，非技能包）",
+      "reason": "M0-7 补装尝试结论（尝试过程与证据见 docs/plans/M0-隔离演练记录.md §4）：上游经 GitHub API 核实为活跃仓库（3,135 star、Apache-2.0、最近 push 2026-10-09），但形态是 Python CLI 安全扫描器（uvx snyk-agent-scan@<ver> / GitHub Releases 独立二进制，运行需 SNYK_TOKEN + Snyk 云分析 API），仓库内无 SKILL.md 技能包（tests/skills/* 为其测试夹具），不可按技能 vendor 入 skills/；本机 Python 为 WindowsApps stub 不可用、无 uv、无 Snyk 账号 token，且 api.snyk.com 出站不可达（实测 000）——维持 pending。引入路径=工具化引入（uvx 本地或 CI 容器化），引入前按技能指南 §7-1/§7-2 扫描+人工审读纪律执行；在此之前装前扫描以人工审读替代（M0-6 已对 18 个 vendor 文件执行并记录）"
     }
   ]
 }

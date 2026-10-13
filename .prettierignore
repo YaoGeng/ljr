@@ -13,6 +13,7 @@ coverage/
 web-build/
 .superpowers/
 .zcode/
+.mimosa/
 
 # 锁文件与机器生成文件
 pnpm-lock.yaml
