@@ -17,8 +17,10 @@
 //     仓库根）内且为普通文件——绝对路径出 root、.. 逃逸、不存在、非常规文件均拒绝，
 //     防审计对象名不副实。
 //   校验 2 凭据目录（CRED_DIR/CRED_FILE）：挂载源（脚本所在目录，含自身 basename 与全子树）
-//     不得含凭据目录/凭据名文件（清单见 CRED_DIRS/CRED_FILES/CRED_FILE_PATTERNS）——挂进容器
-//     = 对 agent 可见 = 违反「凭据相关目录与密钥存储对 agent 文件系统不可见」（§7-5 第 5 条）。
+//     不得含凭据目录/凭据名文件（清单见 CRED_DIRS/CRED_FILES/CRED_FILE_PATTERNS，含 .npmrc/
+//     .pypirc/.yarnrc.yml 等包管理器凭据载体；名称统一小写比较，Windows 大小写不敏感不漏拦）
+//     ——挂进容器 = 对 agent 可见 = 违反「凭据相关目录与密钥存储对 agent 文件系统不可见」
+//     （§7-5 第 5 条）。
 //   校验 3 出站白名单（EGRESS_NOT_ALLOWED）：挂载源内文本文件的 https?:// 引用逐个比对允许
 //     域名（DEFAULT_EGRESS_ALLOWLIST：npm registry / GitHub / Docker Hub 拉取链路，演练记录
 //     §1 的初始清单）。容器内 --network none 本就无出站，此校验在宿主侧提前暴露「脚本想外传
@@ -56,17 +58,31 @@ export const DEFAULT_EGRESS_ALLOWLIST = {
   'production.cloudflare.docker.com': 'Docker Hub 镜像层 CDN',
 };
 
-/** 凭据目录名（挂载源自身或子树命中即拒绝） */
+/** 凭据目录名（挂载源自身或子树命中即拒绝；credCodeFor 统一小写比较） */
 export const CRED_DIRS = ['.secrets', '.ssh', '.aws', '.kube', '.docker', '.gnupg'];
-/** 凭据文件名（精确匹配） */
-export const CRED_FILES = ['.env', '.git-credentials', '.netrc', '_netrc', 'credentials'];
-/** 凭据文件名模式（含 .env.* 变体与私钥/证书惯用后缀） */
+/**
+ * 凭据文件名（精确匹配，统一小写比较——Windows 大小写不敏感，.ENV/_NETRC 同样拦）。
+ * .npmrc/.pypirc/.yarnrc.yml：包管理器凭据载体（npm _authToken= / pip index 密码 /
+ * yarn npmAuthToken:）——无扩展名/非文本扩展名，不进 TEXT_EXTS 出站扫描，挂进容器零告警，
+ * 而 stdio inherit 使脚本 stdout 可直达宿主，故必须在此名单拦截。
+ */
+export const CRED_FILES = [
+  '.env',
+  '.git-credentials',
+  '.netrc',
+  '_netrc',
+  'credentials',
+  '.npmrc',
+  '.pypirc',
+  '.yarnrc.yml',
+];
+/** 凭据文件名模式（输入已小写；含 .env.* 变体与私钥/证书惯用后缀） */
 export const CRED_FILE_PATTERNS = [
   /^\.env($|\.)/,
-  /\.pem$/i,
-  /\.key$/i,
-  /\.p12$/i,
-  /\.pfx$/i,
+  /\.pem$/,
+  /\.key$/,
+  /\.p12$/,
+  /\.pfx$/,
   /^id_(rsa|dsa|ecdsa|ed25519)/,
 ];
 
@@ -136,11 +152,12 @@ export function parseArgs(argv) {
   return opts;
 }
 
-/** 凭据名判定：返回 CRED_DIR / CRED_FILE / null */
+/** 凭据名判定（名称统一小写后比较——Windows 大小写不敏感文件系统下 .ENV/ID_RSA 同样拦）：返回 CRED_DIR / CRED_FILE / null */
 export function credCodeFor(name, isDir) {
-  if (isDir && CRED_DIRS.includes(name)) return 'CRED_DIR';
-  if (!isDir && CRED_FILES.includes(name)) return 'CRED_FILE';
-  if (!isDir && CRED_FILE_PATTERNS.some((re) => re.test(name))) return 'CRED_FILE';
+  const n = name.toLowerCase();
+  if (isDir && CRED_DIRS.includes(n)) return 'CRED_DIR';
+  if (!isDir && CRED_FILES.includes(n)) return 'CRED_FILE';
+  if (!isDir && CRED_FILE_PATTERNS.some((re) => re.test(n))) return 'CRED_FILE';
   return null;
 }
 

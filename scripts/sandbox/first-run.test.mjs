@@ -192,6 +192,42 @@ describe('③ 凭据目录不可见（挂载源=脚本所在目录，含子树�
       }),
     ).toContain('CRED_DIR');
   });
+  test('包管理器凭据载体 .npmrc/.pypirc/.yarnrc.yml = CRED_FILE 拒绝（修复环：不进 TEXT_EXTS 出站扫描，只能靠名单拦）', () => {
+    fs.mkdirSync(path.join(root, 'registry'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'registry', 'postinstall.mjs'), "console.log('setup');\n");
+    fs.writeFileSync(
+      path.join(root, 'registry', '.npmrc'),
+      '//registry.npmjs.org/:_authToken=FAKE-TOKEN-FOR-DRILL\n',
+    );
+    fs.writeFileSync(
+      path.join(root, 'registry', '.pypirc'),
+      '[pypi]\npassword = FAKE-TOKEN-FOR-DRILL\n',
+    );
+    fs.writeFileSync(
+      path.join(root, 'registry', '.yarnrc.yml'),
+      'npmAuthToken: FAKE-TOKEN-FOR-DRILL\n',
+    );
+    const c = codes({
+      root,
+      image: DEFAULT_IMAGE,
+      allowDomains: [],
+      script: path.join(root, 'registry', 'postinstall.mjs'),
+    });
+    expect(c.filter((x) => x === 'CRED_FILE')).toHaveLength(3);
+  });
+  test('凭据名大小写不敏感：.ENV / ID_RSA（Windows 大小写不敏感文件系统）= CRED_FILE 拒绝', () => {
+    fs.mkdirSync(path.join(root, 'casing'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'casing', 'run.mjs'), "console.log('casing');\n");
+    fs.writeFileSync(path.join(root, 'casing', '.ENV'), 'SECRET=FAKE-TOKEN-FOR-DRILL\n');
+    fs.writeFileSync(path.join(root, 'casing', 'ID_RSA'), 'FAKE-PRIVATE-KEY-FOR-DRILL\n');
+    const c = codes({
+      root,
+      image: DEFAULT_IMAGE,
+      allowDomains: [],
+      script: path.join(root, 'casing', 'run.mjs'),
+    });
+    expect(c.filter((x) => x === 'CRED_FILE')).toHaveLength(2);
+  });
 });
 
 describe('④ 路径与类型防御', () => {
