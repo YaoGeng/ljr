@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import process from 'node:process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { env, log, die, pgBin, run, psql, pgUp, PG_DATA, PG_LOG, TOOLS } from './lib.mjs';
+import { env, log, die, pgBin, run, psql, ensurePgUp, PG_DATA, PG_LOG, TOOLS } from './lib.mjs';
 
 function ensureTools() {
   if (!fs.existsSync(pgBin('psql'))) {
@@ -58,16 +58,10 @@ function startServer() {
   ]);
 }
 
-function waitHealthy(timeoutMs = 30_000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (pgUp()) {
-      log('PostgreSQL 就绪。');
-      return;
-    }
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300); // 同步等待 300ms
-  }
-  die(`等待健康超时（${timeoutMs}ms），查看日志: ${PG_LOG}`);
+// 健康等待统一走 lib.ensurePgUp（300ms 轮询 + 总超时），此处只补日志
+function waitHealthy() {
+  ensurePgUp();
+  log('PostgreSQL 就绪。');
 }
 
 function ensureDatabase() {

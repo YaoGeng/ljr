@@ -86,12 +86,16 @@ export function pgUp() {
   return r.status === 0;
 }
 
-// 等待就绪（默认 30s），超时 die
+// 等待就绪：每 300ms 轮询 pg_isready，总超时（默认 30s）后 die（真等待，覆盖 PG 启动窗口）
 export function ensurePgUp(timeoutMs = 30_000) {
-  if (pgUp()) return;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (pgUp()) return true;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300); // 同步等待 300ms
+  }
   die(
-    `PostgreSQL 未在 127.0.0.1:${env.pgPort} 就绪（超时 ${timeoutMs}ms）。` +
-      '先运行: node scripts/db/start.mjs',
+    `PostgreSQL 未在 ${env.pgHost}:${env.pgPort} 就绪（已轮询 ${timeoutMs}ms 超时）。` +
+      '先运行: node scripts/db/start.mjs，或查看日志 .tools/pg15.log',
   );
 }
 

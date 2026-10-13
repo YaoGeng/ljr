@@ -62,11 +62,15 @@ BEGIN
 END
 $$;
 
--- ---------- CONNECT（库名两轨一致 = ljr_dev；staging 若库名不同须在部署时同步调整本行） ----------
-GRANT CONNECT ON DATABASE ljr_dev TO
-    ljr_identity, ljr_schedule, ljr_pricing, ljr_trade, ljr_fulfillment,
-    ljr_payment, ljr_settlement, ljr_credit, ljr_review, ljr_notify,
-    ljr_benefits, ljr_agent_assist, ljr_ops;
+-- ---------- CONNECT（对当前库授权，环境无关：库名取 current_database()，勿再硬编码） ----------
+DO $$
+BEGIN
+    EXECUTE format(
+        'GRANT CONNECT ON DATABASE %I TO ljr_identity, ljr_schedule, ljr_pricing, ljr_trade, ljr_fulfillment, ljr_payment, ljr_settlement, ljr_credit, ljr_review, ljr_notify, ljr_benefits, ljr_agent_assist, ljr_ops',
+        current_database()
+    );
+END
+$$;
 
 -- ---------- 13 个业务 schema：CREATE + 收回 PUBLIC + 授本模块 USAGE + role 落位 search_path ----------
 -- identity：注册登录、双角色切换、实名认证、律师资质审核流、账号注销状态机（§3.2）
