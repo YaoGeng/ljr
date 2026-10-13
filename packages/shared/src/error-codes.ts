@@ -26,6 +26,10 @@ export const ErrorCode = {
   StateStaleEntity: 'E_STATE_STALE_ENTITY',
   /** Outbox 消费者处理失败（at-least-once，由 relay 重试/死信接管） */
   OutboxHandlerFailed: 'E_OUTBOX_HANDLER_FAILED',
+  /** 必填配置缺失（启动期 require 未命中，fail-fast；M0-8 配置基座） */
+  ConfigMissing: 'E_CONFIG_MISSING',
+  /** 配置值非法（端口非 1-65535 整数等）或密钥被写入配置文件（M0-8 配置基座） */
+  ConfigInvalid: 'E_CONFIG_INVALID',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -59,6 +63,14 @@ const ERROR_CODE_META: Readonly<Record<ErrorCode, ErrorCodeMeta>> = {
   [ErrorCode.OutboxHandlerFailed]: {
     httpStatus: 500,
     defaultMessage: '事件消费者处理失败',
+  },
+  [ErrorCode.ConfigMissing]: {
+    httpStatus: 500,
+    defaultMessage: '必填配置缺失',
+  },
+  [ErrorCode.ConfigInvalid]: {
+    httpStatus: 500,
+    defaultMessage: '配置值非法或密钥被写入配置文件',
   },
 };
 

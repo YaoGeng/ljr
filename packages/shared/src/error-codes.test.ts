@@ -31,6 +31,13 @@ describe('错误码契约（ErrorCode 常量表 + AppError{code,httpStatus}）',
     expect(e.httpStatus).toBe(503);
   });
 
+  it('配置基座两码（M0-8）：缺失=500 fail-fast，非法（含密钥入文件）=500', () => {
+    expect(ErrorCode.ConfigMissing).toBe('E_CONFIG_MISSING');
+    expect(new AppError(ErrorCode.ConfigMissing).httpStatus).toBe(500);
+    expect(ErrorCode.ConfigInvalid).toBe('E_CONFIG_INVALID');
+    expect(new AppError(ErrorCode.ConfigInvalid).httpStatus).toBe(500);
+  });
+
   it('isAppError 类型收窄', () => {
     expect(isAppError(new AppError(ErrorCode.Conflict))).toBe(true);
     expect(isAppError(new Error('plain'))).toBe(false);

@@ -1,13 +1,16 @@
 /**
- * SQL 执行器契约与 PG 连接基座（M0-4）。
+ * SQL 执行器契约与 PG 连接基座（M0-4；M0-8 起配置装载并入统一分层）。
  *
  * - SqlExecutor：最小结构类型（pg Pool/PoolClient 均满足），守卫/outbox 的 uow 参数口径
  *   —— 业务事务里的 client 就是 uow，横切写入与业务写同事务。
- * - PgPoolService：NestJS 可注入连接池；连接参数与 scripts/db/lib.mjs 同口径（env 注入，密钥禁硬编码）：
+ * - PgPoolService：NestJS 可注入连接池；连接参数经 config/app.config.ts 单一装载入口解析
+ *   （env > config/<LJR_ENV>/app.env > 默认值；键沿用 T3 口径 LJR_PG_*，密钥只走 env）：
  *   LJR_PG_HOST(127.0.0.1) / LJR_PG_PORT(5435) / LJR_PG_USER(postgres) / LJR_PG_PASSWORD / LJR_PG_DB(ljr_dev)。
  */
 import { Injectable, Optional, type OnApplicationShutdown } from '@nestjs/common';
 import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from 'pg';
+import { loadAppConfig } from '../config/app.config';
+import type { PgConfig } from '../config/app.config';
 
 /** 最小 SQL 执行器（pg Pool / PoolClient 结构兼容；测试可替换为假实现） */
 export interface SqlExecutor {
@@ -17,23 +20,12 @@ export interface SqlExecutor {
   ): Promise<QueryResult<R>>;
 }
 
-export interface PgConfig {
-  readonly host: string;
-  readonly port: number;
-  readonly user: string;
-  readonly password: string;
-  readonly database: string;
-}
+/** PG 连接参数（定义于 config/app.config.ts，此处再导出保持既有引用点不变） */
+export type { PgConfig } from '../config/app.config';
 
-/** 与 scripts/db/lib.mjs 同口径的 env 解析（默认值=dev portable 轨） */
+/** 与 scripts/db/lib.mjs 同口径：经配置分层装载（env>文件>默认），默认值=dev portable 轨 */
 export function pgConfigFromEnv(env: NodeJS.ProcessEnv = process.env): PgConfig {
-  return {
-    host: env.LJR_PG_HOST ?? '127.0.0.1',
-    port: Number(env.LJR_PG_PORT ?? 5435),
-    user: env.LJR_PG_USER ?? 'postgres',
-    password: env.LJR_PG_PASSWORD ?? 'ljr-dev-only',
-    database: env.LJR_PG_DB ?? 'ljr_dev',
-  };
+  return loadAppConfig(env).pg;
 }
 
 @Injectable()

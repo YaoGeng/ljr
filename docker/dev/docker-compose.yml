@@ -1,10 +1,14 @@
-# M0-3 dev 数据库栈（docker 轨，ADR-0002）
-# 注意：本仓库当前开发机无容器运行时，本文件未在本机运行验证（YAML 已做 Node 解析自检）；
-#       实际运行验证留待 M0-5/T4 的 GitHub Actions 容器环境。
+# M0-3 dev 数据库栈（docker 轨，ADR-0002）；M0-8 扩展 redis/RocketMQ/Nacos（dev 全栈容器化）。
+# 注意：本仓库当前开发机无容器运行时（Ruling-6），本文件未在本机运行验证（YAML 已做 Node 解析自检，
+#       结构断言固化在 scripts/check-compose.test.mjs）；实际运行验证留待 GitHub Actions 容器环境
+#       与后续 docker 环境全栈演练——【待 docker 环境补全栈演练】。
 # 口径：
-#   - 镜像一律锁 tag 禁 latest（ADR-0002 施工约束）
-#   - 口令占位 + env 注入：LJR_PG_PASSWORD（见 .env.example），密钥禁入文件
-#   - 与 portable 轨（scripts/db/*.mjs）共用 services/core/flyway.conf 与 127.0.0.1:5435 端口口径
+#   - 镜像一律锁 tag 禁 latest（ADR-0002 施工约束）；本机无法访问 Docker Hub 复核 tag 存在性，
+#     新增三件（redis 7.4.2 / apache/rocketmq 5.3.1 / nacos v2.4.3）与既有 pgvector 同口径：docker 环境首跑确认
+#   - 口令占位 + env 注入：LJR_PG_PASSWORD / LJR_REDIS_PASSWORD（见 .env.example），密钥禁入文件
+#   - 与 portable 轨（scripts/db/*.mjs）共用 services/core/flyway.conf 与 127.0.0.1:5435 端口口径；
+#     redis 沿用「避开本机常用端口」惯例映射 127.0.0.1:6380
+#   - 全部端口仅绑 127.0.0.1（dev 单机口径；staging 起由部署平台网络策略接管）
 name: ljr-dev
 
 services:
@@ -51,6 +55,100 @@ services:
       - ../../services/core/migrations:/flyway/migrations:ro
     # CI/演练用法：docker compose run --rm flyway migrate | validate | clean（clean 仅 dev，ADR-0002）
     command: -connectRetries=10 migrate
+
+  redis:
+    # redis 7.x（docs/05 M0-8）：官方 library 镜像，锁 7.4.2；dev 开 requirepass（占位口令 env 注入）
+    # core 于 M0 尚未消费 redis（M1 通知中心/调度起接入）；此件先行占位环境
+    image: redis:7.4.2
+    command:
+      - redis-server
+      - --requirepass
+      - ${LJR_REDIS_PASSWORD:-ljr-dev-only}
+    environment:
+      # 供 healthcheck 内 redis-cli 使用（$$ 转义 compose 插值）
+      LJR_REDIS_PASSWORD: ${LJR_REDIS_PASSWORD:-ljr-dev-only}
+    ports:
+      - '127.0.0.1:6380:6379'
+    healthcheck:
+      # 未认证 ping 也会退出 0（输出 NOAUTH）——必须校验输出为 PONG
+      test:
+        ['CMD-SHELL', 'redis-cli --no-auth-warning -a "$$LJR_REDIS_PASSWORD" ping | grep -q PONG']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 3s
+
+  rocketmq-namesrv:
+    # RocketMQ NameServer（M0-8）。选型=官方 apache/rocketmq 镜像 + 双容器（nameserver+broker）方案：
+    #   - apache/* 是 RocketMQ 官方发布镜像（apache/rocketmq-docker 上游），非个人搬运
+    #   - 双容器贴近生产拓扑（NameServer 无状态可扩、broker 独立扩缩），单容器魔改镜像偏离部署形态
+    # healthcheck 语义=nameserver RPC 可达（clusterList 无 broker 时输出空表、退出码 0；
+    # 具体存活表现待 docker 环境演练复核，见文件头【待 docker 环境补全栈演练】）
+    image: apache/rocketmq:5.3.1
+    command: ['sh', 'mqnamesrv']
+    environment:
+      # dev 降内存：runserver.sh 默认 4g 堆对开发机过重；JAVA_OPT_EXT 追加在默认参之后
+      JAVA_OPT_EXT: '-Xms256m -Xmx256m'
+    ports:
+      - '127.0.0.1:9876:9876'
+    healthcheck:
+      test: ['CMD-SHELL', 'sh mqadmin clusterList -n 127.0.0.1:9876 > /dev/null']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  rocketmq-broker:
+    # RocketMQ Broker（M0-8）：依赖 NameServer healthy 后启动，注册后方可被 clusterList 检出
+    image: apache/rocketmq:5.3.1
+    depends_on:
+      rocketmq-namesrv:
+        condition: service_healthy
+    command:
+      - sh
+      - mqbroker
+      - -n
+      - rocketmq-namesrv:9876
+      - -c
+      - /home/rocketmq/conf/ljr-broker.conf
+    environment:
+      # dev 降内存：runbroker.sh 默认 8g 堆对开发机过重
+      JAVA_OPT_EXT: '-Xms512m -Xmx512m -Xmn128m'
+    volumes:
+      - ./rocketmq/broker.conf:/home/rocketmq/conf/ljr-broker.conf:ro
+    ports:
+      - '127.0.0.1:10909:10909'
+      - '127.0.0.1:10911:10911'
+    healthcheck:
+      # broker 完成注册才算健康（broker-a 为 broker.conf 内 brokerName）
+      test: ['CMD-SHELL', 'sh mqadmin clusterList -n rocketmq-namesrv:9876 | grep -q broker-a']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+
+  nacos:
+    # Nacos standalone（M0-8）：官方 nacos/nacos-server，embedded derby（dev 免外部存储）。
+    # dev 关鉴权（仅 127.0.0.1 暴露）；staging 起 NACOS_AUTH_ENABLE=true + 平台 secrets 注入
+    # （NACOS_AUTH_ADMIN_TOKEN 等禁入文件，见 config/README.md）。
+    # 9848=8848+1000 的 gRPC 端口：2.x 客户端连接必备，须与主端口一并映射。
+    # core 的 ConfigProvider 接 Nacos 实现自 staging 起（dev 不接 nacos-sdk，接口已留位）。
+    image: nacos/nacos-server:v2.4.3
+    environment:
+      MODE: standalone
+      NACOS_AUTH_ENABLE: 'false'
+      TZ: Asia/Shanghai
+    ports:
+      - '127.0.0.1:8848:8848'
+      - '127.0.0.1:9848:9848'
+    healthcheck:
+      # 2.x readiness 端点（容器自带 curl；待 docker 环境演练复核）
+      test:
+        ['CMD-SHELL', 'curl -fs http://127.0.0.1:8848/nacos/v1/console/health/readiness || exit 1']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
 
 volumes:
   pgdata:

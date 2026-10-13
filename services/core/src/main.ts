@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { CONFIG_PROVIDER, type ConfigProvider } from './config/config-provider.interface';
 import { OutboxRelayService } from './infrastructure/outbox/outbox-relay.service';
 
 async function bootstrap(): Promise<void> {
@@ -11,7 +12,9 @@ async function bootstrap(): Promise<void> {
   // 仅进程入口启动——测试/嵌入场景直接调 tick()，不经此路径。
   app.get(OutboxRelayService).start();
 
-  const port = Number(process.env.PORT ?? 3000);
+  // 监听端口经配置装载（M0-8：env PORT > config/<env>/app.env > 默认 3000）
+  const config = app.get<ConfigProvider>(CONFIG_PROVIDER);
+  const port = config.require<number>('port');
   await app.listen(port);
 }
 
