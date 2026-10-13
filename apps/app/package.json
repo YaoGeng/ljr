@@ -1,0 +1,25 @@
+{
+  "name": "@ljr/app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "律聚人 App（用户端+律师端，Expo / React Native 单码双端）",
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start",
+    "build": "tsc --noEmit && expo export --platform web",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~57.0.16",
+    "expo": "^57.0.27",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-web": "^0.21.4"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.3",
+    "@types/react": "^19.3.0",
+    "typescript": "~5.9.3"
+  }
+}

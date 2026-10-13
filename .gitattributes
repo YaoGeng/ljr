@@ -1,0 +1,13 @@
+# 文本文件统一 LF 入库与检出（与 .editorconfig 一致），SQL/Shell 显式强调（迁移脚本跨平台可复现）
+* text=auto eol=lf
+*.sql text eol=lf
+*.sh text eol=lf
+
+# 二进制资源
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary

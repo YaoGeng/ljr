@@ -1,0 +1,16 @@
+# 文档体系与原型有自己的格式约定，不参与 prettier
+docs/
+prototype/
+
+# 产物与本地状态
+node_modules/
+dist/
+coverage/
+.expo/
+.expo-shared/
+web-build/
+.superpowers/
+.zcode/
+
+# 锁文件与机器生成文件
+pnpm-lock.yaml

@@ -1,0 +1,19 @@
+{
+  "name": "@ljr/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "跨包契约：错误码 / 金额 / 领域事件（M0-2 骨架占位，M0-4 充实）",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.3",
+    "typescript": "~5.9.3"
+  }
+}

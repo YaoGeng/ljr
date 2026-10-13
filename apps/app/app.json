@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "律聚人",
+    "slug": "ljr-app",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}

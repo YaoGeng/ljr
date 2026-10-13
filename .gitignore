@@ -1,0 +1,24 @@
+# 依赖与产物
+node_modules/
+dist/
+*.tsbuildinfo
+coverage/
+
+# 环境与密钥（密钥禁入代码）
+.env
+.env.*
+!.env.example
+.secrets/
+
+# 本地工具状态（不入库）
+.superpowers/
+.zcode/
+
+# Expo
+.expo/
+.expo-shared/
+web-build/
+
+# 其他
+.DS_Store
+*.log

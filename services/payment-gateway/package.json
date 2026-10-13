@@ -1,0 +1,16 @@
+{
+  "name": "@ljr/payment-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "支付网关独立服务（M0-2 空壳；实现栈随本服务施工裁决，ADR-0001）",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.3",
+    "typescript": "~5.9.3"
+  }
+}
