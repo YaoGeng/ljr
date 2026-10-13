@@ -96,7 +96,13 @@ CREATE TABLE IF NOT EXISTS demo.consumed_events (
 
 COMMENT ON TABLE demo.consumed_events IS 'demo 消费防重：event_id 唯一，重复投递插入 0 行即跳过（不得把 at-least-once 当恰好一次）';
 
+-- ---------- 权限（M0 占位口径，同 V1 头注：role 均 NOLOGIN，应用账号接线与完整授权在 M1） ----------
+-- 注意：本段只保证「模块自有 schema 对本模块 role 的授权集自洽」（demo 链路的全部表操作均可由 ljr_demo 完成：
+-- orders 读写、order_actions 插入+回填首访结果（UPDATE）、consumed_events 插入防重）。
+-- demo 服务写 platform.outbox / platform.state_transition_log 不经 ljr_demo 表授权直连——横切写入走基座服务
+-- （recordOutbox/守卫），platform 表权限只授 ljr_platform（见 V2）；应用账号体系（NestJS 进程以何角色连接、
+-- 是否单账号跨 schema）是 M1 接线决策，届时按最小权限落位，勿据当前 GRANT 集反推运行时账号模型。
 GRANT SELECT, INSERT, UPDATE ON demo.orders TO ljr_demo;
-GRANT SELECT, INSERT ON demo.order_actions TO ljr_demo;
+GRANT SELECT, INSERT, UPDATE ON demo.order_actions TO ljr_demo;
 GRANT SELECT, INSERT ON demo.consumed_events TO ljr_demo;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA demo TO ljr_demo;

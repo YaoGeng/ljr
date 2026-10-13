@@ -81,7 +81,11 @@ COMMENT ON TABLE platform.outbox_dead_letter IS 'Outbox 死信：retry_count 达
 
 CREATE INDEX IF NOT EXISTS ix_odl_outbox_id ON platform.outbox_dead_letter (outbox_id);
 
--- ---------- 权限（M0 最小口径：infra role 独占读写，public 已收回） ----------
+-- ---------- 权限（M0 占位口径，同 V1 头注：role 均 NOLOGIN，应用账号接线与完整授权在 M1） ----------
+-- platform 表权限只授 ljr_platform：业务模块（含 demo）对 outbox/留痕的写入一律经基座服务（recordOutbox/守卫），
+-- 不授业务 role 直连 platform 表（边界纪律，架构 §3.2）。当前不存在也不追求「单角色跑通全链路」——
+-- 应用账号体系（NestJS 进程以何角色连接、跨 schema 授权如何收敛）是 M1 接线决策，
+-- 勿据本段 GRANT 集反推运行时账号模型（T4 跨 schema 检查亦以此口径解读）。
 GRANT SELECT, INSERT, UPDATE ON platform.outbox TO ljr_platform;
 GRANT SELECT, INSERT ON platform.outbox_dead_letter TO ljr_platform;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA platform TO ljr_platform;
