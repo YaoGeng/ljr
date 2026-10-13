@@ -48,6 +48,21 @@ export interface LogLineContext {
   readonly traceId?: string;
 }
 
+/**
+ * fields 入参形态：结构化字段对象，或 Nest LoggerService 的**位置参数字符串**。
+ * Nest 调自定义 logger 是 log(message, context)/error(message, stack, context)——第二参是
+ * 字符串（context/stack），不是字段对象；字符串若直接进 Object.entries 会被 splat 成
+ * 索引-单字符对（{"0":"I","1":"n",…}），必须在归一层拦截。
+ */
+export type LogFields = Record<string, unknown> | string;
+
+/** Nest 位置参数归一：字符串 → { context }（error 的 stack 形态在方法层另行装配） */
+function normalizeFields(fields: LogFields | undefined): Record<string, unknown> | undefined {
+  if (fields === undefined) return undefined;
+  if (typeof fields === 'string') return { context: fields };
+  return fields;
+}
+
 /** msg 序列化：Error 取 name+message；对象 JSON 化（失败降级 String，防 [object Object] 丢信息） */
 function messageToString(message: unknown): string {
   if (message instanceof Error) return `${message.name}: ${message.message}`;
@@ -60,11 +75,11 @@ function messageToString(message: unknown): string {
   }
 }
 
-/** 单行格式化（纯函数，单测直接断言键序与缺省行为） */
+/** 单行格式化（纯函数，单测直接断言键序与缺省行为；字符串 fields 归一为 context） */
 export function formatLogLine(
   level: TraceLogLevel,
   message: unknown,
-  fields: Record<string, unknown> | undefined,
+  fields: LogFields | undefined,
   context: LogLineContext,
 ): string {
   const entry: Record<string, unknown> = {
@@ -74,7 +89,7 @@ export function formatLogLine(
     ...(context.traceId === undefined ? {} : { trace_id: context.traceId }),
     msg: messageToString(message),
   };
-  for (const [key, value] of Object.entries(fields ?? {})) {
+  for (const [key, value] of Object.entries(normalizeFields(fields) ?? {})) {
     entry[key] = serializeField(value);
   }
   return JSON.stringify(entry);
@@ -92,31 +107,38 @@ export class TraceLogger {
     this.sink = options.sink ?? ((line) => console.log(line));
   }
 
-  debug(message: unknown, fields?: Record<string, unknown>): void {
+  debug(message: unknown, fields?: LogFields): void {
     this.write('debug', message, fields);
   }
 
-  info(message: unknown, fields?: Record<string, unknown>): void {
+  info(message: unknown, fields?: LogFields): void {
     this.write('info', message, fields);
   }
 
-  warn(message: unknown, fields?: Record<string, unknown>): void {
+  warn(message: unknown, fields?: LogFields): void {
     this.write('warn', message, fields);
   }
 
-  error(message: unknown, fields?: Record<string, unknown>): void {
+  /** Nest LoggerService.error(message, stack, context) 位置参数形态：字符串第二参是 stack */
+  error(message: unknown, fieldsOrStack?: LogFields, context?: string): void {
+    const fields =
+      typeof fieldsOrStack === 'string'
+        ? { stack: fieldsOrStack, ...(context === undefined ? {} : { context }) }
+        : context === undefined
+          ? fieldsOrStack
+          : { ...(fieldsOrStack ?? {}), context };
     this.write('error', message, fields);
   }
 
-  log(message: unknown, fields?: Record<string, unknown>): void {
+  log(message: unknown, fields?: LogFields): void {
     this.write('info', message, fields);
   }
 
-  verbose(message: unknown, fields?: Record<string, unknown>): void {
+  verbose(message: unknown, fields?: LogFields): void {
     this.write('debug', message, fields);
   }
 
-  private write(level: TraceLogLevel, message: unknown, fields?: Record<string, unknown>): void {
+  private write(level: TraceLogLevel, message: unknown, fields?: LogFields): void {
     try {
       const line = formatLogLine(level, message, fields, {
         service: this.service,

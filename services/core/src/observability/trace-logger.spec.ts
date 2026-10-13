@@ -69,6 +69,28 @@ describe('TraceLogger：日志行带 trace_id', () => {
     ).toContain('weird');
   });
 
+  // Nest LoggerService 位置参数形态（评审修复环 1/5）：字符串第二参是 context/stack，
+  // 不是字段对象——不得被 Object.entries splat 成索引-单字符对（{"0":"I","1":"n",…}）
+  it('Nest 字符串 context 调用形态：log(msg, context) → context 字段就位，无单字符垃圾键', () => {
+    logger.log('Nest 启动', 'InstanceLoader');
+    const entry = lastLine();
+    expect(entry.msg).toBe('Nest 启动');
+    expect(entry.context).toBe('InstanceLoader');
+    expect(Object.keys(entry).filter((k) => /^\d+$/.test(k))).toEqual([]);
+    // 纯函数同口径：字符串 fields 归一为 context
+    expect(JSON.parse(formatLogLine('info', 'm', 'Ctx', { service: 'x' })).context).toBe('Ctx');
+  });
+
+  it('error(message, stack, context) 三参形态：stack 与 context 均入行、不被 splat', () => {
+    logger.error('初始化失败', 'Error: boom\n    at bootstrap (main.ts:21:5)', 'Bootstrap');
+    const entry = lastLine();
+    expect(entry.level).toBe('error');
+    expect(entry.msg).toBe('初始化失败');
+    expect(entry.stack).toContain('Error: boom');
+    expect(entry.context).toBe('Bootstrap');
+    expect(Object.keys(entry).filter((k) => /^\d+$/.test(k))).toEqual([]);
+  });
+
   it('sink 抛异常不外冒（日志永不反噬业务）', () => {
     const boom = new TraceLogger({
       service: 'x',
