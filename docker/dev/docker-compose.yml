@@ -1,0 +1,56 @@
+# M0-3 dev 数据库栈（docker 轨，ADR-0002）
+# 注意：本仓库当前开发机无容器运行时，本文件未在本机运行验证（YAML 已做 Node 解析自检）；
+#       实际运行验证留待 M0-5/T4 的 GitHub Actions 容器环境。
+# 口径：
+#   - 镜像一律锁 tag 禁 latest（ADR-0002 施工约束）
+#   - 口令占位 + env 注入：LJR_PG_PASSWORD（见 .env.example），密钥禁入文件
+#   - 与 portable 轨（scripts/db/*.mjs）共用 services/core/flyway.conf 与 127.0.0.1:5435 端口口径
+name: ljr-dev
+
+services:
+  postgres:
+    # PG15 + pgvector（portable 轨暂未含 pgvector，M0 无向量操作；E3 施工前补齐，见 task-2 报告）
+    # tag 0.8.0-pg15 为锁定版本；本机无法访问 Docker Hub 复核 tag 存在性，T4 CI 首跑确认
+    image: pgvector/pgvector:0.8.0-pg15
+    environment:
+      POSTGRES_USER: postgres
+      # dev 占位口令（生产/共享环境必须经 .env 或环境变量注入真值）
+      POSTGRES_PASSWORD: ${LJR_PG_PASSWORD:-ljr-dev-only}
+      POSTGRES_DB: ljr_dev
+    command:
+      - postgres
+      - -c
+      - timezone=Asia/Shanghai
+      - -c
+      - log_timezone=Asia/Shanghai
+    ports:
+      - '127.0.0.1:5435:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d ljr_dev']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  flyway:
+    # Flyway 社区版官方镜像，锁 tag（v13.10.0，2026-10-08 发布，与 GitHub release 对齐）
+    image: flyway/flyway:13.10.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      FLYWAY_URL: jdbc:postgresql://postgres:5432/ljr_dev
+      FLYWAY_USER: postgres
+      FLYWAY_PASSWORD: ${LJR_PG_PASSWORD:-ljr-dev-only}
+    volumes:
+      # 与 portable 轨共用同一份配置（services/core/flyway.conf）
+      - ../../services/core/flyway.conf:/flyway/conf/flyway.conf:ro
+      # locations=filesystem:migrations 相对容器 CWD(/flyway) 解析，见 flyway.conf 注释
+      - ../../services/core/migrations:/flyway/migrations:ro
+    # CI/演练用法：docker compose run --rm flyway migrate | validate | clean（clean 仅 dev，ADR-0002）
+    command: -connectRetries=10 migrate
+
+volumes:
+  pgdata:

@@ -15,6 +15,7 @@ export default [
       'prototype/**',
       '.superpowers/**',
       '.zcode/**',
+      '.tools/**', // M0-3 portable 数据库工具栈（本地解压，已 gitignore）
     ],
   },
   eslint.configs.recommended,
