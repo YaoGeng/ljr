@@ -93,33 +93,38 @@ export function toLexiconContent(entries: readonly LexiconWordEntry[]): LexiconC
   return { words: entries };
 }
 
-/** 词库 content 结构判定（读取面防御，结构契约见 word-dict.types.ts 注释） */
+/**
+ * 词库 content 结构判定（读取面防御，结构契约见 word-dict.types.ts 注释）。
+ * 评审 Important-1：除形状外校验**规范形不变量** `word === normalizeWord(word)`（小写规范形是
+ * 匹配正确性的前提——扫描文本统一 toLowerCase，非规范形词条在自动机上永不可达=静默 fail-open
+ * 风控漏拦，且 currentBlockWords 会向 E1 吐非规范形词）。写面 normalizeWordEntries 保证规范形；
+ * 经其它路径（H7 通用面/历史脏数据）入册的脏行由读取面显性报错（parseLexiconContent
+ * InternalError），宁炸不降级。
+ */
 export function isLexiconShape(content: Record<string, unknown>): content is LexiconContent {
   const words = content['words'];
   return (
     Array.isArray(words) &&
-    words.every(
-      (w) =>
-        typeof w === 'object' &&
-        w !== null &&
-        typeof (w as { word?: unknown }).word === 'string' &&
-        (w as { word: string }).word.length > 0 &&
-        (w as { word: string }).word.length <= WORD_MAX_LEN &&
-        typeof (w as { action?: unknown }).action === 'string' &&
-        isWordAction((w as { action: string }).action),
-    )
+    words.every((w) => {
+      if (typeof w !== 'object' || w === null) return false;
+      const word = (w as { word?: unknown }).word;
+      if (typeof word !== 'string' || word.length === 0 || word.length > WORD_MAX_LEN) return false;
+      if (word !== normalizeWord(word)) return false; // 规范形不变量
+      const action = (w as { action?: unknown }).action;
+      return typeof action === 'string' && isWordAction(action);
+    })
   );
 }
 
 /**
- * 词库 content 提取（读取面）：结构违例=InternalError 显性化——判定引擎不得静默降级为空词表
- * （风控面裸奔），同 parseNoticeContent「宁炸读端」口径。
+ * 词库 content 提取（读取面）：结构/规范形违例=InternalError 显性化——判定引擎不得静默降级为
+ * 空/部分词表（风控面裸奔），同 parseNoticeContent「宁炸读端」口径。
  */
 export function parseLexiconContent(content: Record<string, unknown>): LexiconContent {
   if (!isLexiconShape(content)) {
     throw new AppError(
       ErrorCode.InternalError,
-      `词库内容结构不合法（H5 §2 定义 {words:[{word, action}]}）：${canonicalJson(content).slice(0, 200)}`,
+      `词库内容结构不合法（H5 §2 定义 {words:[{word(小写规范形), action}]}，词库正文只能经词库管理面写入）：${canonicalJson(content).slice(0, 200)}`,
     );
   }
   return {

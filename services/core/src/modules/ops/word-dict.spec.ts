@@ -6,9 +6,11 @@ import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { Pool } from 'pg';
 import { ensureTestDatabase, truncateAll } from '../../infrastructure/testing/db';
+import { PgPoolService } from '../../infrastructure/sql';
 import { SchedulerService } from '../schedule/scheduler.service';
 import { RULE_CURRENT_CACHE, InProcessRuleCurrentCache } from './rule-center.cache';
 import { RULE_PUBLISHED_TOPIC } from './rule-center.events';
+import { RuleCenterService } from './rule-center.service';
 import { WordDictAutomatonCache } from './word-dict.cache';
 import { DICTIONARY_UPDATED_TOPIC } from './word-dict.events';
 import { WordDictModule } from './word-dict.module';
@@ -351,6 +353,30 @@ describe('H5 词库切片机制（需 PG）', () => {
     expect(r.action).toBe('BLOCK'); // 1998 % 3 = 0 → BLOCK
     expect(r.hits.map((h) => h.word)).toEqual(['样例词1998号']);
     expect(elapsed).toBeLessThan(50);
+  });
+
+  it('评审 Important-1 读取面规范形防御：非规范形词条经 H7 通道入册后，加载/读取面 InternalError 显性报错（宁炸不降级，不静默装进自动机 fail-open）', async () => {
+    // 绕过 putDictionary 写面规范化，模拟「H7 通用管理面/历史脏数据」写入非规范形词条
+    //（'GUARANTEED' 在已小写的扫描文本上永不可达=风控漏拦）
+    const rules = app.get(RuleCenterService);
+    const poolSvc = app.get(PgPoolService);
+    await poolSvc.withTransaction((uow) =>
+      rules.createLexiconVersion(uow, {
+        ruleKey: 'wordlist.legal_industry',
+        version: 1,
+        content: { words: [{ word: 'GUARANTEED', action: 'BLOCK' }] },
+      }),
+    );
+    // 三个读取面全部显性报错：不静默以脏词表判定、不向 E1 吐非规范形词
+    await expect(svc.checkRisk({ content: 'guaranteed 承诺' })).rejects.toMatchObject({
+      code: ErrorCode.InternalError,
+    });
+    await expect(svc.currentBlockWords('legal_industry')).rejects.toMatchObject({
+      code: ErrorCode.InternalError,
+    });
+    await expect(svc.getDictionaries()).rejects.toMatchObject({
+      code: ErrorCode.InternalError,
+    });
   });
 });
 

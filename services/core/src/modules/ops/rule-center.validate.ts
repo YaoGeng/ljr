@@ -1,7 +1,8 @@
 /**
  * H7 规则中心校验与内容结构（纯函数，服务层与 HTTP 入参解析共用）。
  *
- * 规则键格式：1-32 位字母/数字/下划线/点（DB varchar(32)；§2 规则域前缀 + H5 词库 wordlist.*）。
+ * 规则键格式：1-32 位字母/数字/下划线/点（DB varchar(32)；§2 规则域前缀；wordlist.* 为保留
+ * 前缀=H5 词库专用通道，通用管理面拒绝——assertNotReservedRuleKey）。
  * 内容：恒为 JSON 对象（非数组/null）；canonicalJson 做键序无关的全等比较（§5 幂等键重放判定）。
  * 房间须知（R-02）结构：{title, paragraphs, disclosures}——创建期校验（InvalidArgument 早反馈）+
  * 读取期再校验（历史脏数据 InternalError 显性化），结构定义见 rule-center.types.ts 注释。
@@ -15,6 +16,23 @@ export function assertRuleKey(ruleKey: string): void {
     throw new AppError(
       ErrorCode.InvalidArgument,
       `rule_key 须为 1-32 位字母/数字/下划线/点：${JSON.stringify(ruleKey)}`,
+    );
+  }
+}
+
+/**
+ * 保留前缀（R15，评审 Important-1 系统性修法）：wordlist.* 为 H5 词库专用通道（R-03 免公示
+ * 通道写入，content 有词库专用结构校验/规范形不变量）——通用规则管理面（createDraft）拒绝，
+ * 防止绕过词库结构校验写入静默 fail-open 的脏词库。createLexiconVersion 内部通道不受限
+ * （写面自带规范化校验）。前缀集随新专用通道出现而扩充。
+ */
+export const RESERVED_RULE_KEY_PREFIXES: readonly string[] = ['wordlist.'];
+
+export function assertNotReservedRuleKey(ruleKey: string): void {
+  if (RESERVED_RULE_KEY_PREFIXES.some((p) => ruleKey.startsWith(p))) {
+    throw new AppError(
+      ErrorCode.RuleKeyReserved,
+      `rule_key 前缀 ${RESERVED_RULE_KEY_PREFIXES.join('/')} 保留（词库须经 H5 词库管理面写入）：${ruleKey}`,
     );
   }
 }

@@ -455,6 +455,19 @@ describe('H7 规则中心机制（需 PG）', () => {
     });
   });
 
+  it('R15 保留前缀：createDraft 拒绝 wordlist.*（词库专用通道防绕过结构校验）；createLexiconVersion 不受影响（既有用例即证）', async () => {
+    await expect(
+      svc.createDraft({ ruleKey: 'wordlist.illegal_content', version: 1, content: { words: [] } }),
+    ).rejects.toMatchObject({ code: ErrorCode.RuleKeyReserved });
+    await expect(
+      svc.createDraft({ ruleKey: 'wordlist.x', version: 1, content: {} }),
+    ).rejects.toMatchObject({ code: ErrorCode.RuleKeyReserved });
+    // 非保留前缀不受影响
+    await expect(
+      svc.createDraft({ ruleKey: 'word_list.rules', version: 1, content: {} }),
+    ).resolves.toMatchObject({ ruleKey: 'word_list.rules' });
+  });
+
   it('GET /rules/current：current=现行生效版 + pending=公示中版本（App 规则页「即将生效」）', async () => {
     expect(await svc.currentWithPending('price_change.rate')).toEqual({
       current: null,
@@ -546,6 +559,13 @@ describe('H7 REST 契约（§5，需 PG）', () => {
       .send({ rule_key: 'BAD KEY!', version: 1, content: {} });
     expect(bad.status).toBe(400);
     expect(bad.body.code).toBe('E_INVALID_ARGUMENT');
+
+    // R15：wordlist.* 保留前缀经通用管理面拒绝（词库专用通道=H5，防绕过词库结构校验）
+    const reserved = await request(app.getHttpServer())
+      .post('/admin/rules')
+      .send({ rule_key: 'wordlist.legal_industry', version: 1, content: { words: [] } });
+    expect(reserved.status).toBe(400);
+    expect(reserved.body.code).toBe('E_RULE_KEY_RESERVED');
   });
 
   it('POST /admin/rules/:key/publish → 200 effectiveAt；未知 404；已生效 409', async () => {

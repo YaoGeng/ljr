@@ -46,6 +46,7 @@ import type {
 import {
   assertContent,
   assertEffectiveAt,
+  assertNotReservedRuleKey,
   assertRuleKey,
   assertVersion,
   canonicalJson,
@@ -120,6 +121,9 @@ export class RuleCenterService {
    */
   async createDraft(input: CreateDraftInput): Promise<CreateDraftResult> {
     assertRuleKey(input.ruleKey);
+    // R15：wordlist.* 保留前缀经通用管理面拒绝（词库专用通道=H5，防绕过词库结构校验，
+    // 评审 Important-1 系统性修法）；免公示通道 createLexiconVersion 不受限
+    assertNotReservedRuleKey(input.ruleKey);
     assertVersion(input.version);
     assertContent(input.content);
     if (input.ruleKey === this.config.noticeRuleKey && !isNoticeShape(input.content)) {

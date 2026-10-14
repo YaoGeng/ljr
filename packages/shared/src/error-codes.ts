@@ -34,6 +34,8 @@ export const ErrorCode = {
   RulePublishConflict: 'E_RULE_PUBLISHING',
   /** 词库内重复词：同一次词库提交中存在规范化后重复的词（H5 §5 400 DUP_WORD；H5 W1） */
   DuplicateWord: 'E_DUP_WORD',
+  /** 规则中心保留前缀：rule_key 命中保留前缀（wordlist.* 为 H5 词库专用通道），通用管理面拒绝（H7 R15） */
+  RuleKeyReserved: 'E_RULE_KEY_RESERVED',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -83,6 +85,10 @@ const ERROR_CODE_META: Readonly<Record<ErrorCode, ErrorCodeMeta>> = {
   [ErrorCode.DuplicateWord]: {
     httpStatus: 400,
     defaultMessage: '词库中存在重复词（大小写不敏感判定）',
+  },
+  [ErrorCode.RuleKeyReserved]: {
+    httpStatus: 400,
+    defaultMessage: 'rule_key 使用保留前缀（wordlist.* 为词库专用通道，须经词库管理面写入）',
   },
 };
 
