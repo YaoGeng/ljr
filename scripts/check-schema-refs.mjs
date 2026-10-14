@@ -68,6 +68,14 @@ export const WHITELIST = {
 
 const RE_REF = /([a-z_][a-z0-9_]*)\.([a-z_][a-z0-9_]*)/g;
 
+/**
+ * 测试夹具豁免（文件级，M1-W1 I1 起需要）：testing/db.ts 的 TEST_DB_TABLES 是 TRUNCATE 清场清单，
+ * 职责即枚举全部业务表（每模块施工迁移动必追加，core/AGENTS.md WHERE TO LOOK 明文口径）——
+ * test-only 清场动作，不是运行时数据访问路径，规则 B 的「横切基座不得直连业务表」不适用于此。
+ * 运行时直连（outbox/guard/app 壳等）照常违规，豁免面只有列出的文件。
+ */
+export const TEST_HELPER_FILES = new Set(['services/core/src/infrastructure/testing/db.ts']);
+
 /** 模块目录名 → schema 名（agent-assist → agent_assist，对齐 V1 偏离声明） */
 export function moduleDirToSchema(dir) {
   return dir.replaceAll('-', '_');
@@ -111,6 +119,7 @@ export function analyzeFiles(files, manifest) {
   for (const f of files) {
     const isSql = f.path.endsWith('.sql');
     const owner = isSql ? null : ownerFromTsPath(f.path);
+    if (!isSql && TEST_HELPER_FILES.has(f.path)) continue; // 测试夹具豁免（见 TEST_HELPER_FILES 头注）
     for (const ref of extractRefs(f.text)) {
       const { schema, table } = ref;
       if (whitelist.has(schema)) continue; // 白名单放行（含 .sql）

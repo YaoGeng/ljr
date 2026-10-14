@@ -119,6 +119,24 @@ describe('② 业务跨域违规（不漏报，exit 1 语义）', () => {
     expect(v.every((x) => x.rule === 'B')).toBe(true);
   });
 
+  test('测试夹具豁免：testing/db.ts 的 TRUNCATE 清场清单枚举业务表 = 0 违规（M1-W1 起，运行时基座不豁免）', () => {
+    const v = violationsOf([
+      {
+        path: 'services/core/src/infrastructure/testing/db.ts',
+        text: "export const TEST_DB_TABLES = ['platform.outbox', 'trade.orders', 'notify.notifications'] as const;",
+      },
+    ]);
+    expect(v).toEqual([]);
+    // 豁免面只有白名单文件本身：其他基座路径直连业务表仍违规
+    const v2 = violationsOf([
+      {
+        path: 'services/core/src/infrastructure/testing/other-helper.ts',
+        text: 'SELECT * FROM trade.orders',
+      },
+    ]);
+    expect(v2).toHaveLength(1);
+  });
+
   test('连字符模块目录归一化：agent-assist 目录的 owner=agent_assist', () => {
     expect(moduleDirToSchema('agent-assist')).toBe('agent_assist');
     expect(ownerFromTsPath('services/core/src/modules/agent-assist/x.ts')).toBe('agent_assist');

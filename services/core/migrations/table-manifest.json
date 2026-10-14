@@ -21,6 +21,10 @@
     "demo.consumed_events": "V3__state_transition_log.sql",
     "demo.order_actions": "V3__state_transition_log.sql",
     "demo.orders": "V3__state_transition_log.sql",
+    "notify.notification_prefs": "V4__notify.sql",
+    "notify.notification_templates": "V4__notify.sql",
+    "notify.notifications": "V4__notify.sql",
+    "notify.verify_code_sends": "V4__notify.sql",
     "platform.outbox": "V2__outbox.sql",
     "platform.outbox_dead_letter": "V2__outbox.sql",
     "platform.state_transition_log": "V3__state_transition_log.sql"
