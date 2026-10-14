@@ -5,6 +5,7 @@ import { CONFIG_PROVIDER, type ConfigProvider } from './config/config-provider.i
 import { TRACE_LOGGER } from './observability/observability.module';
 import { OutboxRelayService } from './infrastructure/outbox/outbox-relay.service';
 import { NotifyDispatchWorker } from './modules/notify/notify-dispatch.worker';
+import { SchedulerWorker } from './modules/schedule/scheduler.worker';
 
 async function bootstrap(): Promise<void> {
   // bufferLogs：create 期间的启动日志先进缓冲，挂上 TraceLogger（含 trace_id 注入）后统一回放
@@ -18,6 +19,10 @@ async function bootstrap(): Promise<void> {
 
   // 通知下发 worker（M1-W1 I1）：interval 经 LJR_NOTIFY_DISPATCH_INTERVAL_MS 配置，同上仅入口启动
   app.get(NotifyDispatchWorker).start();
+
+  // 调度节拍器（M1-W1 I2，ADR-0003）：双通道 interval 经 LJR_SCHEDULER_*_INTERVAL_MS 配置，
+  // 仅入口启动（调度器不自启动）；节拍为内存态非事实源，正确性不依赖它
+  app.get(SchedulerWorker).start();
 
   // 监听端口经配置装载（M0-8：env PORT > config/<env>/app.env > 默认 3000）
   const config = app.get<ConfigProvider>(CONFIG_PROVIDER);

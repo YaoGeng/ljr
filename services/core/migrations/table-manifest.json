@@ -27,6 +27,8 @@
     "notify.verify_code_sends": "V4__notify.sql",
     "platform.outbox": "V2__outbox.sql",
     "platform.outbox_dead_letter": "V2__outbox.sql",
-    "platform.state_transition_log": "V3__state_transition_log.sql"
+    "platform.state_transition_log": "V3__state_transition_log.sql",
+    "schedule.schedule_job_log": "V5__schedule.sql",
+    "schedule.schedule_jobs": "V5__schedule.sql"
   }
 }
