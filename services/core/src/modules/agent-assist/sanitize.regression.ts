@@ -149,3 +149,38 @@ export const SANITIZE_REGRESSION_NEGATIVE: readonly string[] = [
   '公司让我签放弃社保的承诺书，合法吗？',
   '加班到晚上10点，打车花了23块5，能报销吗？',
 ];
+
+/**
+ * 已知边界（R17 评审裁定，Task 7 fix-1）：**连续数字串内嵌 PII——现状 0 命中整串放行**。
+ *
+ * 用户手滑多打/少空格使 PII 与相邻数字粘连成长数字串是高频现实场景；位长前后望的设计对此
+ * 放行（与负样本「138001380001 位长越界」同一机制口径）。此节用例**钉住现行为**：未来引擎
+ * 改动若使本节转红（开始命中），必须有意识改判并同步升版规则集+更新本节与报告 ⚠ 清单——
+ * 过杀兜底（长串内提取手机/证号）R17 已裁决属口径变更，M2 NER 承担，规则引擎不实施。
+ * M2 范围划定锚点：漏报=漏堵，NER 规划按 m2Path 列覆盖（评审 Important-1 披露要求）。
+ */
+export interface SanitizeKnownBoundaryCase {
+  readonly name: string;
+  readonly text: string;
+  /** 现状放行的引擎机制口径 */
+  readonly boundary: string;
+  /** M2 NER 覆盖路径（范围划定披露） */
+  readonly m2Path: string;
+}
+
+export const SANITIZE_REGRESSION_KNOWN_BOUNDARY: readonly SanitizeKnownBoundaryCase[] = [
+  {
+    name: '手机号后粘数字成 15 位串（手滑多打，高频）：前 11 位为真实号段',
+    text: '手机138001380001234留错了',
+    boundary:
+      '前后望位长门：11 位号段被 15 位连续数字串吞没；ID15 出生段非法（月=00）、Luhn 不合均弃权 → 现状 0 命中整串放行（评审实测同）',
+    m2Path: 'M2 NER 长数字串分位候选提取+上下文打分（串内手机号识别），规则序尾部追加不改引擎',
+  },
+  {
+    name: '有效证号后多打一位（手滑多打，高频）：11010519491231002X 本身校验位合法',
+    text: '身份证11010519491231002X4',
+    boundary:
+      'ID18 后望 (?![\\dXx]) 见数字 → 位长门失败弃权（回溯不救）；其余规则位长不足 → 现状 0 命中整串放行（评审实测同）',
+    m2Path: '同上：M2 NER 长串内证号候选（滑窗+校验位容错）覆盖',
+  },
+];

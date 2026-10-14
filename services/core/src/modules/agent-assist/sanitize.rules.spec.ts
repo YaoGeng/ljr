@@ -5,7 +5,11 @@
  * 施工规格：docs/modules/E-AI辅助/E1-Agent草稿气泡管线.md §7 R-02、§9 TDD、§10 验收①。
  */
 import { describe, expect, it } from 'vitest';
-import { SANITIZE_REGRESSION_NEGATIVE, SANITIZE_REGRESSION_POSITIVE } from './sanitize.regression';
+import {
+  SANITIZE_REGRESSION_KNOWN_BOUNDARY,
+  SANITIZE_REGRESSION_NEGATIVE,
+  SANITIZE_REGRESSION_POSITIVE,
+} from './sanitize.regression';
 import { SANITIZE_RULESET_VERSION, sanitizeText } from './sanitize.rules';
 
 /** 断言一批命中后：每个 value 不残留（0 漏杀）、类型计数精确、映射值=原文码点切片 */
@@ -138,5 +142,21 @@ describe('各规则边界（每条规则至少 1 个独立用例）', () => {
     expect(r.hits).toHaveLength(1);
     expect(r.hits[0]?.type).toBe('id_card');
     expect(r.sanitized).toBe('身份证[证件号]请核验');
+  });
+});
+
+/**
+ * 已知边界钉住（R17 评审 Important-1）：连续数字串内嵌 PII 现状 0 命中放行——评审实测两形态。
+ * 用例断言即现行为（应直接绿）；若转红=引擎行为被改动，须有意识改判并同步升版规则集、更新
+ * 本回归节与报告 ⚠ 清单（过杀兜底属口径变更，R17 裁决 M2 NER 承担，勿在规则引擎实施）。
+ */
+describe('已知边界钉住（现状放行）：连续数字串内嵌 PII 的漏杀面（M2 NER 覆盖路径见回归集 m2Path）', () => {
+  it('手滑多打/粘连成 15 位串与证号后多一位：现状 0 命中整串放行（R17 评审实测同，钉住防无记录变更）', () => {
+    for (const c of SANITIZE_REGRESSION_KNOWN_BOUNDARY) {
+      const r = sanitizeText(c.text);
+      expect(r.hits, `${c.name} —— ${c.boundary}`).toEqual([]);
+      expect(r.sanitized, c.name).toBe(c.text);
+      expect(r.placeholders, c.name).toEqual([]);
+    }
   });
 });
