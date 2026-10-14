@@ -3,169 +3,113 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>律聚人 · 律师端 · 创建场次</title>
+<title>l04 · 创建场次 — 律聚人原型</title>
 <link rel="stylesheet" href="../assets/app.css">
-<style>.tag.sel{background:var(--ink-700);color:#fff;border-color:var(--ink-700);}</style>
 </head>
-<body class="role-lawyer">
+<body>
 <div class="desk">
-  <div class="desk-label"><b>律聚人 · 律师端</b><code>l04 创建场次</code><span>PRD §7.2.4 创建场次 / C1 原子锁定时间段</span></div>
-
+  <div class="desk-label">律聚人 · <b>律师端 l04</b> · 创建场次</div>
   <div class="phone">
-    <div class="statusbar"><span class="num">20:15</span><div class="notch"></div><span>5G&nbsp;▮▮▮</span></div>
-
-    <div class="appbar">
-      <a class="back" href="l03-sessions.html"><svg class="ic" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></a>
-      <div class="title">创建场次</div>
-      <div class="spacer"></div>
-    </div>
-
     <div class="screen">
-      <div class="steps">
-        <div class="stp done" data-n="1">选时间段</div>
-        <div class="stp on" data-n="2">开团配置</div>
-        <div class="stp" data-n="3">提交</div>
+
+      <div class="statusbar">
+        <span>9:41</span>
+        <span class="sic">
+          <svg width="17" height="12" viewBox="0 0 17 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="4.5" y="5" width="3" height="7" rx="1"/><rect x="9" y="2.5" width="3" height="9.5" rx="1"/><rect x="13.5" y="0" width="3" height="12" rx="1"/></svg>
+          <svg width="24" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3.5" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="15" height="8" rx="2" fill="currentColor"/><path d="M23 4v4c1.2-.3 2-1 2-2s-.8-1.7-2-2z" fill="currentColor" opacity=".4"/></svg>
+        </span>
+      </div>
+      <div class="navbar">
+        <a class="back" href="l03-sessions.html">‹</a>
+        <div class="ttl">创建场次</div>
+        <a class="act" href="l07-schedule.html">时间表 ›</a>
       </div>
 
-      <!-- ① 时间段选择 -->
-      <div class="sec">
-        <div class="sec-head"><h3>选择时间段</h3><a class="more" href="l07-schedule.html">时间表
-          <svg class="ic ic-sm" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></a></div>
-        <div class="radio-cards">
-          <div class="radio-card on" onclick="seg(this)">
-            <span class="radio-dot"></span>
-            <div class="rc-body">
-              <div class="rc-title num">10-15 周四 20:00 – 21:30</div>
-              <div class="rc-desc">空闲 · 90 分钟 · 与默认时段一致</div>
+      <!-- ① 选时段 -->
+      <section class="sec">
+        <div class="sec-h"><span class="t">① 选时段</span><span class="cnt">来自你的时间表</span></div>
+        <div class="card col gap12">
+          <div>
+            <div class="t12 c3 mb8">周五 10-16</div>
+            <div class="chips">
+              <span class="ck" style="opacity:.45;border-style:dashed">20:00–21:00 · 已占用</span>
             </div>
-            <span class="tag tag-ok">已选</span>
           </div>
-          <div class="radio-card" style="opacity:.55;pointer-events:none;">
-            <span class="radio-dot"></span>
-            <div class="rc-body">
-              <div class="rc-title num">10-16 周五 20:00 – 21:00</div>
-              <div class="rc-desc">已占用 · 场次：加班费与社保补缴实务答疑</div>
+          <div>
+            <div class="t12 c3 mb8">周六 10-17</div>
+            <div class="chips">
+              <span class="ck">14:00–15:00</span>
+              <span class="ck on">15:00–16:00 ✓</span>
             </div>
-            <span class="tag">已占用</span>
           </div>
-          <div class="radio-card" onclick="seg(this)">
-            <span class="radio-dot"></span>
-            <div class="rc-body">
-              <div class="rc-title num">10-18 周日 19:00 – 20:30</div>
-              <div class="rc-desc">空闲 · 90 分钟</div>
+          <div>
+            <div class="t12 c3 mb8">周日 10-18</div>
+            <div class="chips">
+              <span class="ck">14:00–15:00</span>
+              <span class="ck">20:00–21:00</span>
             </div>
-            <span class="tag">空闲</span>
-          </div>
-          <div class="radio-card" onclick="seg(this)">
-            <span class="radio-dot"></span>
-            <div class="rc-body">
-              <div class="rc-title num">10-19 周一 20:00 – 21:30</div>
-              <div class="rc-desc">空闲 · 90 分钟</div>
-            </div>
-            <span class="tag">空闲</span>
           </div>
         </div>
-        <div class="notice mt12">
-          <svg class="ic ic-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 8v5M12 16.5v.01"/></svg>
-          <div>时间表变更不影响已排期场次；被 C2B 拼团锁定或已有场次的时间段不可选。</div>
+        <div class="note mt10">
+          <span class="ic">ℹ︎</span>
+          <span>同一律师同一时间段只能有一个有效场次，<b>创建即原子锁定</b>；锁定随流标、取消或场次结束释放。</span>
         </div>
-      </div>
+      </section>
 
       <!-- ② 开团配置 -->
-      <div class="sec">
-        <div class="sec-head"><h3>开团配置</h3><span class="tag tag-ai">已按默认值自动填入</span></div>
+      <section class="sec">
+        <div class="sec-h"><span class="t">② 开团配置</span><a class="more" href="l08-pricing.html">默认值来自价格配置 ›</a></div>
         <div class="card">
           <div class="field">
-            <label>人头价（元 / 人）<em>*</em></label>
-            <div class="input-suffix">
-              <input class="input num" value="88" style="padding-right:76px;">
-              <span class="tag" style="position:absolute;right:8px;top:9px;">默认 ¥88</span>
-            </div>
-            <div class="field-tip">本次修改仅对该场次有效，不改变默认价格</div>
+            <label class="lb">本次人头价（元 / 人）</label>
+            <input class="input" value="99">
           </div>
           <div class="field">
-            <label>开团人数<em>*</em></label>
-            <div class="row-between">
-              <div class="stepper"><button type="button">−</button><span class="val num">5</span><button type="button">+</button></div>
-              <span class="small">可设 1 – 6 人</span>
-            </div>
+            <label class="lb">本次开团人数（固定，满员成团）</label>
+            <input class="input" value="6">
           </div>
-          <div class="field">
-            <label>计价方式</label>
-            <div class="seg">
-              <button class="on" onclick="seg(this)">人头价</button>
-              <button onclick="seg(this)">场次总价</button>
-            </div>
-            <div class="field-tip">场次总价模式按总价 ÷ 成团人数分摊：默认 ¥440 ÷ 5 人 = ¥88/人</div>
-          </div>
-          <div class="field">
-            <label>房间沟通形式（可多选）</label>
-            <div style="display:flex;gap:8px;">
-              <span class="tag sel" style="cursor:pointer;" onclick="tg(this)">文本</span>
-              <span class="tag" style="cursor:pointer;" onclick="tg(this)">语音</span>
-              <span class="tag" style="cursor:pointer;" onclick="tg(this)">视频</span>
-            </div>
-            <div class="field-tip">可多选，用户端将按此展示本场沟通形式</div>
-          </div>
-          <div class="field" style="margin-bottom:0;">
-            <label>成团截止</label>
-            <div class="seg">
-              <button onclick="seg(this)">开始前 48h</button>
-              <button class="on" onclick="seg(this)">开始前 24h</button>
-              <button onclick="seg(this)">开始前 12h</button>
-            </div>
-            <div class="field-tip">默认开始前 24h 截止，逾期未成团自动流标并全额退款用户</div>
+          <div class="flex" style="background:var(--ink-50);border:1px solid var(--ink-100);border-radius:var(--r-md);padding:11px 14px">
+            <span class="t13 c2">场次总价 = ¥99 × 6 人</span>
+            <span class="price t18" style="margin-left:auto"><small>¥</small>594</span>
           </div>
         </div>
-        <div class="notice warn mt12">
-          <svg class="ic ic-sm" viewBox="0 0 24 24"><path d="M12 4l1.8 5.2L19 11l-5.2 1.8L12 18l-1.8-5.2L5 11l5.2-1.8z"/></svg>
-          <div>有进行中拼团时改价将触发信用规则（涨价 -5 / 降价需审批），详见<a href="l08-pricing.html" style="font-weight:600;text-decoration:underline;">价格与 1对1 配置</a>。</div>
+        <div class="note mt10">
+          <span class="ic">ℹ︎</span>
+          <span>本次修改的价格与人数<b>仅对本场有效</b>，不改变默认价格配置；用户支付时锁定价格快照，之后改价不影响已报名用户。</span>
         </div>
-      </div>
+      </section>
 
-      <!-- ③ 场次信息 -->
-      <div class="sec">
-        <div class="sec-head"><h3>场次信息</h3></div>
+      <!-- ③ 沟通形式 -->
+      <section class="sec">
+        <div class="sec-h"><span class="t">③ 沟通形式</span><span class="cnt">多选</span></div>
         <div class="card">
-          <div class="field"><label>场次主题<em>*</em></label><input class="input" placeholder="例：加班费与社保补缴实务答疑"></div>
-          <div class="field" style="margin-bottom:0;"><label>简介</label>
-            <textarea class="input" rows="3" placeholder="说明本场解答范围与适合人群，将在用户端展示"></textarea>
+          <div class="chips">
+            <span class="ck on">文本 ✓</span>
+            <span class="ck on">语音 ✓</span>
+            <span class="ck">视频</span>
           </div>
         </div>
+      </section>
+
+      <!-- ④ 报名截止 -->
+      <section class="sec">
+        <div class="sec-h"><span class="t">④ 报名截止</span></div>
+        <div class="card">
+          <div class="field" style="margin-bottom:0">
+            <label class="lb">成团截止时间</label>
+            <input class="input" value="开始前 24 小时 · 10-16 周五 15:00" readonly>
+            <div class="hint">截止时未达 6 人 → 流标，用户全额退款</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 底部主操作 -->
+      <div class="ctabar">
+        <a class="btn btn-p btn-block btn-lg" href="l03-sessions.html">确认创建 · 锁定时段</a>
       </div>
 
-      <div class="notice mb12">
-        <svg class="ic ic-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 8v5M12 16.5v.01"/></svg>
-        <div><b>开团即原子锁定该时间段</b>：提交后该时段即刻为你保留，其他拼团与场次不可再占用。</div>
-      </div>
-      <a class="btn btn-primary btn-block btn-lg" href="l03-sessions.html">确认开团（锁定该时间段）</a>
     </div>
-
-    <div class="tabbar">
-      <a href="l02-workbench.html">
-        <svg class="ic" viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10.5V20h12v-9.5"/></svg>
-        工作台
-      </a>
-      <a class="on" href="l03-sessions.html">
-        <svg class="ic" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M4 10h16M8 4v4M16 4v4"/></svg>
-        场次管理
-      </a>
-      <a href="l06-hall.html">
-        <svg class="ic" viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3"/><path d="M3.5 19c.8-3 3-4.5 5.5-4.5s4.7 1.5 5.5 4.5"/><circle cx="16.8" cy="9.5" r="2.2"/><path d="M16 14.7c2.2.3 4 1.6 4.7 4.3"/></svg>
-        接单大厅
-      </a>
-      <a href="l10-profile.html">
-        <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19.5c1-3.4 3.5-5 6.5-5s5.5 1.6 6.5 5"/></svg>
-        我的
-      </a>
-    </div>
-    <div class="homebar"></div>
   </div>
 </div>
-
-<script>
-function seg(el){[...el.parentNode.children].forEach(b=>b.classList.remove('on'));el.classList.add('on');}
-function tg(el){el.classList.toggle('sel');}
-</script>
 </body>
 </html>

@@ -3,322 +3,202 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>律聚人 · 运营后台 · 律师详情 · 张明远</title>
+<title>a04 · 律师详情 — 律聚人运营后台原型</title>
 <link rel="stylesheet" href="assets/admin.css">
 </head>
-<body class="admin">
+<body>
+
+<!-- ===== 侧栏（全站逐字一致，仅 class="on" 位置不同） ===== -->
 <aside class="sidebar">
-  <div class="brand">
-    <div class="logo">律</div>
-    <div><b>律聚人</b><small>运营后台 · Operations</small></div>
+  <div class="logo">
+    <div class="mk">律</div>
+    <div><b>律聚人</b><span>运营后台 · OPERATIONS</span></div>
   </div>
   <nav class="nav">
-    <div class="nav-group">总览</div>
+    <div class="grp">总览</div>
     <a href="a02-dashboard.html">
-      <svg class="ic" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="9" rx="1.5"/><rect x="13" y="4" width="7" height="5" rx="1.5"/><rect x="13" y="11" width="7" height="9" rx="1.5"/><rect x="4" y="15" width="7" height="5" rx="1.5"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
       数据看板
     </a>
-    <div class="nav-group">审核与风控</div>
+    <div class="grp">审核与风控</div>
     <a class="on" href="a03-lawyer-audit.html">
-      <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19.5c1-3.4 3.5-5 6.5-5s5.5 1.6 6.5 5"/></svg>
-      律师与资质管理<span class="n-badge num">5</span>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19.5c1-3.4 3.5-5 6.5-5s5.5 1.6 6.5 5"/></svg>
+      律师与资质管理<span class="bdg">5</span>
     </a>
     <a href="a08-risk.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M12 4l7 2.5v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9v-5z"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l7 2.5v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9v-5z"/></svg>
       风控与敏感词
     </a>
-    <div class="nav-group">交易与履约</div>
+    <div class="grp">交易与履约</div>
     <a href="a05-monitor.html">
-      <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4.5l3 2"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v4.5l3 2"/></svg>
       场次 / 房间监控
     </a>
     <a href="a06-tickets.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M4 5.5h16v10H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg>
-      纠纷工单与退款<span class="n-badge num">4</span>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5h16v10H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg>
+      纠纷工单与退款<span class="bdg">4</span>
     </a>
     <a href="a09-matching.html">
-      <svg class="ic" viewBox="0 0 24 24"><circle cx="8" cy="9" r="2.6"/><circle cx="16" cy="9" r="2.6"/><path d="M3 18c.7-2.4 2.6-3.6 5-3.6s4.3 1.2 5 3.6M13.5 14.8c2 .2 3.6 1.3 4.3 3.2"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="9" r="2.6"/><circle cx="16" cy="9" r="2.6"/><path d="M3 18c.7-2.4 2.6-3.6 5-3.6s4.3 1.2 5 3.6M13.5 14.8c2 .2 3.6 1.3 4.3 3.2"/></svg>
       人工撮合台
     </a>
-    <div class="nav-group">配置与合规</div>
+    <div class="grp">配置与合规</div>
     <a href="a10-rules.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M7 3.5h7l4 4V20.5H7z"/><path d="M14 3.5v4h4M10 12h6M10 15.5h6"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.5h7l4 4V20.5H7z"/><path d="M14 3.5v4h4M10 12h6M10 15.5h6"/></svg>
       规则中心
     </a>
     <a href="a11-specialty.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M12 4l1.8 5.2L19 11l-5.2 1.8L12 18l-1.8-5.2L5 11l5.2-1.8z"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l1.8 5.2L19 11l-5.2 1.8L12 18l-1.8-5.2L5 11l5.2-1.8z"/></svg>
       专项与知识库
     </a>
     <a href="a12-recruit.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10.5V20h12v-9.5"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10.5V20h12v-9.5"/></svg>
       招募与渠道
     </a>
     <a href="a13-compliance.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2.5h-15z"/><path d="M10 19a2 2 0 0 0 4 0"/><path d="M12 4V2.5"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2.5h-15z"/><path d="M10 19a2 2 0 0 0 4 0"/><path d="M12 4V2.5"/></svg>
       合规与审计
     </a>
-    <div class="nav-group">财务</div>
+    <div class="grp">财务</div>
     <a href="a14-settlement.html">
-      <svg class="ic" viewBox="0 0 24 24"><rect x="3.5" y="6.5" width="17" height="11" rx="2"/><path d="M3.5 10h17"/><circle cx="17" cy="14" r="1.2"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="6.5" width="17" height="11" rx="2"/><path d="M3.5 10h17"/><circle cx="17" cy="14" r="1.2"/></svg>
       资金与结算
     </a>
   </nav>
-  <div class="side-foot">律聚人运营后台 v1.0<br>只读角色操作全程留痕</div>
+  <div class="foot">律聚人运营后台 <b>v3.0</b><br>只读操作全程留痕 · 样例数据均为虚构</div>
 </aside>
 
 <div class="main">
   <header class="topbar">
-    <div class="crumb">审核与风控 / <a href="a03-lawyer-audit.html" style="color:var(--text-3);">律师与资质管理</a> / <b>张明远</b></div>
-    <div class="spacer"></div>
+    <div class="crumb">审核与风控 / <a href="a03-lawyer-audit.html" style="color:inherit">律师与资质管理</a> / <b>张明远</b></div>
+    <div class="sp"></div>
     <div class="search">
-      <svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5 20 20"/></svg>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5 20 20"/></svg>
       搜索场次 / 律师 / 用户 / 工单
+    </div>
+    <div class="tbtn">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+      <span class="dot"></span>
     </div>
     <div class="who"><span class="avatar">赵</span>赵谦 · 平台运营</div>
   </header>
 
   <div class="page">
-    <div class="page-head">
-      <div>
-        <h1 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">张明远 律师
-          <span class="badge badge-ok">已通过</span>
-          <span class="badge badge-info">在营</span>
-          <span class="badge badge-gold">信用 92</span>
-        </h1>
-        <div class="desc">北京正己律师事务所 · 2026-10-09 提交 · 年度资质复审中（审核人 待定）</div>
-      </div>
-      <div class="actions">
-        <button class="seal-btn" onclick="openM('mSeal')">盖章 通过</button>
-        <button class="btn btn-danger" onclick="openM('mReject')">驳回</button>
-        <button class="btn btn-ghost" onclick="openM('mStop')">停用</button>
+
+    <!-- 头部卡 -->
+    <div class="panel">
+      <div class="flex gap14" style="align-items:flex-start">
+        <span class="avatar" style="width:56px;height:56px;font-size:21px;border-radius:15px">张</span>
+        <div class="grow">
+          <div class="flex gap10" style="flex-wrap:wrap">
+            <span class="fd b" style="font-size:19px;letter-spacing:1.5px">张明远</span>
+            <span class="badge g">已通过</span>
+            <span class="tag gold">信用分 96</span>
+          </div>
+          <div class="t12 c2 mt8">京师（虚构）律师事务所 · 执业 8 年 · 劳动仲裁专项 · 2026-10-09 提交入驻</div>
+          <div class="flex gap8 mt8 t12" style="flex-wrap:wrap"><span class="tag">近 30 天履约 6 场</span><span class="tag">到场率 96%</span><span class="tag gray">1对1 转化 3 单</span></div>
+        </div>
+        <div class="ops" style="display:flex;gap:9px;flex:none">
+          <button class="btn seal-btn" disabled style="opacity:.45;cursor:not-allowed">盖章通过</button>
+          <button class="btn btn-o">驳回重提</button>
+          <button class="btn btn-danger" onclick="document.getElementById('mStop').classList.add('show')">停用</button>
+        </div>
       </div>
     </div>
 
-    <div class="grid-2">
+    <div class="grid2">
       <!-- 资质信息 -->
       <div class="panel">
-        <div class="panel-head">
-          <h3>资质信息</h3>
-          <div class="ph-act"><span class="badge badge-warn">复审待审</span></div>
-        </div>
-        <div class="panel-body">
-          <dl class="kv">
-            <dt>执业证号</dt>
-            <dd><span class="mono">1101**********3X</span>　<span class="link" style="color:var(--ink-600);cursor:pointer;" onclick="openM('mDoc')">查看原件</span><span class="small">（调取需审批 · 留痕）</span></dd>
-            <dt>执业年限</dt>
-            <dd><b>12 年</b>（2014-06 首次执业）</dd>
-            <dt>律所</dt>
-            <dd>北京正己律师事务所</dd>
-            <dt>执业证照片</dt>
-            <dd>
-              <div class="row" style="align-items:stretch;">
-                <div style="width:118px;height:84px;border:1.5px dashed var(--ink-200);border-radius:var(--r-md);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:var(--text-3);font-size:11.5px;background:var(--ink-50);">
-                  <svg class="ic" viewBox="0 0 24 24"><rect x="3.5" y="6.5" width="17" height="11" rx="2"/><path d="M3.5 10h17"/><circle cx="17" cy="14" r="1.2"/></svg>
-                  执业证 · 信息页
-                </div>
-                <div style="width:118px;height:84px;border:1.5px dashed var(--ink-200);border-radius:var(--r-md);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:var(--text-3);font-size:11.5px;background:var(--ink-50);">
-                  <svg class="ic" viewBox="0 0 24 24"><rect x="3.5" y="6.5" width="17" height="11" rx="2"/><path d="M3.5 10h17"/><circle cx="17" cy="14" r="1.2"/></svg>
-                  执业证 · 资历年检页
-                </div>
-              </div>
-              <div class="small mt8">加密 OSS 存储，调取留痕</div>
-            </dd>
-            <dt>律所授权函</dt>
-            <dd>
-              <div style="width:118px;height:84px;border:1.5px dashed var(--ink-200);border-radius:var(--r-md);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:var(--text-3);font-size:11.5px;background:var(--ink-50);">
-                <svg class="ic" viewBox="0 0 24 24"><path d="M7 3.5h7l4 4V20.5H7z"/><path d="M14 3.5v4h4M10 12h6M10 15.5h6"/></svg>
-                授权函扫描件
-              </div>
-              <div class="small mt8">加密 OSS 存储，调取留痕</div>
-            </dd>
-            <dt>提交时间</dt>
-            <dd class="num">2026-10-09 11:24</dd>
-            <dt>审核人</dt>
-            <dd><span class="badge badge-gray">待定</span><span class="small">（盖章后自动记录操作人）</span></dd>
-          </dl>
+        <div class="panel-h"><span class="t">资质信息</span><span class="cnt">A3a · 证照加密 OSS 存储，调取留痕</span></div>
+        <div class="col gap10">
+          <div class="flex"><span class="c3" style="width:96px;flex:none">执业证号</span><b class="num">111****567</b><span class="c3 t12">（脱敏展示 · 列加密）</span></div>
+          <div class="flex"><span class="c3" style="width:96px;flex:none">执业年限</span><b>8 年</b><span class="c3 t12">（2018-05 首次执业）</span></div>
+          <div class="flex"><span class="c3" style="width:96px;flex:none">律所</span><span>京师（虚构）律师事务所</span></div>
+          <div class="flex" style="align-items:flex-start"><span class="c3" style="width:96px;flex:none">执业证扫描件</span>
+            <div style="width:118px;height:80px;border:1.5px dashed var(--ink-200);border-radius:var(--r-md);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:var(--text-3);font-size:11.5px;background:var(--ink-50)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.5h7l4 4V20.5H7z"/><path d="M14 3.5v4h4M10 12h6M10 15.5h6"/></svg>
+              执业证 · 信息页
+            </div>
+          </div>
+          <div class="flex" style="align-items:flex-start"><span class="c3" style="width:96px;flex:none">律所授权书</span>
+            <div style="width:118px;height:80px;border:1.5px dashed var(--ink-200);border-radius:var(--r-md);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:var(--text-3);font-size:11.5px;background:var(--ink-50)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.5h7l4 4V20.5H7z"/><path d="M14 3.5v4h4M10 12h6M10 15.5h6"/></svg>
+              授权书扫描件
+            </div>
+          </div>
+          <div class="flex"><span class="c3" style="width:96px;flex:none">提交 / 通过</span><span class="num">2026-10-09 提交 · <b>10-11 盖章通过</b></span></div>
+          <div class="flex"><span class="c3" style="width:96px;flex:none">审核人</span><span>赵谦（平台运营）</span></div>
         </div>
       </div>
 
-      <!-- 进件状态 -->
+      <!-- 进件状态（A3b 只读） -->
       <div class="panel">
-        <div class="panel-head">
-          <h3>进件状态（A3b 只读）</h3>
-          <div class="ph-act"><span class="badge badge-gray">只读同步</span></div>
+        <div class="panel-h"><span class="t">进件状态</span><span class="cnt">A3b · 支付网关持有，只读</span><div class="ops"><span class="badge gray">只读同步</span></div></div>
+        <div class="col gap10">
+          <div class="flex"><span class="c3" style="width:96px;flex:none">进件状态</span><span class="badge g">生效</span><span class="c3 t12">生效才可下发分账</span></div>
+          <div class="flex"><span class="c3" style="width:96px;flex:none">对公账户</span><span>招商银行 · 尾号 <b class="num">8888</b>（律所对公）</span></div>
+          <div class="flex"><span class="c3" style="width:96px;flex:none">结算渠道</span><span>微信电商收付通（主） / 支付宝直联（备）</span></div>
+          <div class="flex"><span class="c3" style="width:96px;flex:none">年度复验</span><span class="num">2027-10 到期 · 到期前 60 天自动提醒</span></div>
         </div>
-        <div class="panel-body">
-          <dl class="kv">
-            <dt>进件状态</dt>
-            <dd><span class="badge badge-ok">生效</span></dd>
-            <dt>分账账户</dt>
-            <dd>正己所对公账户 · 尾号 <span class="mono"><b>3071</b></span></dd>
-            <dt>结算渠道</dt>
-            <dd>微信电商收付通</dd>
-            <dt>结算规则</dt>
-            <dd>结算至律所对公账户 · 平台前期 <b>0 抽佣</b></dd>
-            <dt>年度复验</dt>
-            <dd class="num">2027-09（到期前 60 天自动提醒）</dd>
-          </dl>
-          <div class="banner info mt12">
-            <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 11v5M12 8v.5"/></svg>
-            进件信息由渠道侧同步，本页不可编辑；结算与分账明细见 <a class="link" href="a14-settlement.html" style="color:var(--ink-600);">资金与结算</a>。
-          </div>
-        </div>
+        <div class="note mt14">firm_merchants 状态机归支付网关持有，本页不可编辑；对公账户变更触发重新进件并暂停分账。分账明细见 <a href="a14-settlement.html" class="ci b">资金与结算 ›</a></div>
       </div>
     </div>
 
-    <div class="tabs">
-      <a class="on" href="a04-lawyer-detail.html">场次历史</a>
-      <button onclick="document.getElementById('pCredit').scrollIntoView({behavior:'smooth'});">信用记录</button>
-      <button onclick="document.getElementById('pReview').scrollIntoView({behavior:'smooth'});">评价</button>
-    </div>
-
-    <!-- 场次历史 -->
-    <div class="panel">
-      <div class="panel-head">
-        <h3>场次历史</h3>
-        <div class="ph-act"><span>近 5 场 · 收入结算至律所对公户</span></div>
-      </div>
-      <div class="table-wrap">
-        <table class="table">
-          <thead><tr><th>主题</th><th>日期</th><th>报名</th><th>到场</th><th>1对1 转化</th><th>收入</th></tr></thead>
-          <tbody>
-            <tr><td class="t-strong">加班费与社保补缴答疑</td><td class="num">2026-10-08</td><td class="num">6</td><td class="num">5</td><td class="num">1</td><td class="num t-strong">¥495</td></tr>
-            <tr><td class="t-strong">被违法解除劳动合同怎么办</td><td class="num">2026-10-05</td><td class="num">5</td><td class="num">5</td><td class="num">1</td><td class="num">¥449</td></tr>
-            <tr><td class="t-strong">经济补偿金 N / N+1 实务</td><td class="num">2026-09-28</td><td class="num">4</td><td class="num">3</td><td class="num">0</td><td class="num">¥320</td></tr>
-            <tr><td class="t-strong">未签劳动合同双倍工资主张</td><td class="num">2026-09-24</td><td class="num">5</td><td class="num">4</td><td class="num">1</td><td class="num">¥399</td></tr>
-            <tr><td class="t-strong">调岗调薪与被迫离职取证</td><td class="num">2026-09-20</td><td class="num">3</td><td class="num">3</td><td class="num">0</td><td class="num">¥270</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="grid-2">
+    <div class="grid2">
       <!-- 信用记录 -->
-      <div class="panel" id="pCredit">
-        <div class="panel-head">
-          <h3>信用记录</h3>
-          <div class="ph-act"><span class="badge badge-gold num">当前信用 92</span></div>
+      <div class="panel">
+        <div class="panel-h"><span class="t">信用记录</span><span class="cnt">CreditEvent 流水 · credit_accounts 快照唯一事实源</span><div class="ops"><span class="tag gold">当前 96</span></div></div>
+        <div class="col gap12">
+          <div class="flex gap10"><span class="c3 t12 num" style="width:64px;flex:none">10-08</span><span class="grow">正常履约 · 到场 5/6，无投诉</span><b class="ci num">+1</b></div>
+          <div class="flex gap10"><span class="c3 t12 num" style="width:64px;flex:none">09-26</span><span class="grow">拒绝 C2B（12h 内未响应拼团确认）</span><b class="cs num">−5</b></div>
+          <div class="flex gap10"><span class="c3 t12 num" style="width:64px;flex:none">09-15</span><span class="grow">评价加分 · 四维均值 4.9</span><b class="ci num">+2</b></div>
+          <div class="flex gap10"><span class="c3 t12 num" style="width:64px;flex:none">09-02</span><span class="grow">正常履约 · 到场 4/4</span><b class="ci num">+1</b></div>
         </div>
-        <div class="panel-body">
-          <div class="timeline">
-            <div class="tl-item">
-              <div class="tl-time num">2026-10-08</div>
-              <div class="tl-title">正常履约 <span class="ok-text">信用 +1</span></div>
-              <div class="tl-desc">到场率 5/6 · 无投诉 · 会话质量巡检通过</div>
-            </div>
-            <div class="tl-item">
-              <div class="tl-time num">2026-09-22</div>
-              <div class="tl-title">有进行中拼团涨价 <span class="seal-text">信用 -5</span></div>
-              <div class="tl-desc">已锁定用户按快照价执行（C6 R-02）· 话术已触达</div>
-            </div>
-            <div class="tl-item">
-              <div class="tl-time num">2026-09-15</div>
-              <div class="tl-title">正常履约 <span class="ok-text">信用 +1</span></div>
-              <div class="tl-desc">到场率 4/5 · 评价 4.9</div>
-            </div>
-          </div>
-        </div>
+        <div class="note mt14">信用规则走 H7 版本化（当前信用规则 v2）；限制令（停接 3 天 / 7 天）由 G1 在入口校验。</div>
       </div>
 
-      <!-- 评价 -->
-      <div class="panel" id="pReview">
-        <div class="panel-head">
-          <h3>评价</h3>
-          <div class="ph-act"><span>4 条 · 综合 <b class="num">4.8</b></span></div>
-        </div>
-        <div class="panel-body">
-          <div style="border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:12px;">
-            <div class="between"><div class="t-strong">匿名用户 U8**</div><div class="small num">2026-10-09 · 四维 5.0</div></div>
-            <div class="small mt8">专业度 5.0 · 讲解清晰 5.0 · 响应速度 5.0 · 服务态度 5.0</div>
-            <div class="mt8" style="font-size:12.5px;color:var(--text-2);">加班费计算讲得非常清楚，当场给出了测算表。</div>
-          </div>
-          <div style="border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:12px;">
-            <div class="between"><div class="t-strong">匿名用户 U3**</div><div class="small num">2026-10-06 · 四维 4.8</div></div>
-            <div class="small mt8">专业度 5.0 · 讲解清晰 4.8 · 响应速度 4.5 · 服务态度 5.0</div>
-            <div class="mt8" style="font-size:12.5px;color:var(--text-2);">人很多，排队提问等了一会，但回答很到位。</div>
-          </div>
-          <div style="border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:12px;">
-            <div class="between"><div class="t-strong">匿名用户 U6**</div><div class="small num">2026-09-29 · 四维 4.6</div></div>
-            <div class="small mt8">专业度 4.6 · 讲解清晰 4.8 · 响应速度 4.3 · 服务态度 4.8</div>
-            <div class="mt8" style="font-size:12.5px;color:var(--text-2);">补偿金这块希望能多举几个案例，整体满意。</div>
+      <!-- 评价摘要 -->
+      <div class="panel">
+        <div class="panel-h"><span class="t">评价摘要</span><span class="cnt">G2 四维互评 · 匿名</span><div class="ops"><b class="fd price" style="font-size:18px">4.9</b><span class="c3 t12">· 126 条</span></div></div>
+        <div class="col gap12">
+          <div>
+            <div class="flex gap8 t12"><span class="c2">专业度</span><b class="ci">4.9</b><span class="c3" style="margin-left:auto">98%</span></div>
+            <div class="bar mt8"><i style="width:98%"></i></div>
           </div>
           <div>
-            <div class="between"><div class="t-strong">匿名用户 U1**</div><div class="small num">2026-09-25 · 四维 4.9</div></div>
-            <div class="small mt8">专业度 5.0 · 讲解清晰 4.9 · 响应速度 4.8 · 服务态度 4.8</div>
-            <div class="mt8" style="font-size:12.5px;color:var(--text-2);">后续约了 1对1，材料清单给得很细。</div>
+            <div class="flex gap8 t12"><span class="c2">讲解清晰</span><b class="ci">4.8</b><span class="c3" style="margin-left:auto">96%</span></div>
+            <div class="bar mt8"><i style="width:96%"></i></div>
+          </div>
+          <div>
+            <div class="flex gap8 t12"><span class="c2">响应速度</span><b class="ci">4.7</b><span class="c3" style="margin-left:auto">94%</span></div>
+            <div class="bar mt8"><i style="width:94%"></i></div>
+          </div>
+          <div>
+            <div class="flex gap8 t12"><span class="c2">服务态度</span><b class="ci">5.0</b><span class="c3" style="margin-left:auto">100%</span></div>
+            <div class="bar mt8"><i style="width:100%"></i></div>
           </div>
         </div>
+        <div class="note mt14">评分入排序因子；匿名评价 48h 延迟开放，仅展示维度分与评语。</div>
       </div>
     </div>
+
+    <div class="note">操作审计：盖章通过 / 驳回重提 / 停用均记录操作人、时间与理由，全程留痕不可删改。停用后律师不出现在用户端场次列表与接单大厅（LawyerSuspended），进行中场次与已支付订单继续履约，可随时恢复。</div>
+
   </div>
 </div>
 
-<!-- 盖章通过 -->
-<div class="modal-mask" id="mSeal" onclick="if(event.target===this)closeM('mSeal')">
+<!-- 停用确认 -->
+<div class="modal-mask" id="mStop" onclick="if(event.target===this)this.classList.remove('show')">
   <div class="modal">
-    <h4>盖章通过确认</h4>
-    <p>确认对 <b>张明远</b>（北京正己律师事务所）执行盖章通过？</p>
-    <p class="mt8">通过后将触发 <span class="mono">LawyerAuditPassed</span> 事件：律师出现在用户端场次列表与接单大厅，进件面板同步刷新。盖章记录操作人与时间戳，全程留痕。</p>
-    <div class="m-foot">
-      <button class="btn btn-ghost" onclick="closeM('mSeal')">取消</button>
-      <button class="btn btn-seal" onclick="closeM('mSeal')">确认盖章</button>
+    <div class="fd b" style="font-size:17px;letter-spacing:1px">停用确认</div>
+    <p class="mt12">确认停用 <b>张明远</b>（京师（虚构）律师事务所）？停用后：</p>
+    <p class="mt8 c2">· 不再出现在用户端场次列表与接单大厅<br>· 进行中场次与已支付订单继续履约<br>· 操作记入审计，可随时恢复</p>
+    <div class="flex gap10 mt16" style="justify-content:flex-end">
+      <button class="btn btn-o" onclick="document.getElementById('mStop').classList.remove('show')">取消</button>
+      <button class="btn btn-danger" onclick="document.getElementById('mStop').classList.remove('show')">确认停用</button>
     </div>
   </div>
 </div>
 
-<!-- 驳回 -->
-<div class="modal-mask" id="mReject" onclick="if(event.target===this)closeM('mReject')">
-  <div class="modal">
-    <h4>驳回申请</h4>
-    <div class="form-row" style="margin-top:12px;">
-      <label class="req">驳回原因</label>
-      <select class="select" style="width:100%;">
-        <option>材料不全</option>
-        <option>证照存疑</option>
-        <option>授权函无效</option>
-      </select>
-    </div>
-    <div class="form-row">
-      <label>备注</label>
-      <textarea class="input" placeholder="将随驳回通知发送给律师，请说明需补充的材料"></textarea>
-    </div>
-    <p class="small">驳回后律师可在补充材料后重新提交；本操作全程留痕。</p>
-    <div class="m-foot">
-      <button class="btn btn-ghost" onclick="closeM('mReject')">取消</button>
-      <button class="btn btn-danger" onclick="closeM('mReject')">确认驳回</button>
-    </div>
-  </div>
-</div>
-
-<!-- 停用 -->
-<div class="modal-mask" id="mStop" onclick="if(event.target===this)closeM('mStop')">
-  <div class="modal">
-    <h4>停用确认</h4>
-    <p>确认停用 <b>张明远</b>？停用后：</p>
-    <p class="mt8">· 不再出现在用户端场次列表与接单大厅<br>· 进行中场次与已支付订单继续履约<br>· 可随时恢复，操作全程留痕</p>
-    <div class="m-foot">
-      <button class="btn btn-ghost" onclick="closeM('mStop')">取消</button>
-      <button class="btn btn-danger" onclick="closeM('mStop')">确认停用</button>
-    </div>
-  </div>
-</div>
-
-<!-- 调取原件审批 -->
-<div class="modal-mask" id="mDoc" onclick="if(event.target===this)closeM('mDoc')">
-  <div class="modal">
-    <h4>调取执业证原件（需审批）</h4>
-    <p>原件存于加密 OSS，调取需提交审批并全程留痕；证照类调取需运营负责人审批。</p>
-    <p class="mt8 small">另：会话录音调取需审批 + 双人复核（合规角色），详见合规与审计。</p>
-    <div class="m-foot">
-      <button class="btn btn-ghost" onclick="closeM('mDoc')">取消</button>
-      <button class="btn btn-primary" onclick="closeM('mDoc')">提交调取申请</button>
-    </div>
-  </div>
-</div>
-
-<script>
-function openM(id){document.getElementById(id).classList.add('show');}
-function closeM(id){document.getElementById(id).classList.remove('show');}
-</script>
 </body>
 </html>

@@ -3,336 +3,183 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>律聚人 · 运营后台 · 资金与结算</title>
+<title>a14 · 资金与结算 — 律聚人运营后台原型</title>
 <link rel="stylesheet" href="assets/admin.css">
 </head>
-<body class="admin">
+<body>
+
+<!-- ===== 侧栏（全站逐字一致，仅 class="on" 位置不同） ===== -->
 <aside class="sidebar">
-  <div class="brand">
-    <div class="logo">律</div>
-    <div><b>律聚人</b><small>运营后台 · Operations</small></div>
+  <div class="logo">
+    <div class="mk">律</div>
+    <div><b>律聚人</b><span>运营后台 · OPERATIONS</span></div>
   </div>
   <nav class="nav">
-    <div class="nav-group">总览</div>
+    <div class="grp">总览</div>
     <a href="a02-dashboard.html">
-      <svg class="ic" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="9" rx="1.5"/><rect x="13" y="4" width="7" height="5" rx="1.5"/><rect x="13" y="11" width="7" height="9" rx="1.5"/><rect x="4" y="15" width="7" height="5" rx="1.5"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
       数据看板
     </a>
-    <div class="nav-group">审核与风控</div>
+    <div class="grp">审核与风控</div>
     <a href="a03-lawyer-audit.html">
-      <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19.5c1-3.4 3.5-5 6.5-5s5.5 1.6 6.5 5"/></svg>
-      律师与资质管理<span class="n-badge num">5</span>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19.5c1-3.4 3.5-5 6.5-5s5.5 1.6 6.5 5"/></svg>
+      律师与资质管理<span class="bdg">5</span>
     </a>
     <a href="a08-risk.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M12 4l7 2.5v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9v-5z"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l7 2.5v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9v-5z"/></svg>
       风控与敏感词
     </a>
-    <div class="nav-group">交易与履约</div>
+    <div class="grp">交易与履约</div>
     <a href="a05-monitor.html">
-      <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4.5l3 2"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v4.5l3 2"/></svg>
       场次 / 房间监控
     </a>
     <a href="a06-tickets.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M4 5.5h16v10H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg>
-      纠纷工单与退款<span class="n-badge num">4</span>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5h16v10H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg>
+      纠纷工单与退款<span class="bdg">4</span>
     </a>
     <a href="a09-matching.html">
-      <svg class="ic" viewBox="0 0 24 24"><circle cx="8" cy="9" r="2.6"/><circle cx="16" cy="9" r="2.6"/><path d="M3 18c.7-2.4 2.6-3.6 5-3.6s4.3 1.2 5 3.6M13.5 14.8c2 .2 3.6 1.3 4.3 3.2"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="9" r="2.6"/><circle cx="16" cy="9" r="2.6"/><path d="M3 18c.7-2.4 2.6-3.6 5-3.6s4.3 1.2 5 3.6M13.5 14.8c2 .2 3.6 1.3 4.3 3.2"/></svg>
       人工撮合台
     </a>
-    <div class="nav-group">配置与合规</div>
+    <div class="grp">配置与合规</div>
     <a href="a10-rules.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M7 3.5h7l4 4V20.5H7z"/><path d="M14 3.5v4h4M10 12h6M10 15.5h6"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.5h7l4 4V20.5H7z"/><path d="M14 3.5v4h4M10 12h6M10 15.5h6"/></svg>
       规则中心
     </a>
     <a href="a11-specialty.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M12 4l1.8 5.2L19 11l-5.2 1.8L12 18l-1.8-5.2L5 11l5.2-1.8z"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l1.8 5.2L19 11l-5.2 1.8L12 18l-1.8-5.2L5 11l5.2-1.8z"/></svg>
       专项与知识库
     </a>
     <a href="a12-recruit.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10.5V20h12v-9.5"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10.5V20h12v-9.5"/></svg>
       招募与渠道
     </a>
     <a href="a13-compliance.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2.5h-15z"/><path d="M10 19a2 2 0 0 0 4 0"/><path d="M12 4V2.5"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2.5h-15z"/><path d="M10 19a2 2 0 0 0 4 0"/><path d="M12 4V2.5"/></svg>
       合规与审计
     </a>
-    <div class="nav-group">财务</div>
+    <div class="grp">财务</div>
     <a class="on" href="a14-settlement.html">
-      <svg class="ic" viewBox="0 0 24 24"><rect x="3.5" y="6.5" width="17" height="11" rx="2"/><path d="M3.5 10h17"/><circle cx="17" cy="14" r="1.2"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="6.5" width="17" height="11" rx="2"/><path d="M3.5 10h17"/><circle cx="17" cy="14" r="1.2"/></svg>
       资金与结算
     </a>
   </nav>
-  <div class="side-foot">律聚人运营后台 v1.0<br>只读角色操作全程留痕</div>
+  <div class="foot">律聚人运营后台 <b>v3.0</b><br>只读操作全程留痕 · 样例数据均为虚构</div>
 </aside>
 
 <div class="main">
   <header class="topbar">
     <div class="crumb">财务 / <b>资金与结算</b></div>
-    <div class="spacer"></div>
+    <div class="sp"></div>
     <div class="search">
-      <svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5 20 20"/></svg>
-      搜索场次 / 律师 / 用户 / 工单
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5 20 20"/></svg>
+      搜索批次 / 场次 / 退款单
     </div>
-    <div class="who"><span class="avatar">赵</span>赵谦 · 平台运营</div>
+    <div class="tbtn">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+      <span class="dot"></span>
+    </div>
+    <div class="who"><span class="avatar">钱</span>钱荟 · 财务</div>
   </header>
 
   <div class="page">
+
     <div class="page-head">
       <div>
         <h1>资金与结算</h1>
-        <div class="desc">F1 / F3 · 财务视图 · 持牌机构分账 · 数据更新于 2026-10-13 10:05</div>
+        <div class="sub">F1/F3 财务视图 · 分账批次 · 退款 · 缺席 70/30 · 备付台账 · 截至 2026-10-13</div>
       </div>
-      <div class="actions">
-        <select class="select"><option>今日</option><option>近 7 天</option><option>本月</option></select>
-        <button class="btn btn-ghost">
-          <svg class="ic" viewBox="0 0 24 24"><path d="M7 3.5h7l4 4V20.5H7z"/><path d="M14 3.5v4h4"/></svg>
-          下载对账单
-        </button>
+      <div class="ops">
+        <select class="input" style="width:132px;height:36px;padding:6px 12px"><option>近 30 天</option><option>近 7 天</option></select>
+        <button class="btn btn-o">导出对账单</button>
       </div>
     </div>
+
+    <div class="note mb12"><b>资金不过平台账户</b>：用户支付 → 持牌机构分账（微信电商收付通主 + 支付宝直联备）；律师费入<b>律所对公账户</b>，平台服务费前期 <b>0%</b>（V1 跑通后逐步 5–10%）；禁止平台自有账户中转资金。</div>
 
     <div class="kpi-grid">
-      <div class="kpi">
-        <div class="k-label">待结算池</div>
-        <div class="k-num num">¥32,180</div>
-        <div class="k-foot">T+1 批量结算 · 持牌机构分账</div>
-      </div>
-      <div class="kpi">
-        <div class="k-label">今日已结算</div>
-        <div class="k-num num">¥8,940</div>
-        <div class="k-foot">2 个批次 · 渠道回单齐全</div>
-      </div>
-      <div class="kpi hl">
-        <div class="k-label">HOLD 中</div>
-        <div class="k-num num">2<small>笔</small></div>
-        <div class="k-foot">纠纷冻结 ¥8,120 · 待工单闭环释放</div>
-      </div>
-      <div class="kpi">
-        <div class="k-label">备付台账 <span class="badge badge-ok">达标</span></div>
-        <div class="k-num num">1 : 1</div>
-        <div class="k-foot">备付金 ¥40,300 = 待结算 + HOLD · 每日核对</div>
-      </div>
+      <div class="kpi"><div class="l">待结算（HOLD）</div><div class="n gold">¥8,640</div><div class="d">3 个批次</div></div>
+      <div class="kpi"><div class="l">今日已结算</div><div class="n">¥1,068</div><div class="d"><span class="up">2 批次</span> · 原路分账</div></div>
+      <div class="kpi"><div class="l">今日退款</div><div class="n">¥412</div><div class="d">流标 ¥100 · 取消 ¥312</div></div>
+      <div class="kpi"><div class="l">积分备付台账</div><div class="n">1:1</div><div class="d"><span class="badge g">足额</span> 抵扣同步核销</div></div>
     </div>
 
-    <div class="banner warn">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M12 4 21 19H3z"/><path d="M12 10v4M12 16.5v.5"/></svg>
-      对账差异 1 笔：渠道流水缺口 <b>¥75.00</b>（微信电商收付通 · 10-12 批次），24h SLA 内须定位 ——
-      <a class="btn btn-sm btn-danger" href="a06-tickets.html" style="margin-left:6px">去处理</a>
+    <!-- 分账批次 -->
+    <div class="panel">
+      <div class="panel-h"><span class="t">分账批次</span><span class="cnt">FINISHED → HOLD 24h → SETTLED（唯一解冻节点）</span>
+        <div class="ops"><span class="chip">全部</span><span class="chip">HOLD 3</span><span class="chip">SETTLED</span></div>
+      </div>
+      <table class="tbl">
+        <thead><tr><th>批次</th><th>场次</th><th>金额</th><th>律所对公账户</th><th>平台服务费</th><th>状态</th><th class="tr">操作</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="num">B-1013</td><td class="b">加班费与社保补缴实务答疑（预告）</td>
+            <td class="num">¥396.00</td><td>招商银行 ··8888</td><td class="num">¥0.00</td>
+            <td><span class="badge y">HOLD（待结束 +24h）</span></td>
+            <td class="tr"><button class="btn btn-o btn-sm">明细</button></td>
+          </tr>
+          <tr>
+            <td class="num">B-1012</td><td class="b">未签劳动合同双倍工资主张</td>
+            <td class="num">¥594.00</td><td>招商银行 ··8888</td><td class="num">¥0.00</td>
+            <td><span class="badge g">SETTLED · 10-12</span></td>
+            <td class="tr"><button class="btn btn-o btn-sm">明细</button></td>
+          </tr>
+          <tr>
+            <td class="num">B-1011</td><td class="b">竞业限制与保密协议（C2B 转化）</td>
+            <td class="num">¥500.00</td><td>建设银行 ··6621</td><td class="num">¥0.00</td>
+            <td><span class="badge g">SETTLED · 10-11</span></td>
+            <td class="tr"><button class="btn btn-o btn-sm">明细</button></td>
+          </tr>
+          <tr>
+            <td class="num">B-1010</td><td class="b">拖欠工资实务答疑（缺席分成）</td>
+            <td class="num">¥474.00</td><td>招商银行 ··8888</td><td class="num">¥0.00</td>
+            <td><span class="badge g">SETTLED · 10-10</span></td>
+            <td class="tr"><button class="btn btn-o btn-sm">明细</button></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="note mt14">纠纷挂起：批次涉纠纷工单时 HOLD 释放冻结（SettlementHeld/Released）；违约金扣减顺序 = 待结算 → 保证金专户；进件未生效/变更期暂停分账（FirmMerchantSuspended）。</div>
     </div>
 
-    <div class="banner info">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M12 4l7 2.5v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9v-5z"/><path d="M9 11.5l2 2 4-4"/></svg>
-      资金不过平台账户——持牌机构分账（<b>微信电商收付通主通道 / 支付宝直联备通道</b>），结算至<b>律所对公账户</b>，禁止平台自有账户中转；平台前期 <b>0 抽佣</b>。
-    </div>
-
-    <div class="tabs">
-      <button class="on" onclick="tab('st','b1',this)">结算批次</button>
-      <button onclick="tab('st','b2',this)">分账明细</button>
-      <button onclick="tab('st','b3',this)">退款记录</button>
-      <button onclick="tab('st','b4',this)">缺席分配</button>
-    </div>
-
-    <!-- 结算批次 -->
-    <div data-tg="st" data-tk="b1">
+    <div class="grid2">
+      <!-- 缺席 70/30 -->
       <div class="panel">
-        <div class="panel-head">
-          <h3>结算批次</h3>
-          <div class="ph-act"><span>T+1 自动生成 · 人工只读</span></div>
-        </div>
-        <div class="table-wrap">
-          <table class="table">
-            <thead><tr><th>批次号</th><th>关联场次</th><th>律所（律师）</th><th>律师收入</th><th>平台服务费</th><th>状态</th><th>渠道回单</th></tr></thead>
-            <tbody>
-              <tr>
-                <td class="mono t-strong">SETTLE-20261013-01</td>
-                <td>加班费答疑（10-10）等 3 场</td>
-                <td>正己所 · 张明远 / 李慧敏</td>
-                <td class="num t-strong">¥5,240.00</td>
-                <td class="num t-dim">¥0.00（前期 0%）</td>
-                <td><span class="badge badge-ok">已结算</span></td>
-                <td class="mono">2006101300012</td>
-              </tr>
-              <tr>
-                <td class="mono t-strong">SETTLE-20261012-02</td>
-                <td>拖欠工资答疑（10-09）</td>
-                <td>拓维所 · 王振宇</td>
-                <td class="num t-strong">¥3,700.00</td>
-                <td class="num t-dim">¥0.00（前期 0%）</td>
-                <td><span class="badge badge-ok">已结算</span></td>
-                <td class="mono">2006101200087</td>
-              </tr>
-              <tr>
-                <td class="mono t-strong">SETTLE-20261013-02</td>
-                <td>违法解除维权（10-11）</td>
-                <td>正己所 · 陈晓薇</td>
-                <td class="num">¥2,180.00</td>
-                <td class="num t-dim">¥0.00</td>
-                <td><span class="badge badge-warn">待 HOLD 释放</span></td>
-                <td class="t-dim">—（关联纠纷工单）</td>
-              </tr>
-              <tr>
-                <td class="mono t-strong">SETTLE-20261013-03</td>
-                <td>今日到期场次 2 场</td>
-                <td>拓维所 · 王振宇</td>
-                <td class="num">¥2,800.00（预估）</td>
-                <td class="num t-dim">¥0.00</td>
-                <td><span class="badge badge-info">进行中</span></td>
-                <td class="t-dim">—（T+1 生成）</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="pager"><span>共 4 个批次</span><span class="pg on num">1</span></div>
-      </div>
-    </div>
-
-    <!-- 分账明细 -->
-    <div data-tg="st" data-tk="b2" style="display:none">
-      <div class="panel">
-        <div class="panel-head">
-          <h3>分账明细</h3>
-          <div class="ph-act"><span>构成：律所对公入账 + 平台服务费（按 fee_versions 快照）</span></div>
-        </div>
-        <div class="table-wrap">
-          <table class="table">
-            <thead><tr><th>订单号</th><th>场次</th><th>支付渠道</th><th>用户支付</th><th>律所对公</th><th>平台服务费</th><th>费率版本</th></tr></thead>
-            <tbody>
-              <tr style="background:var(--ink-50)">
-                <td class="mono t-strong">P2026101009</td>
-                <td>加班费答疑 10-10</td>
-                <td>微信电商收付通</td>
-                <td class="num">¥440.00</td>
-                <td class="num t-strong">¥440.00</td>
-                <td class="num t-dim">¥0.00</td>
-                <td class="mono">fee_versions v1</td>
-              </tr>
-              <tr>
-                <td class="mono">P2026100902</td>
-                <td>拖欠工资答疑 10-09</td>
-                <td>微信电商收付通</td>
-                <td class="num">¥370.00</td>
-                <td class="num t-strong">¥370.00</td>
-                <td class="num t-dim">¥0.00</td>
-                <td class="mono">fee_versions v1</td>
-              </tr>
-              <tr>
-                <td class="mono">P2026101104</td>
-                <td>违法解除维权 10-11</td>
-                <td>支付宝直联（备）</td>
-                <td class="num">¥218.00</td>
-                <td class="num t-strong">¥218.00</td>
-                <td class="num t-dim">¥0.00</td>
-                <td class="mono">fee_versions v1</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="panel-body" style="padding-top:12px">
-          <div class="banner info" style="margin-bottom:0">
-            <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4.5l3 2"/></svg>
-            示例行（首行高亮）：每笔订单分账构成 = <b>律所对公账户入账</b> + <b>平台服务费</b>；服务费按 <span class="mono">fee_versions</span> 费率版本在支付时点快照计取，当前 v1 为前期 0 抽佣；分账由持牌机构在渠道侧直接执行，平台不碰触资金。
+        <div class="panel-h"><span class="t">缺席费用 70/30 分配</span><span class="cnt">本周 1 单</span></div>
+        <div class="col gap10">
+          <div class="flex gap8">
+            <span class="avatar v2">郑</span>
+            <div class="grow t13">
+              <b>郑女士 · 缺席</b>（超宽限 15 分钟未进入）
+              <div class="c3 t12">10-12 拖欠工资实务答疑 · 支付 ¥99.00</div>
+            </div>
           </div>
+          <div class="flex t12"><span class="c2 grow">70% 归律师（张明远）</span><b class="price">¥69.30</b></div>
+          <div class="bar"><i style="width:70%"></i></div>
+          <div class="flex t12"><span class="c2 grow">30% 平台积分（按到场用户支付占比分发）</span><b class="price">¥29.70</b></div>
+          <div class="bar gold"><i style="width:30%"></i></div>
+          <div class="t12 c3">到场 5 人按各自支付金额占比分得积分（1 元 = 100 积分 · 180 天有效）· 费用不退</div>
         </div>
+      </div>
+      <!-- 退款记录 -->
+      <div class="panel">
+        <div class="panel-h"><span class="t">退款记录</span><span class="cnt">原路退回 1–3 工作日</span></div>
+        <table class="tbl">
+          <thead><tr><th>退款单</th><th>原因</th><th>金额</th><th>状态</th></tr></thead>
+          <tbody>
+            <tr><td class="num">R-1013-02</td><td>用户取消（开始前 ≥2h · 全额）</td><td class="num">¥99.00</td><td><span class="badge y">处理中</span></td></tr>
+            <tr><td class="num">R-1013-01</td><td>流标（未达人数自动退款）</td><td class="num">¥100.00</td><td><span class="badge y">处理中</span></td></tr>
+            <tr><td class="num">R-1012-03</td><td>用户取消（&lt;2h · 退 50%）</td><td class="num">¥49.50</td><td><span class="badge g">已到账</span></td></tr>
+            <tr><td class="num">R-1012-01</td><td>流标（拼团截止未成团）</td><td class="num">¥125.00</td><td><span class="badge g">已到账</span></td></tr>
+            <tr><td class="num">R-1011-01</td><td>积分抵扣部分还原（不退现金）</td><td class="num">4,950 积分</td><td><span class="badge g">已还原</span></td></tr>
+          </tbody>
+        </table>
+        <div class="note mt14">退款还原规则：现金部分原路退、积分部分还原积分（支付时 cash/points 拆分口径）。</div>
       </div>
     </div>
 
-    <!-- 退款记录 -->
-    <div data-tg="st" data-tk="b3" style="display:none">
-      <div class="panel">
-        <div class="panel-head">
-          <h3>退款记录</h3>
-          <div class="ph-act"><span>近 7 日 5 笔</span></div>
-        </div>
-        <div class="table-wrap">
-          <table class="table">
-            <thead><tr><th>订单号</th><th>类型</th><th>金额</th><th>原因</th><th>状态</th></tr></thead>
-            <tbody>
-              <tr>
-                <td class="mono t-strong">P2026100802</td>
-                <td><span class="badge badge-info">流标退款</span></td>
-                <td class="num">¥88.00</td>
-                <td class="t-dim">拼单未成团 · 系统自动原路退回</td>
-                <td><span class="badge badge-ok">原路退回 1-3 工作日</span></td>
-              </tr>
-              <tr>
-                <td class="mono t-strong">P2026101105</td>
-                <td><span class="badge badge-warn">取消退款</span></td>
-                <td class="num">¥44.00</td>
-                <td class="t-dim">用户开课前 &lt;2h 取消 · 退 50%</td>
-                <td><span class="badge badge-warn">处理中</span></td>
-              </tr>
-              <tr>
-                <td class="mono t-strong">P2026101201</td>
-                <td><span class="badge badge-info">1对1 超时</span></td>
-                <td class="num">¥299.00</td>
-                <td class="t-dim">律师 24h 未响应 · 全额退</td>
-                <td><span class="badge badge-ok">原路退回 1-3 工作日</span></td>
-              </tr>
-              <tr>
-                <td class="mono t-strong">P2026101209</td>
-                <td><span class="badge badge-seal">赔付</span></td>
-                <td class="num">¥88.00</td>
-                <td class="t-dim">律师缺席 · 退还 50% + 赔付 50%</td>
-                <td><span class="badge badge-ok">原路退回 1-3 工作日</span></td>
-              </tr>
-              <tr>
-                <td class="mono t-strong">P2026101214</td>
-                <td><span class="badge badge-info">改期</span></td>
-                <td class="num">¥0.00</td>
-                <td class="t-dim">费用平移至新场次 · 快照价不变</td>
-                <td><span class="badge badge-ok">已完成</span></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- 缺席分配 -->
-    <div data-tg="st" data-tk="b4" style="display:none">
-      <div class="panel">
-        <div class="panel-head">
-          <h3>缺席分配</h3>
-          <div class="ph-act"><span>F3 · 会后自动执行 · 人工只读</span></div>
-        </div>
-        <div class="panel-body">
-          <dl class="kv" style="grid-template-columns:130px 1fr">
-            <dt>场次</dt><dd><b>加班费答疑（10-06 19:30 · @李慧敏）</b></dd>
-            <dt>到场情况</dt><dd class="num">应到 5 人 · 实到 4 人 · 缺席 1 人</dd>
-            <dt>缺席费用</dt><dd class="num"><b>¥88.00</b>（缺席用户已支付金额）</dd>
-          </dl>
-          <div class="row mt12" style="gap:0;border-radius:8px;overflow:hidden;height:34px;font-size:12px;color:#fff">
-            <div style="width:70%;background:var(--ink-700);display:flex;align-items:center;justify-content:center">律师 70% · ¥61.60</div>
-            <div style="width:30%;background:var(--gold-600);display:flex;align-items:center;justify-content:center">平台积分 30% · ¥26.40</div>
-          </div>
-          <div class="small mt8">积分部分按<b>到场用户支付金额占比</b>分配：</div>
-          <table class="table mt8">
-            <thead><tr><th>到场用户</th><th>支付金额</th><th>支付占比</th><th>获得积分</th><th>折算金额</th></tr></thead>
-            <tbody>
-              <tr><td class="t-strong">周女士</td><td class="num">¥88.00</td><td class="num">25.0%</td><td class="num">660 分</td><td class="num">¥6.60</td></tr>
-              <tr><td class="t-strong">吴先生</td><td class="num">¥88.00</td><td class="num">25.0%</td><td class="num">660 分</td><td class="num">¥6.60</td></tr>
-              <tr><td class="t-strong">郑女士</td><td class="num">¥88.00</td><td class="num">25.0%</td><td class="num">660 分</td><td class="num">¥6.60</td></tr>
-              <tr><td class="t-strong">何先生</td><td class="num">¥88.00</td><td class="num">25.0%</td><td class="num">660 分</td><td class="num">¥6.60</td></tr>
-              <tr><td class="t-strong">合计</td><td class="num t-strong">¥352.00</td><td class="num t-strong">100%</td><td class="num t-strong">2,640 分</td><td class="num t-strong">¥26.40</td></tr>
-            </tbody>
-          </table>
-          <div class="small mt8">积分规则：100 积分 = 1 元，抵扣上限为订单金额 50%，有效期 180 天；分配明细对用户侧可见。</div>
-        </div>
-      </div>
-    </div>
   </div>
 </div>
 
-<script>
-function tab(g,k,btn){
-  document.querySelectorAll('[data-tg="'+g+'"]').forEach(function(p){
-    p.style.display = p.getAttribute('data-tk')===k ? '' : 'none';
-  });
-  var ts=btn.parentNode.children;
-  for(var i=0;i<ts.length;i++){ts[i].classList.remove('on');}
-  btn.classList.add('on');
-}
-</script>
 </body>
 </html>

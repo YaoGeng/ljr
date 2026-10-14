@@ -6,25 +6,25 @@
 <title>律聚人 · HTML 原型总入口</title>
 <style>
   :root {
-    --ink-950:#0E1F17; --ink-900:#16352A; --ink-700:#215741; --ink-600:#2C6B50;
-    --ink-500:#47936E; --ink-200:#C7E2D4; --ink-100:#E0F0E7; --ink-50:#F3F8F5;
-    --seal-600:#C14E3A; --seal-50:#FBF0EC; --seal-100:#F7DCD4;
-    --gold-600:#A67C16; --paper:#fff; --line:#DCE8E0; --t2:#5A6E63; --t3:#93A69B;
-    --fd: "Songti SC","STSong","NSimSun","SimSun",serif;
-    --fb: -apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif;
+    --ink-950:#0D211A; --ink-900:#14352A; --ink-700:#205B45; --ink-600:#2A7057;
+    --ink-500:#3D8B6C; --ink-300:#A3C9B5; --ink-100:#E4F2EB; --ink-50:#F2F9F5;
+    --seal-600:#C14E3A; --seal-500:#D2604A; --seal-50:#FBF0EC;
+    --gold-600:#A67C16; --line:#E4E1D2; --t2:#5B6E63; --t3:#97A79D;
+    --fd:"Songti SC","STSong","NSimSun","SimSun",serif;
+    --fb:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif;
   }
   * { margin:0; padding:0; box-sizing:border-box; }
   body {
-    font-family:var(--fb); color:#1C2B24; font-size:14px; line-height:1.6;
-    background: radial-gradient(circle, rgba(22,53,42,.04) 1px, transparent 1.3px) 0 0/24px 24px, #F4F3EC;
+    font-family:var(--fb); color:#1B2B23; font-size:14px; line-height:1.6;
+    background: radial-gradient(circle, rgba(20,53,42,.04) 1px, transparent 1.2px) 0 0/22px 22px, #F4F3EA;
   }
   a { text-decoration:none; color:inherit; }
   .hero-band {
     background:
-      radial-gradient(720px 320px at 82% -20%, rgba(143,191,169,.22) 0%, rgba(143,191,169,0) 55%),
-      radial-gradient(900px 500px at -8% 120%, rgba(71,147,110,.4) 0%, rgba(71,147,110,0) 60%),
-      linear-gradient(150deg,#0E1F17 0%,var(--ink-950) 35%,var(--ink-600) 125%);
-    color:#EAF4EE; padding:56px 24px 92px; position:relative; overflow:hidden;
+      radial-gradient(720px 320px at 84% -20%, rgba(163,201,181,.24) 0%, rgba(163,201,181,0) 55%),
+      radial-gradient(900px 500px at -8% 120%, rgba(61,139,108,.45) 0%, rgba(61,139,108,0) 60%),
+      linear-gradient(150deg,#0D211A 0%,#122C22 38%,var(--ink-600) 128%);
+    color:#EAF6EF; padding:56px 24px 92px; position:relative; overflow:hidden;
   }
   .hero-band::after {
     content:"律"; position:absolute; right:3.5%; top:-36px; z-index:0;
@@ -35,28 +35,27 @@
   .hero-band .wrap { position:relative; z-index:1; }
   .brandline { display:flex; align-items:center; gap:14px; }
   .seal-logo {
-    width:56px;height:56px;border-radius:16px;
+    width:56px;height:56px;border-radius:16px;flex:none;
     background:linear-gradient(155deg,#D2604A 0%,var(--seal-600) 60%,#A84535 100%);color:#fff;
     display:flex;align-items:center;justify-content:center;
     font-family:var(--fd);font-size:30px;font-weight:700;
     box-shadow:inset 0 0 0 2px rgba(255,255,255,.28), 0 10px 26px -6px rgba(193,78,58,.55);
   }
-  .hero-band h1 { font-family:var(--fd); font-size:34px; letter-spacing:6px; font-weight:700; text-shadow:0 2px 12px rgba(8,20,14,.45); }
-  .hero-band .slogan { color:#9FC3AF; font-size:13.5px; margin-top:4px; letter-spacing:1px; }
-  .hero-band .desc { margin-top:22px; max-width:640px; color:#BCD4C4; font-size:13.5px; }
+  .hero-band h1 { font-family:var(--fd); font-size:34px; letter-spacing:6px; font-weight:700; }
+  .hero-band .slogan { color:#A9CCB8; font-size:13.5px; margin-top:4px; letter-spacing:1px; }
+  .hero-band .desc { margin-top:22px; max-width:660px; color:#C2DCCB; font-size:13.5px; }
   .quick { display:flex; gap:10px; margin-top:26px; flex-wrap:wrap; }
   .quick a {
     padding:10px 18px; border-radius:999px; font-size:13.5px; font-weight:600;
-    background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2); color:#E4F1E8;
+    background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2); color:#E6F3EA;
     backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
-    transition:transform .14s, background .15s, box-shadow .18s;
+    transition:transform .14s, background .15s;
   }
   .quick a:hover { transform:translateY(-2px); background:rgba(255,255,255,.18); }
   .quick a.hot {
-    background:linear-gradient(160deg,#5FA37F,var(--ink-600) 70%); border-color:transparent;
-    box-shadow:0 8px 20px -8px rgba(44,107,80,.6);
+    background:linear-gradient(160deg,var(--ink-500),var(--ink-600) 70%); border-color:transparent;
+    box-shadow:0 8px 20px -8px rgba(42,112,87,.6);
   }
-  .quick a.hot:hover { background:linear-gradient(160deg,#6FB28E,var(--ink-600) 70%); }
   main { margin-top:-56px; padding-bottom:70px; }
   section.sec { margin-bottom:34px; animation:rise .4s ease both; }
   section.sec:nth-child(2) { animation-delay:.06s; }
@@ -69,32 +68,27 @@
   .sechead .note { margin-left:auto; font-size:12px; color:var(--t3); }
   .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(215px,1fr)); gap:12px; }
   a.pg {
-    background:rgba(255,255,255,.82); border:1px solid rgba(255,255,255,.9); border-radius:16px;
+    background:rgba(255,255,255,.84); border:1px solid rgba(255,255,255,.92); border-radius:16px;
     backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
-    padding:14px 16px; display:block; box-shadow:0 1px 2px rgba(22,53,42,.04), 0 10px 24px -12px rgba(22,53,42,.12);
+    padding:14px 16px; display:block;
+    box-shadow:0 1px 2px rgba(20,53,42,.04), 0 10px 24px -12px rgba(20,53,42,.12);
     transition:border-color .15s, transform .15s, box-shadow .2s; position:relative;
   }
-  a.pg:hover {
-    border-color:var(--ink-500); transform:translateY(-3px);
-    box-shadow:0 16px 30px -12px rgba(22,53,42,.25);
-  }
+  a.pg:hover { border-color:var(--ink-500); transform:translateY(-3px); box-shadow:0 16px 30px -12px rgba(20,53,42,.25); }
   a.pg .code {
     font-size:10.5px; color:var(--ink-600); background:var(--ink-50);
     border:1px solid var(--ink-100); border-radius:5px; padding:1px 7px; display:inline-block;
   }
-  a.pg b { display:block; font-size:14.5px; margin-top:7px; color:#1C2B24; }
+  a.pg b { display:block; font-size:14.5px; margin-top:7px; color:#1B2B23; }
   a.pg span { display:block; font-size:11.5px; color:var(--t3); margin-top:3px; }
-  a.pg .role {
-    position:absolute; top:12px; right:12px; font-size:10px; letter-spacing:1px;
-    padding:2px 8px; border-radius:10px;
-  }
-  .role.u { background:#E2F2E8; color:var(--ink-600); }
-  .role.l { background:#E9EDE9; color:#3B4A41; }
+  a.pg .role { position:absolute; top:12px; right:12px; font-size:10px; letter-spacing:1px; padding:2px 8px; border-radius:10px; }
+  .role.u { background:var(--ink-100); color:var(--ink-700); }
+  .role.l { background:#E9EDE4; color:#46543F; }
   .role.a { background:var(--seal-50); color:var(--seal-600); }
   .spec {
-    background:rgba(255,255,255,.85); border:1px solid rgba(255,255,255,.9); border-radius:18px;
+    background:rgba(255,255,255,.85); border:1px solid rgba(255,255,255,.92); border-radius:18px;
     backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
-    padding:22px 24px; box-shadow:0 1px 2px rgba(22,53,42,.04), 0 12px 26px -12px rgba(22,53,42,.12);
+    padding:22px 24px; box-shadow:0 1px 2px rgba(20,53,42,.04), 0 12px 26px -12px rgba(20,53,42,.12);
   }
   .spec h3 { font-family:var(--fd); font-size:17px; letter-spacing:2px; color:var(--ink-900); margin-bottom:12px; }
   .spec .row { display:flex; gap:26px; flex-wrap:wrap; }
@@ -113,12 +107,12 @@
       <div class="seal-logo">律</div>
       <div>
         <h1>律聚人 · HTML 原型</h1>
-        <div class="slogan">AI 增强型法律服务交易平台 · 首发专项：劳动仲裁 · 2026-10-13</div>
+        <div class="slogan">AI 增强型法律服务交易平台 · 首发专项：劳动仲裁 · v3.0 全面重设计</div>
       </div>
     </div>
     <div class="desc">
       覆盖三端：App 用户端（浏览报名、发起拼团、房间履约、申请 1对1、评价）、App 律师端（入驻、时间表、开团、接单、Agent 草稿工作台）、Web 运营后台（审核、监控、工单、风控、规则、合规、结算）。
-      设计概念「薄荷绿 · 玻璃拟态」：米白底 + 磨砂玻璃卡片，薄荷绿为主色，珊瑚红仅用于价格、已成团印章与危险状态。
+      v3.0 以 PRD 与功能模块文档为输入全面重设计：界面简约，色彩取自 50 元人民币纸币绿，磨砂玻璃卡片 + 米白纸面，印章红仅用于价格、已成团印章与危险状态。
     </div>
     <div class="quick">
       <a class="hot" href="app/user/u02-home.html">从用户首页开始走查</a>
@@ -132,15 +126,15 @@
 <main class="wrap">
 
   <section class="sec">
-    <div class="sechead"><h2>设计规范</h2><span class="cnt">app.css / admin.css 共用一套令牌 · v2.0 薄荷绿玻璃拟态</span></div>
+    <div class="sechead"><h2>设计规范</h2><span class="cnt">app.css / admin.css 共用一套令牌 · v3.0 纸币绿</span></div>
     <div class="spec">
-      <h3>薄荷绿 · 玻璃拟态</h3>
+      <h3>纸币绿 · 玻璃拟态 · 简约</h3>
       <div class="row">
         <dl>
-          <dt>薄荷绿</dt><dd><span class="sw" style="background:#215741"></span>#215741 主色（基底 / 侧栏 / 主按钮 / 主 CTA）</dd>
-          <dt>珊瑚红</dt><dd><span class="sw" style="background:#C14E3A"></span>#C14E3A 仅用于：价格、已成团印章、危险/超阈状态</dd>
-          <dt>金色</dt><dd><span class="sw" style="background:#A67C16"></span>#A67C16 积分与信用</dd>
-          <dt>米白纸面</dt><dd><span class="sw" style="background:#F4F3EC;border-color:#C7E2D4"></span>#F4F3EC 米白底（卡片=磨砂玻璃白 + 背景虚化）</dd>
+          <dt>纸币绿</dt><dd><span class="sw" style="background:#2A7057"></span>#2A7057 主色（50 元人民币色系推演）：主按钮、主 CTA、选中态、进度</dd>
+          <dt>印章红</dt><dd><span class="sw" style="background:#C14E3A"></span>#C14E3A 仅用于：价格、已成团印章、危险/超阈状态</dd>
+          <dt>币金</dt><dd><span class="sw" style="background:#A67C16"></span>#A67C16 积分与信用分</dd>
+          <dt>米白纸面</dt><dd><span class="sw" style="background:#F4F3EA;border-color:#E4E1D2"></span>#F4F3EA 页面底；卡片 = 磨砂玻璃白 + 背景虚化 + 大圆角</dd>
         </dl>
         <dl>
           <dt>标题字体</dt><dd>宋体系衬线（Songti SC / STSong / SimSun）——仅标题、品牌、印章</dd>
@@ -208,7 +202,7 @@
     </div>
   </section>
 
-  <footer>律聚人原型 v2.0 · 2026-10-14 薄荷绿玻璃拟态 · 需求依据 docs/01-产品设计.md（PRD）与 docs/04-功能模块设计.md · 样例数据均为虚构</footer>
+  <footer>律聚人原型 v3.0 · 2026-10-14 纸币绿全面重设计 · 需求依据 docs/01-产品设计.md（PRD）与 docs/04-功能模块设计.md · 样例数据均为虚构</footer>
 </main>
 
 </body>

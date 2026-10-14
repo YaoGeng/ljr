@@ -3,164 +3,159 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>律聚人 · 用户端 · 我的</title>
+<title>u14 · 我的 — 律聚人原型</title>
 <link rel="stylesheet" href="../assets/app.css">
 </head>
-<body class="role-user">
+<body>
 <div class="desk">
-  <div class="desk-label"><b>律聚人 · 用户端</b><code>u14 我的</code><span>PRD §7.1.8 / A2 A4 D7 G1 信用分 · 积分 · 同意管理</span></div>
-
+  <div class="desk-label">律聚人 · <b>用户端 u14</b> · 我的</div>
   <div class="phone">
-    <div class="statusbar"><span class="num">9:41</span><div class="notch"></div><span>5G&nbsp;▮▮▮</span></div>
-
-    <div class="hero">
-      <div style="display:flex;align-items:center;gap:13px;">
-        <span class="avatar" style="width:52px;height:52px;font-size:22px;">周</span>
-        <div style="flex:1;min-width:0;">
-          <div style="display:flex;align-items:center;gap:8px;">
-            <span style="font-family:var(--font-display);font-size:21px;font-weight:700;letter-spacing:2px;">周女士</span>
-            <span class="tag tag-ok" style="background:rgba(233,244,239,.92);">实名已认证</span>
-          </div>
-          <div class="slogan" style="margin-top:3px;">132****8821 · 信用极好</div>
-        </div>
-      </div>
-    </div>
-
     <div class="screen">
-      <!-- 信用分 + 积分 -->
-      <div class="sec">
+
+      <div class="statusbar">
+        <span>9:41</span>
+        <span class="sic">
+          <svg width="17" height="12" viewBox="0 0 17 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="4.5" y="5" width="3" height="7" rx="1"/><rect x="9" y="2.5" width="3" height="9.5" rx="1"/><rect x="13.5" y="0" width="3" height="12" rx="1"/></svg>
+          <svg width="24" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3.5" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="15" height="8" rx="2" fill="currentColor"/><path d="M23 4v4c1.2-.3 2-1 2-2s-.8-1.7-2-2z" fill="currentColor" opacity=".4"/></svg>
+        </span>
+      </div>
+
+      <!-- 用户卡 -->
+      <section class="sec" style="margin-top:4px">
+        <div class="card flex gap12">
+          <div class="avatar lg">周</div>
+          <div class="grow">
+            <div class="t16 b">周女士</div>
+            <div class="t12 c3 mt6">138****6789 · <span class="tag" style="height:18px;font-size:10px">实名已认证</span></div>
+          </div>
+          <span class="arrow c3">›</span>
+        </div>
+      </section>
+
+      <!-- 三列统计 -->
+      <section class="sec">
+        <div class="card flex">
+          <div class="stat grow">
+            <div class="n gold">92</div>
+            <div class="l">信用分</div>
+          </div>
+          <div class="stat grow">
+            <div class="n gold">12,450</div>
+            <div class="l">积分（180 天有效）</div>
+          </div>
+          <div class="stat grow">
+            <div class="n">6</div>
+            <div class="l">已参与场次</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 快捷入口 -->
+      <section class="sec">
+        <div class="card rows">
+          <a class="row" href="u11-join.html">
+            <div class="ic">📋</div>
+            <div class="tt"><b>我的报名与拼团任务</b><span>状态 · 支付金额 · 退款进度 · 一键重新发起</span></div>
+            <span class="arrow">›</span>
+          </a>
+          <a class="row" href="u13-messages.html">
+            <div class="ic">🔔</div>
+            <div class="tt"><b>消息通知中心</b><span>成团 · 提醒 · 调价 · 退款 · 权益</span></div>
+            <span class="arrow">›</span>
+          </a>
+          <div class="row">
+            <div class="ic">📤</div>
+            <div class="tt"><b>聊天记录导出</b><span>本人全量 + 他人去标识 · 加密包限时链接 · 导出留审计</span></div>
+            <span class="rt">D7</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 同意与隐私 -->
+      <section class="sec">
+        <div class="sec-h"><span class="t">同意与隐私</span></div>
+        <div class="card rows">
+          <a class="row" href="u08-consent.html">
+            <div class="ic">🛡</div>
+            <div class="tt"><b>同意管理</b><span>实名 / 训练语料（已授权 · 可撤回）/ 1对1 录制</span></div>
+            <span class="arrow">›</span>
+          </a>
+          <div class="row">
+            <div class="ic">🔒</div>
+            <div class="tt"><b>实名信息</b><span>仅用于合规与纠纷处理，不对外展示</span></div>
+            <span class="arrow">›</span>
+          </div>
+          <div class="row">
+            <div class="ic">📊</div>
+            <div class="tt"><b>信用记录</b><span>+2 正常参与 · −5 开始前 2h 内取消 · 缺席重扣</span></div>
+            <span class="arrow">›</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 信用明细 -->
+      <section class="sec">
+        <div class="sec-h"><span class="t">信用记录</span><span class="cnt">近 30 天</span></div>
         <div class="card">
-          <div style="display:flex;align-items:center;gap:12px;">
-            <div class="credit-ring">
-              <div class="ring num" style="--p:96;"><b>96</b><span>信用分</span></div>
-              <div style="font-size:10.5px;color:var(--text-3);line-height:1.6;">信用正常<br>正常参与 +2<br>缺席 -10</div>
+          <div class="rows t13">
+            <div class="row">
+              <div class="tt"><b>正常参与场次</b><span>10-09 未签劳动合同双倍工资</span></div>
+              <span class="rt cg b">+2</span>
             </div>
-            <div style="width:1px;align-self:stretch;background:var(--line);"></div>
-            <div style="flex:1;min-width:0;">
-              <div style="display:flex;align-items:baseline;gap:4px;">
-                <b class="num" style="font-size:22px;color:var(--gold-600);">1,240</b>
-                <span class="small">积分</span>
-              </div>
-              <div class="small num" style="margin-top:4px;">≈ ¥12.40 · 100 积分 = 1 元</div>
-              <div class="small" style="margin-top:2px;">有效期 180 天 · 每单抵扣 ≤50%</div>
+            <div class="row">
+              <div class="tt"><b>提前取消（&lt;2h）</b><span>10-02 竞业限制答疑 · 退 50%</span></div>
+              <span class="rt cs b">−5</span>
             </div>
-          </div>
-        </div>
-        <div class="hint">缺席他人时扣除信用分 10 分并按规则扣费；积分可抵扣咨询费</div>
-      </div>
-
-      <!-- 我的服务 -->
-      <div class="sec">
-        <div class="sec-head"><h3>我的服务</h3></div>
-        <div class="cells">
-          <a class="cell" href="u11-join.html">
-            <span class="cell-ic"><svg class="ic" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M4 10h16M8 4v4M16 4v4"/></svg></span>
-            <div class="cell-body">
-              <div class="cell-title">我的报名</div>
-              <div class="cell-desc">待成团 1 · 已成团 1 · 进行中 1</div>
-            </div>
-            <svg class="chev" viewBox="0 0 24 24" style="stroke:var(--text-3);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;"><path d="M9 6l6 6-6 6"/></svg>
-          </a>
-          <a class="cell" href="u11-join.html">
-            <span class="cell-ic"><svg class="ic" viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3"/><path d="M3.5 19c.8-3 3-4.5 5.5-4.5s4.7 1.5 5.5 4.5"/><circle cx="16.8" cy="9.5" r="2.2"/><path d="M16 14.7c2.2.3 4 1.6 4.7 4.3"/></svg></span>
-            <div class="cell-body">
-              <div class="cell-title">我的拼团任务</div>
-              <div class="cell-desc">我发起 1 · 我加入 1</div>
-            </div>
-            <svg class="chev" viewBox="0 0 24 24" style="stroke:var(--text-3);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;"><path d="M9 6l6 6-6 6"/></svg>
-          </a>
-          <div class="cell">
-            <span class="cell-ic"><svg class="ic" viewBox="0 0 24 24"><path d="M7 3.5h7l4 4V20.5H7z"/><path d="M14 3.5V8h4M10 12.5h6M10 16h6"/></svg></span>
-            <div class="cell-body">
-              <div class="cell-title">聊天记录导出</div>
-              <div class="cell-desc">服务结束后保留 2 年，可导出本人记录</div>
-            </div>
-          </div>
-          <a class="cell" href="u12-review.html">
-            <span class="cell-ic gold"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3.3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.7l6-.9z"/></svg></span>
-            <div class="cell-body">
-              <div class="cell-title">我的评价</div>
-              <div class="cell-desc">待评价 1 · 已评价 2</div>
-            </div>
-            <svg class="chev" viewBox="0 0 24 24" style="stroke:var(--text-3);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;"><path d="M9 6l6 6-6 6"/></svg>
-          </a>
-        </div>
-      </div>
-
-      <!-- 账号与合规 -->
-      <div class="sec">
-        <div class="sec-head"><h3>账号与合规</h3></div>
-        <div class="cells">
-          <div class="cell">
-            <span class="cell-ic"><svg class="ic" viewBox="0 0 24 24"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M6.5 15.5c.5-1.5 1.5-2 2.5-2s2 .5 2.5 2M14.5 10h4M14.5 13.5h4"/></svg></span>
-            <div class="cell-body">
-              <div class="cell-title">实名认证</div>
-              <div class="cell-desc">周晓岚 · 平台仅留存脱敏摘要</div>
-            </div>
-            <span class="cell-val"><span class="tag tag-ok">已认证</span></span>
-          </div>
-          <div class="cell">
-            <span class="cell-ic"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3.5l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10v-5z"/><path d="M9 11.5l2 2 4-4"/></svg></span>
-            <div class="cell-body">
-              <div class="cell-title">同意管理</div>
-              <div class="cell-desc">实名 / 训练数据 / 录音 授权与撤回</div>
-            </div>
-          </div>
-          <div class="cell">
-            <span class="cell-ic" style="background:var(--seal-50);color:var(--seal-600);"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9.5 9.2a2.6 2.6 0 0 1 5 .9c0 1.8-2.5 2.2-2.5 3.7"/><path d="M12 16.8v.3"/></svg></span>
-            <div class="cell-body">
-              <div class="cell-title" style="color:var(--seal-600);">账号注销</div>
-              <div class="cell-desc">15 日冷静期，资产清算后删除</div>
+            <div class="row">
+              <div class="tt"><b>正常参与场次</b><span>09-25 社保补缴实务</span></div>
+              <span class="rt cg b">+2</span>
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      <!-- 关于 -->
-      <div class="sec">
-        <div class="sec-head"><h3>关于</h3></div>
-        <div class="cells">
-          <div class="cell">
-            <span class="cell-ic"><svg class="ic" viewBox="0 0 24 24"><path d="M7 3.5h7l4 4V20.5H7z"/><path d="M14 3.5V8h4"/></svg></span>
-            <div class="cell-body"><div class="cell-title">用户协议</div></div>
+      <!-- 设置与注销 -->
+      <section class="sec">
+        <div class="card rows">
+          <div class="row">
+            <div class="ic">⚙️</div>
+            <div class="tt"><b>设置</b><span>通知偏好 · 深色模式 · 字号</span></div>
+            <span class="arrow">›</span>
           </div>
-          <div class="cell">
-            <span class="cell-ic"><svg class="ic" viewBox="0 0 24 24"><path d="M6 4.5h12v15H6z"/><path d="M9 8.5h6M9 12h6M9 15.5h4"/></svg></span>
-            <div class="cell-body"><div class="cell-title">隐私政策</div></div>
-          </div>
-          <div class="cell">
-            <span class="cell-ic"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3.5l2.5 5.1 5.6.9-4 4 1 5.6-5.1-2.7-5.1 2.7 1-5.6-4-4 5.6-.9z"/></svg></span>
-            <div class="cell-body">
-              <div class="cell-title">规则中心</div>
-              <div class="cell-desc">缺席、取消、改价规则公示</div>
-            </div>
+          <div class="row">
+            <div class="ic">🗑</div>
+            <div class="tt"><b>注销账号</b><span>冷静期 15 日 · 进行中场次 / 待结算 / 积分清算后删除；消息录音按法定期限留存</span></div>
+            <span class="arrow">›</span>
           </div>
         </div>
-      </div>
+      </section>
 
-      <div class="small tac">律聚人 · 用户端 · V1.0.0 原型</div>
+      <section class="sec tc" style="margin-top:8px">
+        <span class="t12 c3">律聚人 · v3.0 · 样例数据均为虚构</span>
+      </section>
+
     </div>
 
-    <div class="tabbar">
+    <!-- Tabbar -->
+    <nav class="tabbar">
       <a href="u02-home.html">
-        <svg class="ic" viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10.5V20h12v-9.5"/></svg>
+        <svg class="ti" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9 21v-6h6v6"/></svg>
         首页
       </a>
       <a href="u11-join.html">
-        <svg class="ic" viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3"/><path d="M3.5 19c.8-3 3-4.5 5.5-4.5s4.7 1.5 5.5 4.5"/><circle cx="16.8" cy="9.5" r="2.2"/><path d="M16 14.7c2.2.3 4 1.6 4.7 4.3"/></svg>
+        <svg class="ti" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M9 12h6M9 16h4"/></svg>
         我的拼单
       </a>
-      <a href="u13-messages.html" style="position:relative;">
-        <svg class="ic" viewBox="0 0 24 24"><path d="M4 5.5h16v10H9l-5 4z"/></svg>
-        <span class="badge num">3</span>
+      <a href="u13-messages.html">
+        <svg class="ti" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         消息
+        <span class="bdg">2</span>
       </a>
       <a class="on" href="u14-profile.html">
-        <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19.5c1-3.4 3.5-5 6.5-5s5.5 1.6 6.5 5"/></svg>
+        <svg class="ti" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         我的
       </a>
-    </div>
-    <div class="homebar"></div>
+    </nav>
   </div>
 </div>
 </body>

@@ -3,92 +3,74 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>律聚人 · 用户端 · 训练数据授权</title>
+<title>u08 · 数据授权 — 律聚人原型</title>
 <link rel="stylesheet" href="../assets/app.css">
 </head>
-<body class="role-user">
+<body>
 <div class="desk">
-  <div class="desk-label"><b>律聚人 · 用户端</b><code>u08 训练数据授权</code><span>PRD §7.1.4 / A2 独立授权 · 可拒绝且不影响拼单</span></div>
-
+  <div class="desk-label">律聚人 · <b>用户端 u08</b> · 数据授权</div>
   <div class="phone">
-    <div class="statusbar"><span class="num">10:17</span><div class="notch"></div><span>5G&nbsp;▮▮▮</span></div>
-
-    <div class="appbar">
-      <a class="back" href="u07-payment.html"><svg class="ic" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></a>
-      <span class="title">数据授权</span>
-      <span class="spacer"></span>
-    </div>
-
     <div class="screen">
-      <div class="notice ok">
-        <svg class="ic ic-sm" viewBox="0 0 24 24" style="margin-top:2px;"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>
-        <div>支付成功，订单 LJR20261013-0031 已提交，等待成团。最后一步：训练数据授权（独立选项，可拒绝）。</div>
+
+      <div class="statusbar">
+        <span>10:42</span>
+        <span class="sic">
+          <svg width="17" height="12" viewBox="0 0 17 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="4.5" y="5" width="3" height="7" rx="1"/><rect x="9" y="2.5" width="3" height="9.5" rx="1"/><rect x="13.5" y="0" width="3" height="12" rx="1"/></svg>
+          <svg width="24" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3.5" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="15" height="8" rx="2" fill="currentColor"/><path d="M23 4v4c1.2-.3 2-1 2-2s-.8-1.7-2-2z" fill="currentColor" opacity=".4"/></svg>
+        </span>
+      </div>
+      <div class="navbar">
+        <a class="back" href="u07-payment.html"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></a>
+        <span class="ttl">训练数据授权</span>
       </div>
 
-      <div class="sec">
-        <div class="sec-head"><h3>训练数据授权</h3><span class="tag tag-ai">AI 助理</span></div>
+      <!-- 说明 -->
+      <section class="sec" style="margin-top:4px">
+        <div class="card col gap10">
+          <div class="flex gap8">
+            <span class="fd t16 bb">训练数据授权</span>
+            <span class="tag">独立授权</span>
+          </div>
+          <div class="t13 c2" style="line-height:1.75">你参与的房间问答记录，在<b>脱敏处理后</b>可用于 Agent 训练，帮助更多遇到同类劳动纠纷的用户获得更准确的流程指引。授权独立于拼单，可随时在「我的 - 同意管理」撤回。</div>
+          <div class="note warn">
+            <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.8v.4"/></svg></span>
+            <div><b>可拒绝，不影响本次拼单。</b>拒绝仅是该房间的消息不进入训练语料，报名与履约不受影响。</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 授权范围 -->
+      <section class="sec">
+        <div class="sec-h"><span class="t">授权范围</span></div>
         <div class="card">
-          <p style="font-size:13px;line-height:1.75;">你参与的房间问答，在<b>脱敏处理后</b>可能用于改进平台的 AI 助手，帮助更多遇到同类劳动纠纷的用户获得更准确的流程指引。</p>
-          <div class="divider"></div>
-          <div class="row-between" style="padding:4px 0;">
-            <span class="small">会进入语料（脱敏后）</span>
-            <span class="tag">提问与解答文本</span>
-          </div>
-          <div class="row-between" style="padding:4px 0;">
-            <span class="small">不会进入语料</span>
-            <span class="tag tag-ok">姓名 · 手机号 · 证件号 · 支付信息</span>
+          <div class="rows">
+            <div class="row">
+              <span class="ic">🪪</span>
+              <div class="tt"><b>实名信息 <span class="t12 c3">realname</span></b><span>用于合规核验与纠纷处理，不进入语料</span></div>
+              <span class="tag">已授权</span>
+            </div>
+            <div class="row">
+              <span class="ic">✦</span>
+              <div class="tt"><b>训练语料 <span class="t12 c3">training</span></b><span>房间问答脱敏后用于 Agent 训练</span></div>
+              <span class="tag gold">本页选择</span>
+            </div>
+            <div class="row">
+              <span class="ic">🎙️</span>
+              <div class="tt"><b>录音录像 <span class="t12 c3">recording</span></b><span>1对1 音视频服务前单独确认，与本授权无关</span></div>
+              <span class="tag gray">单独确认</span>
+            </div>
           </div>
         </div>
+      </section>
 
-        <div class="radio-cards mt12">
-          <label class="radio-card on">
-            <span class="radio-dot"></span>
-            <span class="rc-body">
-              <span class="rc-title" style="display:block;">同意授权</span>
-              <span class="rc-desc" style="display:block;">本房间问答脱敏后进入训练语料，用于改进 AI 助手</span>
-            </span>
-          </label>
-          <label class="radio-card">
-            <span class="radio-dot"></span>
-            <span class="rc-body">
-              <span class="rc-title" style="display:block;">拒绝授权</span>
-              <span class="rc-desc" style="display:block;">不影响拼单与任何服务，仅本房间消息不进入训练语料</span>
-            </span>
-          </label>
-        </div>
-      </div>
+      <!-- 两个选择 -->
+      <section class="sec col gap10">
+        <a class="btn btn-p btn-lg btn-block" href="u11-join.html">同意授权并完成报名</a>
+        <a class="btn btn-o btn-block" href="u11-join.html">暂不同意，仅完成报名</a>
+        <div class="t12 c3 tc">两种选择均完成报名，仅训练语料授权状态不同</div>
+      </section>
 
-      <div class="notice">
-        <svg class="ic ic-sm" viewBox="0 0 24 24" style="margin-top:2px;"><path d="M12 3.5l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10v-5z"/><path d="M9 11.5l2 2 4-4"/></svg>
-        <div>授权可随时在「我的 · 同意管理」中撤回；撤回后，相关消息将从训练语料中删除。</div>
-      </div>
     </div>
-
-    <div style="flex:none;padding:10px 14px;background:var(--paper);border-top:1px solid var(--line);">
-      <a class="btn btn-seal btn-lg btn-block" href="u11-join.html">完成，查看我的拼单</a>
-      <div class="small tac" style="margin-top:6px;">已报名「拖欠工资如何申请劳动仲裁」· 待成团 3/5</div>
-    </div>
-
-    <div class="tabbar">
-      <a class="on" href="u02-home.html">
-        <svg class="ic" viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10.5V20h12v-9.5"/></svg>
-        首页
-      </a>
-      <a href="u11-join.html">
-        <svg class="ic" viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3"/><path d="M3.5 19c.8-3 3-4.5 5.5-4.5s4.7 1.5 5.5 4.5"/><circle cx="16.8" cy="9.5" r="2.2"/><path d="M16 14.7c2.2.3 4 1.6 4.7 4.3"/></svg>
-        我的拼单
-      </a>
-      <a href="u13-messages.html" style="position:relative;">
-        <svg class="ic" viewBox="0 0 24 24"><path d="M4 5.5h16v10H9l-5 4z"/></svg>
-        <span class="badge num">3</span>
-        消息
-      </a>
-      <a href="u14-profile.html">
-        <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19.5c1-3.4 3.5-5 6.5-5s5.5 1.6 6.5 5"/></svg>
-        我的
-      </a>
-    </div>
-    <div class="homebar"></div>
   </div>
 </div>
 </body>

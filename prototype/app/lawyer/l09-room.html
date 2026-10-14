@@ -3,161 +3,134 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>律聚人 · 律师端 · 咨询房间</title>
+<title>l09 · 咨询房间 — 律聚人原型</title>
 <link rel="stylesheet" href="../assets/app.css">
 </head>
-<body class="role-lawyer">
+<body>
 <div class="desk">
-  <div class="desk-label"><b>律聚人 · 律师端</b><code>l09 咨询房间（Agent 草稿）</code><span>PRD §7.2.7 / §11.1 草稿仅律师可见，永不直发公屏</span></div>
-
+  <div class="desk-label">律聚人 · <b>律师端 l09</b> · 咨询房间（进行中）</div>
   <div class="phone">
-    <div class="statusbar"><span class="num">20:32</span><div class="notch"></div><span>5G&nbsp;▮▮▮</span></div>
+    <div class="screen" style="padding-bottom:180px">
 
-    <div class="room-head">
-      <a class="back" href="l03-sessions.html">
-        <svg class="ic" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>
-      </a>
-      <div class="rh-body">
-        <div class="rh-title">加班费与社保补缴实务答疑</div>
-        <div class="rh-sub">
-          <span class="st-ing">● 进行中</span>
-          <span>20:00 – 21:00</span>
-          <span>在场 5 人</span>
-          <span>文本</span>
+      <div class="statusbar">
+        <span>20:32</span>
+        <span class="sic">
+          <svg width="17" height="12" viewBox="0 0 17 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="4.5" y="5" width="3" height="7" rx="1"/><rect x="9" y="2.5" width="3" height="9.5" rx="1"/><rect x="13.5" y="0" width="3" height="12" rx="1"/></svg>
+          <svg width="24" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3.5" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="15" height="8" rx="2" fill="currentColor"/><path d="M23 4v4c1.2-.3 2-1 2-2s-.8-1.7-2-2z" fill="currentColor" opacity=".4"/></svg>
+        </span>
+      </div>
+
+      <!-- 房间头部 -->
+      <div style="padding:2px 18px 12px;border-bottom:1px solid var(--line-soft)">
+        <div class="flex gap10">
+          <a class="back" href="l03-sessions.html">‹</a>
+          <div class="grow">
+            <div class="fd t15 b" style="letter-spacing:.5px">加班费与社保补缴实务答疑</div>
+            <div class="flex gap8 mt6">
+              <span class="tag dot">进行中</span>
+              <span class="t12 c3" style="align-self:center">10-16 周五 20:00–21:00 · 在场 5/6</span>
+            </div>
+          </div>
+        </div>
+        <div class="chips mt10">
+          <span class="ck">宽限期说明</span>
+          <span class="ck">仲裁时效 1 年</span>
+          <span class="ck">证据清单模板</span>
         </div>
       </div>
-      <a class="act" href="l02-workbench.html">
-        <svg class="ic" viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2.5h-15z"/><path d="M10 19a2 2 0 0 0 4 0"/></svg>
-      </a>
+
+      <!-- 消息流 -->
+      <section class="sec">
+        <div class="chat">
+          <div class="msg sys"><div class="bb">20:00 房间开启 · 6 人团 · 文本 + 语音</div></div>
+          <div class="msg me">
+            <div class="avatar sm">张</div>
+            <div class="bd">
+              <div class="nm">我 · 20:05</div>
+              <div class="bb">大家晚上好，我是张明远律师。今晚聚焦加班费与社保两个主题，欢迎直接提问，我会逐条回应。</div>
+            </div>
+          </div>
+          <div class="msg sys"><div class="bb">20:06 郑女士 超过宽限期未到场 · 记缺席：费用不退，70% 归律师，30% 以积分分给到场用户</div></div>
+          <div class="msg">
+            <div class="avatar sm v2">周</div>
+            <div class="bd">
+              <div class="nm">周女士 · 20:18&nbsp;<span class="tag gold" style="height:18px;font-size:10px">未回应</span></div>
+              <div class="bb">张律师好，我近一年基本每天加班 2 小时，公司说加班费已经包含在工资里了，这样合法吗？</div>
+            </div>
+          </div>
+          <div class="msg">
+            <div class="avatar sm v4">吴</div>
+            <div class="bd">
+              <div class="nm">吴先生 · 20:26&nbsp;<span class="tag gold" style="height:18px;font-size:10px">未回应</span></div>
+              <div class="bb">公司两年没给我缴社保，我能要求补缴吗？会不会已经过了仲裁时效？</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Agent 草稿 -->
+      <section class="sec">
+        <div class="sec-h"><span class="t">Agent 草稿</span><span class="cnt">2 条待审查 · 仅你可见</span></div>
+        <div class="col gap12">
+          <div class="draft">
+            <div class="dh"><span class="ai">✦ AI</span>AI 辅助 · 仅供参考 · 仅你可见<span class="tag" style="margin-left:auto;height:20px">回应 周女士</span></div>
+            <div class="t13" style="line-height:1.7">加班费不能笼统约定「已包含在工资内」。依据《劳动法》第 44 条，工作日延时加班应支付不低于工资 150% 的报酬；即便约定包薪制，折算后低于法定标准的部分仍可主张补足。建议先收集考勤记录与工资条，按月计薪天数 21.75 天折算小时工资，核算近一年差额。</div>
+            <div class="flex gap8 mt10">
+              <span class="btn btn-p btn-sm">发送</span>
+              <span class="btn btn-o btn-sm">修改</span>
+              <span class="btn btn-o btn-sm">丢弃</span>
+            </div>
+          </div>
+          <div class="draft">
+            <div class="dh"><span class="ai">✦ AI</span>AI 辅助 · 仅供参考 · 仅你可见<span class="tag" style="margin-left:auto;height:20px">回应 吴先生</span></div>
+            <div class="t13" style="line-height:1.7">可以要求补缴。社保补缴属行政征缴，可向社保稽核部门投诉，不受仲裁时效 1 年限制；但若以「未依法缴纳社保」主张被迫解除劳动合同并要求经济补偿，适用 1 年仲裁时效（《劳动争议调解仲裁法》第 27 条），建议尽快固定劳动合同、工资流水等证据后启动。</div>
+            <div class="flex gap8 mt10">
+              <span class="btn btn-p btn-sm">发送</span>
+              <span class="btn btn-o btn-sm">修改</span>
+              <span class="btn btn-o btn-sm">丢弃</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 审查须知 -->
+      <section class="sec">
+        <div class="note gold">
+          <span class="ic">✦</span>
+          <span>所有回复均以<b>你的名义</b>发送；Agent 输出永不直发公屏，<b>审查环节不可省略</b>。发送 / 修改 / 丢弃动作将进入 AgentReviewLog 统计。</span>
+        </div>
+      </section>
+
+      <!-- 输入条（位于 tabbar 上方） -->
+      <div class="inputbar" style="bottom:82px">
+        <input class="ipt" placeholder="以律师身份回复，或引用上方草稿…">
+        <button class="iact">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg>
+        </button>
+      </div>
+
     </div>
 
-    <!-- 在场用户 / 待办提示 -->
-    <div style="flex:none;display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--ink-50);border-bottom:1px solid var(--line);overflow-x:auto;">
-      <span class="tag tag-ai">待回应 2</span>
-      <span class="avatar sm">吴</span><span class="avatar sm">周</span><span class="avatar sm">郑</span><span class="avatar sm">孙</span><span class="avatar sm">钱</span>
-      <span class="small" style="flex:none;">已到场 5 / 5</span>
-    </div>
-
-    <div class="chat">
-
-      <div class="sysmsg"><span>20:00 房间开启 · 宽限期至 20:05，Agent 已暖场并收集问题</span></div>
-
-      <div class="msg agent">
-        <span class="avatar">辅</span>
-        <div class="m-body">
-          <div class="m-name">Agent 助理</div>
-          <div class="bubble">大家好，我是本场助理。开始前大家可以先发送问题关键词，我会整理后交给王律师统一解答。本场主题：加班费计算与社保补缴。</div>
-          <div class="ai-chip">✦ 流程指引 · 非法律意见</div>
-        </div>
-      </div>
-
-      <div class="msg">
-        <span class="avatar sm">吴</span>
-        <div class="m-body">
-          <div class="m-name">吴先生</div>
-          <div class="bubble">律师您好，我平时工资 8000，加班费按 3000 的基数算的，这合理吗？</div>
-          <div class="m-time">20:21</div>
-        </div>
-      </div>
-
-      <div class="msg mine">
-        <span class="avatar">王</span>
-        <div class="m-body">
-          <div class="m-name" style="text-align:right;">王振宇 律师</div>
-          <div class="bubble">先说结论：基数通常不应低于你的正常工资标准，稍后我展开讲计算方式。</div>
-          <div class="m-time">20:23</div>
-        </div>
-      </div>
-
-      <div class="msg">
-        <span class="avatar sm">郑</span>
-        <div class="m-body">
-          <div class="m-name">郑女士</div>
-          <div class="bubble">公司两年没交社保，听说只能补两年，是真的吗？</div>
-          <div class="m-time">20:28</div>
-        </div>
-      </div>
-
-      <div class="sysmsg"><span>Agent 提示：检测到 2 个未回应问题（吴先生 / 郑女士），草稿已生成</span></div>
-
-      <!-- Agent 草稿气泡 1（签名组件：仅律师可见） -->
-      <div class="draft-wrap">
-        <div class="d-head">
-          <svg class="ic ic-sm" viewBox="0 0 24 24"><path d="M12 4l1.8 5.2L19 11l-5.2 1.8L12 18l-1.8-5.2L5 11l5.2-1.8z"/></svg>
-          Agent 草稿 · 回复 吴先生
-          <span class="who">20:30 生成 · 置信 中</span>
-        </div>
-        <div class="d-body">加班费计算基数一般为正常工作时间工资，不含加班费本身。若合同无特别约定，按 8000 元作为基数更符合规定，可主张差额：8000 ÷ 21.75 ÷ 8 × 加班小时 × 150%（工作日延时）/ 200%（休息日）/ 300%（法定节假日）。</div>
-        <div class="d-note">已比对专项知识库《加班费计算指引 v3》· 引用事实：月薪 8000 / 现基数 3000</div>
-        <div class="d-acts">
-          <button class="btn btn-primary btn-sm" onclick="this.closest('.draft-wrap').style.display='none'">采用并发送</button>
-          <button class="btn btn-ghost btn-sm">修改后发送</button>
-          <button class="btn btn-plain btn-sm">丢弃</button>
-        </div>
-      </div>
-
-      <!-- Agent 草稿气泡 2（多用户并行） -->
-      <div class="draft-wrap">
-        <div class="d-head">
-          <svg class="ic ic-sm" viewBox="0 0 24 24"><path d="M12 4l1.8 5.2L19 11l-5.2 1.8L12 18l-1.8-5.2L5 11l5.2-1.8z"/></svg>
-          Agent 草稿 · 回复 郑女士
-          <span class="who">20:31 生成 · 置信 高</span>
-        </div>
-        <div class="d-body">社保补缴不受"两年"限制——两年是稽核时效的实践口径，但用人单位未足额缴纳的，劳动者可向社保稽核部门投诉要求补缴，实践中多数地区支持全额补缴。建议保留劳动合同与工资流水。</div>
-        <div class="d-note">高频问题 · 命中快捷回复库 #12（本月已用 38 次）</div>
-        <div class="d-acts">
-          <button class="btn btn-primary btn-sm" onclick="this.closest('.draft-wrap').style.display='none'">采用并发送</button>
-          <button class="btn btn-ghost btn-sm">修改后发送</button>
-          <button class="btn btn-plain btn-sm">丢弃</button>
-        </div>
-      </div>
-
-      <!-- 1对1 建议清单（E2） -->
-      <div class="notice seal mt12">
-        <svg class="ic ic-sm" viewBox="0 0 24 24"><path d="M12 4l1.8 5.2L19 11l-5.2 1.8L12 18l-1.8-5.2L5 11l5.2-1.8z"/></svg>
-        <div style="flex:1">
-          <b>1对1 建议</b>：吴先生的问题涉及近两年加班费差额计算，材料较多，适合推送「深度解答」邀约。
-          <div class="mt8"><a class="btn btn-seal btn-sm" href="l02-workbench.html">查看建议清单</a></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="quickbar">
-      <a href="l09-room.html">仲裁时效说明</a>
-      <a href="l09-room.html">需要准备的材料</a>
-      <a href="l09-room.html">仲裁申请流程</a>
-      <a href="l09-room.html">证据清单模板</a>
-    </div>
-
-    <div class="composer">
-      <button class="tool" title="快捷回复库">
-        <svg class="ic" viewBox="0 0 24 24"><path d="M7 3.5h7l4 4V20.5H7z"/><path d="M14 3.5v4h4M10 12h6M10 15.5h6"/></svg>
-      </button>
-      <input class="input" placeholder="回复本场用户…">
-      <button class="send">
-        <svg class="ic" viewBox="0 0 24 24"><path d="M3 11.5 21 4l-7.5 18-2-7.5z"/></svg>
-      </button>
-    </div>
-
-    <div class="tabbar">
+    <!-- Tabbar：律师端（房间内高亮场次管理） -->
+    <nav class="tabbar">
       <a href="l02-workbench.html">
-        <svg class="ic" viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10.5V20h12v-9.5"/></svg>
+        <svg class="ti" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
         工作台
       </a>
       <a class="on" href="l03-sessions.html">
-        <svg class="ic" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M4 10h16M8 4v4M16 4v4"/></svg>
+        <svg class="ti" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
         场次管理
       </a>
       <a href="l06-hall.html">
-        <svg class="ic" viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3"/><path d="M3.5 19c.8-3 3-4.5 5.5-4.5s4.7 1.5 5.5 4.5"/><circle cx="16.8" cy="9.5" r="2.2"/><path d="M16 14.7c2.2.3 4 1.6 4.7 4.3"/></svg>
+        <svg class="ti" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M12 22V12M3 7l9 5 9-5"/></svg>
         接单大厅
+        <span class="bdg">1</span>
       </a>
       <a href="l10-profile.html">
-        <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19.5c1-3.4 3.5-5 6.5-5s5.5 1.6 6.5 5"/></svg>
+        <svg class="ti" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         我的
       </a>
-    </div>
-    <div class="homebar"></div>
+    </nav>
   </div>
 </div>
 </body>

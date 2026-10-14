@@ -3,151 +3,128 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>律聚人 · 律师端 · 时间表</title>
+<title>l07 · 时间表管理 — 律聚人原型</title>
 <link rel="stylesheet" href="../assets/app.css">
 </head>
-<body class="role-lawyer">
+<body>
 <div class="desk">
-  <div class="desk-label"><b>律聚人 · 律师端</b><code>l07 时间表管理</code><span>PRD §7.2.2 时间表 / B1 时段供给与原子锁定</span></div>
-
+  <div class="desk-label">律聚人 · <b>律师端 l07</b> · 时间表管理</div>
   <div class="phone">
-    <div class="statusbar"><span class="num">20:15</span><div class="notch"></div><span>5G&nbsp;▮▮▮</span></div>
-
-    <div class="appbar">
-      <a class="back" href="l03-sessions.html"><svg class="ic" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></a>
-      <div class="title">时间表</div>
-      <div class="spacer"></div>
-      <a class="btn btn-primary btn-sm" href="l07-schedule.html" style="height:32px;">
-        <svg class="ic ic-sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>添加时段
-      </a>
-    </div>
-
     <div class="screen">
-      <!-- 时段设置 -->
-      <div class="card mb12">
-        <div class="row-between mb8">
-          <b style="font-size:13.5px;">单场时长</b>
-          <span class="small">时段按周重复开放</span>
-        </div>
-        <div class="seg">
-          <button onclick="seg(this)">60 分钟</button>
-          <button class="on" onclick="seg(this)">90 分钟</button>
-          <button onclick="seg(this)">120 分钟</button>
-        </div>
-        <div class="field-tip">调整时长与开放规则仅影响之后的新开团；时间表按周重复，可单独停用某一周</div>
+
+      <div class="statusbar">
+        <span>9:41</span>
+        <span class="sic">
+          <svg width="17" height="12" viewBox="0 0 17 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="4.5" y="5" width="3" height="7" rx="1"/><rect x="9" y="2.5" width="3" height="9.5" rx="1"/><rect x="13.5" y="0" width="3" height="12" rx="1"/></svg>
+          <svg width="24" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3.5" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="15" height="8" rx="2" fill="currentColor"/><path d="M23 4v4c1.2-.3 2-1 2-2s-.8-1.7-2-2z" fill="currentColor" opacity=".4"/></svg>
+        </span>
+      </div>
+      <div class="navbar">
+        <a class="back" href="l02-workbench.html">‹</a>
+        <div class="ttl">时间表管理</div>
+        <span class="act">本周</span>
       </div>
 
-      <!-- 周视图 10-13 至 10-19 -->
-      <div class="sec">
-        <div class="sec-head"><h3>本周 · 10-13 至 10-19</h3><span class="more small num">周二</span></div>
+      <!-- 图例 -->
+      <section class="sec">
+        <div class="flex gap14" style="padding:0 4px">
+          <span class="flex gap6 t12 c2"><i style="width:14px;height:14px;border-radius:5px;background:var(--ink-100);border:1px solid var(--ink-200)"></i>空闲</span>
+          <span class="flex gap6 t12 c2"><i style="width:14px;height:14px;border-radius:5px;background:var(--ink-500)"></i>已占用</span>
+          <span class="flex gap6 t12 c2"><i style="width:14px;height:14px;border-radius:5px;background:repeating-linear-gradient(45deg,var(--ink-100),var(--ink-100) 3px,#fff 3px,#fff 6px);border:1.5px dashed var(--ink-400)"></i>已锁定</span>
+        </div>
+      </section>
+
+      <!-- 周视图 -->
+      <section class="sec">
+        <div class="sec-h"><span class="t">10-12 ~ 10-18</span><span class="cnt">状态随预约实时变化</span></div>
         <div class="card">
-          <div class="weekgrid">
-            <span class="wg-head"></span>
-            <span class="wg-head today">周二<b>13</b></span>
-            <span class="wg-head">周三<b>14</b></span>
-            <span class="wg-head">周四<b>15</b></span>
-            <span class="wg-head">周五<b>16</b></span>
-            <span class="wg-head">周六<b>17</b></span>
-            <span class="wg-head">周日<b>18</b></span>
-            <span class="wg-head">周一<b>19</b></span>
-
-            <span class="wg-time num">10:00</span>
-            <span class="slot free" onclick="pick(this)"></span>
-            <span class="slot free" onclick="pick(this)"></span>
-            <span class="slot free" onclick="pick(this)"></span>
-            <span class="slot free" onclick="pick(this)"></span>
-            <span class="slot free" onclick="pick(this)"></span>
-            <span class="slot seal">待确认拼团</span>
-            <span class="slot free" onclick="pick(this)"></span>
-
-            <span class="wg-time num">14:00</span>
-            <span class="slot free" onclick="pick(this)"></span>
-            <span class="slot free" onclick="pick(this)"></span>
-            <span class="slot free" onclick="pick(this)"></span>
-            <span class="slot free" onclick="pick(this)"></span>
-            <span class="slot locked">拼团锁定</span>
-            <span class="slot free" onclick="pick(this)"></span>
-            <span class="slot free" onclick="pick(this)"></span>
-
-            <span class="wg-time num">19:00</span>
-            <span class="slot free" onclick="pick(this)"></span>
-            <span class="slot free" onclick="pick(this)"></span>
-            <span class="slot free" onclick="pick(this)"></span>
-            <span class="slot free" onclick="pick(this)"></span>
-            <span class="slot free" onclick="pick(this)"></span>
-            <span class="slot free" onclick="pick(this)"></span>
-            <span class="slot free" onclick="pick(this)"></span>
-
-            <span class="wg-time num">20:00</span>
-            <span class="slot free" onclick="pick(this)"></span>
-            <span class="slot occupied">场次：夜谈</span>
-            <span class="slot selected" onclick="pick(this)">已选</span>
-            <span class="slot occupied">20:00 场次：加班费</span>
-            <span class="slot free" onclick="pick(this)"></span>
-            <span class="slot free" onclick="pick(this)"></span>
-            <span class="slot free" onclick="pick(this)"></span>
-
-            <span class="wg-time num">21:00</span>
-            <span class="slot free" onclick="pick(this)"></span>
-            <span class="slot free" onclick="pick(this)"></span>
-            <span class="slot free" onclick="pick(this)"></span>
-            <span class="slot free" onclick="pick(this)"></span>
-            <span class="slot free" onclick="pick(this)"></span>
-            <span class="slot free" onclick="pick(this)"></span>
-            <span class="slot free" onclick="pick(this)"></span>
-          </div>
-
-          <div class="divider"></div>
-          <div class="small" style="display:flex;flex-wrap:wrap;gap:8px 14px;">
-            <span style="display:inline-flex;align-items:center;gap:5px;"><i style="width:12px;height:12px;border-radius:4px;background:var(--ink-50);border:1px solid var(--ink-100);font-style:normal;"></i>空闲</span>
-            <span style="display:inline-flex;align-items:center;gap:5px;"><i style="width:12px;height:12px;border-radius:4px;background:var(--ink-700);font-style:normal;"></i>选中</span>
-            <span style="display:inline-flex;align-items:center;gap:5px;"><i style="width:12px;height:12px;border-radius:4px;background:#EEF2FA;border:1.5px dashed var(--ink-300);font-style:normal;"></i>已锁定</span>
-            <span style="display:inline-flex;align-items:center;gap:5px;"><i style="width:12px;height:12px;border-radius:4px;background:var(--paper);border:1px solid var(--line);font-style:normal;"></i>已占用</span>
-            <span style="display:inline-flex;align-items:center;gap:5px;"><i style="width:12px;height:12px;border-radius:4px;background:var(--seal-50);border:1px solid var(--seal-100);font-style:normal;"></i>待确认拼团</span>
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">
+            <!-- 表头 -->
+            <div class="tc t12 c3">一<br><b class="c2">12</b></div>
+            <div class="tc t12 c3">二<br><b class="ci">13</b></div>
+            <div class="tc t12 c3">三<br><b class="c2">14</b></div>
+            <div class="tc t12 c3">四<br><b class="c2">15</b></div>
+            <div class="tc t12 c3">五<br><b class="c2">16</b></div>
+            <div class="tc t12 c3">六<br><b class="c2">17</b></div>
+            <div class="tc t12 c3">日<br><b class="c2">18</b></div>
+            <!-- 14:00 行 -->
+            <div style="height:34px;border-radius:8px;background:rgba(228,225,210,.35)"></div>
+            <div style="height:34px;border-radius:8px;background:rgba(228,225,210,.35)"></div>
+            <div style="height:34px;border-radius:8px;background:rgba(228,225,210,.35)"></div>
+            <div style="height:34px;border-radius:8px;background:rgba(228,225,210,.35)"></div>
+            <div style="height:34px;border-radius:8px;background:rgba(228,225,210,.35)"></div>
+            <div style="height:34px;border-radius:8px;background:var(--ink-100);border:1px solid var(--ink-200);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--ink-700);font-weight:600">14:00</div>
+            <div style="height:34px;border-radius:8px;background:repeating-linear-gradient(45deg,var(--ink-100),var(--ink-100) 3px,#fff 3px,#fff 6px);border:1.5px dashed var(--ink-400);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--ink-600);font-weight:600">14:00</div>
+            <!-- 15:00 行 -->
+            <div style="height:34px;border-radius:8px;background:rgba(228,225,210,.35)"></div>
+            <div style="height:34px;border-radius:8px;background:rgba(228,225,210,.35)"></div>
+            <div style="height:34px;border-radius:8px;background:rgba(228,225,210,.35)"></div>
+            <div style="height:34px;border-radius:8px;background:rgba(228,225,210,.35)"></div>
+            <div style="height:34px;border-radius:8px;background:rgba(228,225,210,.35)"></div>
+            <div style="height:34px;border-radius:8px;background:var(--ink-100);border:1px solid var(--ink-200);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--ink-700);font-weight:600">15:00</div>
+            <div style="height:34px;border-radius:8px;background:rgba(228,225,210,.35)"></div>
+            <!-- 20:00 行 -->
+            <div style="height:34px;border-radius:8px;background:var(--ink-100);border:1px solid var(--ink-200);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--ink-700);font-weight:600">20:00</div>
+            <div style="height:34px;border-radius:8px;background:var(--ink-100);border:1px solid var(--ink-200);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--ink-700);font-weight:600">20:00</div>
+            <div style="height:34px;border-radius:8px;background:var(--ink-100);border:1px solid var(--ink-200);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--ink-700);font-weight:600">20:00</div>
+            <div style="height:34px;border-radius:8px;background:var(--ink-100);border:1px solid var(--ink-200);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--ink-700);font-weight:600">20:00</div>
+            <div style="height:34px;border-radius:8px;background:var(--ink-500);display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:600">20:00</div>
+            <div style="height:34px;border-radius:8px;background:var(--ink-100);border:1px solid var(--ink-200);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--ink-700);font-weight:600">20:00</div>
+            <div style="height:34px;border-radius:8px;background:var(--ink-100);border:1px solid var(--ink-200);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--ink-700);font-weight:600">20:00</div>
           </div>
         </div>
-        <div class="notice mt12">
-          <svg class="ic ic-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 8v5M12 16.5v.01"/></svg>
-          <div>已排期场次（已占用）不受时间表变更影响；「已锁定 / 待确认」为 C2B 拼团占用或预留的时段。</div>
+      </section>
+
+      <!-- 状态明细 -->
+      <section class="sec">
+        <div class="card rows">
+          <div class="row">
+            <div class="ic">📌</div>
+            <div class="tt"><b>周五 10-16 · 20:00–21:00</b><span>加班费与社保补缴实务答疑 · 报名中 4/6</span></div>
+            <span class="tag dot">已占用</span>
+          </div>
+          <div class="row">
+            <div class="ic">🔒</div>
+            <div class="tt"><b>周日 10-18 · 14:00–15:00</b><span>C2B 拼团指定时段 · 成团待你确认</span></div>
+            <span class="tag gray">已锁定</span>
+          </div>
+          <div class="row">
+            <div class="ic">＋</div>
+            <div class="tt"><b>周六 10-17 · 14:00 / 15:00</b><span>空闲时段 · 可直接开团</span></div>
+            <a class="rt ci b" href="l04-create-session.html">去开团 ›</a>
+          </div>
         </div>
+      </section>
+
+      <!-- 时段设置 -->
+      <section class="sec">
+        <div class="sec-h"><span class="t">时段设置</span></div>
+        <div class="card">
+          <div class="field">
+            <label class="lb">单场时长</label>
+            <div class="seg"><span class="on">60 分钟</span><span>90 分钟</span><span>120 分钟</span></div>
+          </div>
+          <div class="flex" style="margin-bottom:0">
+            <div class="grow">
+              <div class="t13 b">按周重复开放</div>
+              <div class="t12 c3 mt6">每周同一时段自动标记为空闲</div>
+            </div>
+            <label class="switch"><input type="checkbox" checked><i></i></label>
+          </div>
+        </div>
+        <div class="note mt10">
+          <span class="ic">ℹ︎</span>
+          <span>时间表变更<b>不影响已排期场次</b>；C2B 发起与 B2C 创建会立即锁定对应时段，同一时段只能有一个有效场次。</span>
+        </div>
+      </section>
+
+      <!-- 底部操作 -->
+      <div class="ctabar">
+        <a class="btn btn-o btn-block" href="l07-schedule.html">＋ 添加时段</a>
       </div>
 
-      <!-- 快速开团 -->
-      <div class="card" style="display:flex;align-items:center;gap:10px;">
-        <span class="cell-ic"><svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>
-        <div style="flex:1;">
-          <div style="font-size:13.5px;font-weight:600;">点击空闲时段可快速开团</div>
-          <div class="small">选中后直接带入创建场次流程</div>
-        </div>
-        <a class="btn btn-primary btn-sm" href="l04-create-session.html">去开团</a>
-      </div>
     </div>
-
-    <div class="tabbar">
-      <a href="l02-workbench.html">
-        <svg class="ic" viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10.5V20h12v-9.5"/></svg>
-        工作台
-      </a>
-      <a class="on" href="l03-sessions.html">
-        <svg class="ic" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M4 10h16M8 4v4M16 4v4"/></svg>
-        场次管理
-      </a>
-      <a href="l06-hall.html">
-        <svg class="ic" viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3"/><path d="M3.5 19c.8-3 3-4.5 5.5-4.5s4.7 1.5 5.5 4.5"/><circle cx="16.8" cy="9.5" r="2.2"/><path d="M16 14.7c2.2.3 4 1.6 4.7 4.3"/></svg>
-        接单大厅
-      </a>
-      <a href="l10-profile.html">
-        <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19.5c1-3.4 3.5-5 6.5-5s5.5 1.6 6.5 5"/></svg>
-        我的
-      </a>
-    </div>
-    <div class="homebar"></div>
   </div>
 </div>
-
-<script>
-function seg(el){[...el.parentNode.children].forEach(b=>b.classList.remove('on'));el.classList.add('on');}
-function pick(el){document.querySelectorAll('.slot.selected').forEach(s=>s.classList.remove('selected'));el.classList.add('selected');}
-</script>
 </body>
 </html>

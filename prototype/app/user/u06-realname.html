@@ -3,83 +3,58 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>律聚人 · 用户端 · 实名认证</title>
+<title>u06 · 实名认证 — 律聚人原型</title>
 <link rel="stylesheet" href="../assets/app.css">
 </head>
-<body class="role-user">
+<body>
 <div class="desk">
-  <div class="desk-label"><b>律聚人 · 用户端</b><code>u06 实名认证</code><span>PRD §7.1.1 / A2 支付闸口</span></div>
-
+  <div class="desk-label">律聚人 · <b>用户端 u06</b> · 实名认证</div>
   <div class="phone">
-    <div class="statusbar"><span class="num">10:15</span><div class="notch"></div><span>5G&nbsp;▮▮▮</span></div>
-
-    <div class="appbar">
-      <a class="back" href="u03-session-detail.html"><svg class="ic" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></a>
-      <span class="title">实名认证</span>
-      <span class="spacer"></span>
-    </div>
-
     <div class="screen">
-      <a class="card" href="u03-session-detail.html" style="display:flex;align-items:center;gap:10px;">
-        <span class="cell-ic"><svg class="ic" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M4 10h16M8 4v4M16 4v4"/></svg></span>
-        <span style="flex:1;min-width:0;">
-          <b style="font-size:13px;">正在报名：拖欠工资如何申请劳动仲裁</b>
-          <i style="display:block;font-style:normal;font-size:11px;color:var(--text-3);margin-top:1px;">张明远 律师 · 10-14 周三 20:00 · ¥99/人</i>
+
+      <div class="statusbar">
+        <span>10:40</span>
+        <span class="sic">
+          <svg width="17" height="12" viewBox="0 0 17 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="4.5" y="5" width="3" height="7" rx="1"/><rect x="9" y="2.5" width="3" height="9.5" rx="1"/><rect x="13.5" y="0" width="3" height="12" rx="1"/></svg>
+          <svg width="24" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3.5" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="15" height="8" rx="2" fill="currentColor"/><path d="M23 4v4c1.2-.3 2-1 2-2s-.8-1.7-2-2z" fill="currentColor" opacity=".4"/></svg>
         </span>
-        <span class="price"><small>¥</small>99</span>
-      </a>
-
-      <div class="notice seal mt12">
-        <svg class="ic ic-sm" viewBox="0 0 24 24" style="margin-top:2px;"><path d="M12 3.5l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10v-5z"/><path d="M9 11.5l2 2 4-4"/></svg>
-        <div><b>支付闸口</b>：依据监管要求，支付前需完成实名认证。信息仅用于合规核验与纠纷处理，不对外展示。</div>
+      </div>
+      <div class="navbar">
+        <a class="back" href="u03-session-detail.html"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></a>
+        <span class="ttl">实名认证</span>
       </div>
 
-      <div class="card mt12">
-        <div class="field">
-          <label>姓名<em>*</em></label>
-          <input class="input" value="周晓岚">
+      <!-- 说明 -->
+      <section class="sec" style="margin-top:4px">
+        <div class="note">
+          <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10v-5z"/><path d="M9 11.5l2 2 4-4"/></svg></span>
+          <div>支付前需完成实名认证。实名信息仅用于<b>合规核验与纠纷处理</b>，加密存储，不对外展示。</div>
         </div>
-        <div class="field">
-          <label>身份证号<em>*</em></label>
-          <input class="input num" value="1101**********2868">
-          <div class="field-tip">为保护隐私，界面按脱敏方式显示；提交时核对完整证件号</div>
+      </section>
+
+      <!-- 表单 -->
+      <section class="sec">
+        <div class="card">
+          <div class="field">
+            <label class="lb">姓名<span class="req">*</span></label>
+            <input class="input" value="周女士" placeholder="请输入真实姓名">
+            <div class="hint">须与身份证一致，用于仲裁材料与纠纷核验</div>
+          </div>
+          <div class="field" style="margin-bottom:4px">
+            <label class="lb">身份证号<span class="req">*</span></label>
+            <input class="input" value="1101**********0021" placeholder="请输入 18 位身份证号">
+            <div class="hint">脱敏展示，平台不留存明文证件影像</div>
+          </div>
         </div>
-        <label class="check-row on">
-          <span>已阅读并同意<b style="color:var(--ink-600);">《实名信息使用协议》</b>，知晓信息仅用于合规与纠纷处理</span>
-        </label>
-      </div>
+      </section>
 
-      <div class="notice mt12">
-        <svg class="ic ic-sm" viewBox="0 0 24 24" style="margin-top:2px;"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>
-        <div>核验由持牌机构完成，平台只留存脱敏摘要，不存储证件影像原件。实名信息一旦通过，无需重复提交。</div>
-      </div>
-    </div>
+      <!-- 提交 -->
+      <section class="sec">
+        <a class="btn btn-p btn-lg btn-block" href="u07-payment.html">完成认证，去支付</a>
+        <div class="t12 c3 tc mt10">认证即代表你确认《实名信息处理规则》</div>
+      </section>
 
-    <div style="flex:none;padding:10px 14px;background:var(--paper);border-top:1px solid var(--line);">
-      <a class="btn btn-seal btn-lg btn-block" href="u07-payment.html">提交核验，继续支付</a>
-      <div class="small tac" style="margin-top:6px;">核验通常在数秒内完成，失败可返回修改</div>
     </div>
-
-    <div class="tabbar">
-      <a class="on" href="u02-home.html">
-        <svg class="ic" viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10.5V20h12v-9.5"/></svg>
-        首页
-      </a>
-      <a href="u11-join.html">
-        <svg class="ic" viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3"/><path d="M3.5 19c.8-3 3-4.5 5.5-4.5s4.7 1.5 5.5 4.5"/><circle cx="16.8" cy="9.5" r="2.2"/><path d="M16 14.7c2.2.3 4 1.6 4.7 4.3"/></svg>
-        我的拼单
-      </a>
-      <a href="u13-messages.html" style="position:relative;">
-        <svg class="ic" viewBox="0 0 24 24"><path d="M4 5.5h16v10H9l-5 4z"/></svg>
-        <span class="badge num">3</span>
-        消息
-      </a>
-      <a href="u14-profile.html">
-        <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19.5c1-3.4 3.5-5 6.5-5s5.5 1.6 6.5 5"/></svg>
-        我的
-      </a>
-    </div>
-    <div class="homebar"></div>
   </div>
 </div>
 </body>

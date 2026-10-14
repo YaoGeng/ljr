@@ -3,177 +3,159 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>律聚人 · 律师端 · 我的</title>
+<title>l10 · 我的 — 律聚人原型</title>
 <link rel="stylesheet" href="../assets/app.css">
 </head>
-<body class="role-lawyer">
+<body>
 <div class="desk">
-  <div class="desk-label"><b>律聚人 · 律师端</b><code>l10 我的</code><span>PRD §7.2 律师端 · 个人中心 / B2 信用分 · D 结算</span></div>
-
+  <div class="desk-label">律聚人 · <b>律师端 l10</b> · 我的</div>
   <div class="phone">
-    <div class="statusbar"><span class="num">20:15</span><div class="notch"></div><span>5G&nbsp;▮▮▮</span></div>
-
-    <div class="hero">
-      <div style="display:flex;align-items:center;gap:13px;">
-        <span class="avatar" style="width:52px;height:52px;font-size:20px;border:2px solid rgba(255,255,255,.35);">王</span>
-        <div style="flex:1;min-width:0;">
-          <div style="font-family:var(--font-display);font-size:20px;font-weight:700;letter-spacing:1px;">王振宇 律师</div>
-          <div style="font-size:11.5px;color:#A9CDBB;margin-top:3px;">北京拓维律师事务所 · 执业 5 年 · 劳动仲裁</div>
-        </div>
-      </div>
-      <div style="margin-top:11px;"><span class="tag tag-ok">资质已认证 · 进件生效</span></div>
-    </div>
-
     <div class="screen">
-      <!-- 信用分 -->
-      <div class="card mb12">
-        <div class="credit-ring">
-          <div class="ring" style="--p:90;"><b class="num">90</b><span>信用分</span></div>
-          <div style="flex:1;">
-            <div style="font-size:13.5px;font-weight:600;">信用良好 · 指名推荐加权</div>
-            <div class="small" style="margin-top:7px;">10-12 场次正常履约 <b style="color:var(--ok-600);">+1</b></div>
-            <div class="small">10-05 拒绝 C2B 拼团 <b style="color:var(--seal-600);">-5</b></div>
+
+      <!-- Hero：身份 + 概览 -->
+      <div class="hero">
+        <div class="statusbar" style="color:#fff">
+          <span>9:41</span>
+          <span class="sic">
+            <svg width="17" height="12" viewBox="0 0 17 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="4.5" y="5" width="3" height="7" rx="1"/><rect x="9" y="2.5" width="3" height="9.5" rx="1"/><rect x="13.5" y="0" width="3" height="12" rx="1"/></svg>
+            <svg width="24" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3.5" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="15" height="8" rx="2" fill="currentColor"/><path d="M23 4v4c1.2-.3 2-1 2-2s-.8-1.7-2-2z" fill="currentColor" opacity=".4"/></svg>
+          </span>
+        </div>
+        <div class="in">
+          <div class="flex mt8 gap12">
+            <div class="avatar lg" style="border:2px solid rgba(255,255,255,.35)">张</div>
+            <div class="grow">
+              <div class="flex gap8">
+                <div class="hi">张明远</div>
+                <span class="tag" style="align-self:center;background:rgba(255,255,255,.16);color:#E4F2EB;border-color:rgba(255,255,255,.25)">执业律师</span>
+              </div>
+              <div class="sub mt6">京师（虚构）律师事务所 · 劳动法 8 年</div>
+            </div>
+          </div>
+          <div class="flex mt16" style="gap:0">
+            <div class="stat grow">
+              <div class="n" style="background:linear-gradient(160deg,#fff,#CFE6DA);-webkit-background-clip:text;background-clip:text">¥1,286</div>
+              <div class="l" style="color:#B9D8C8">本周收入</div>
+            </div>
+            <div class="stat grow">
+              <div class="n" style="background:linear-gradient(160deg,#fff,#CFE6DA);-webkit-background-clip:text;background-clip:text">¥864</div>
+              <div class="l" style="color:#B9D8C8">待结算</div>
+            </div>
+            <div class="stat grow">
+              <div class="n" style="background:linear-gradient(160deg,#F3EAD2,#C9A227);-webkit-background-clip:text;background-clip:text">96</div>
+              <div class="l" style="color:#B9D8C8">信用分</div>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- 收入 -->
-      <div class="sec">
-        <div class="sec-head"><h3>收入</h3><span class="more small num">2026-10</span></div>
-        <div class="stat-grid">
-          <div class="stat hl"><div class="s-num num"><small>¥</small>8,640</div><div class="s-label">本月收入</div></div>
-          <div class="stat"><div class="s-num num"><small>¥</small>1,940</div><div class="s-label">待结算</div></div>
-          <div class="stat"><div class="s-num num"><small>¥</small>6,700</div><div class="s-label">已提现（律所）</div></div>
+      <!-- 收入与结算 -->
+      <section class="sec">
+        <div class="sec-h"><span class="t">收入与结算</span><span class="cnt">资金直接结算至律所对公账户</span></div>
+        <div class="card rows">
+          <div class="row">
+            <div class="ic">💰</div>
+            <div class="tt"><b>10-12 场次服务费</b><span>结算批次 S1012 · 已至对公账户 尾号 8888</span></div>
+            <span class="rt"><b class="ci">¥594</b><br><span class="tag" style="height:20px">SETTLED</span></span>
+          </div>
+          <div class="row">
+            <div class="ic">⏳</div>
+            <div class="tt"><b>本周场（10-16）服务费</b><span>房间结束后进入结算</span></div>
+            <span class="rt"><b class="ci">¥594</b><br><span class="tag gold" style="height:20px">HOLD 24h</span></span>
+          </div>
         </div>
-        <div class="hint">结算至律所对公账户 · 平台服务费 0%（前期）</div>
-      </div>
+        <div class="note mt10">
+          <span class="ic">ℹ︎</span>
+          <span>用户支付由持牌机构分账，<b>资金不过平台账户</b>；平台服务费前期 0%，后续调整将提前公示。</span>
+        </div>
+      </section>
 
       <!-- 服务配置 -->
-      <div class="sec">
-        <div class="sec-head"><h3>服务配置</h3></div>
-        <div class="cells">
-          <a class="cell" href="l07-schedule.html">
-            <span class="cell-ic"><svg class="ic" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M4 10h16M8 4v4M16 4v4"/></svg></span>
-            <div class="cell-body">
-              <div class="cell-title">时间表管理</div>
-              <div class="cell-desc">单场 90 分钟 · 按周重复开放</div>
-            </div>
-            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+      <section class="sec">
+        <div class="sec-h"><span class="t">服务配置</span></div>
+        <div class="card rows">
+          <a class="row" href="l07-schedule.html">
+            <div class="ic">🗓</div>
+            <div class="tt"><b>时间表管理</b><span>本周 9 个可预约时段 · 1 占用 1 锁定</span></div>
+            <span class="arrow">›</span>
           </a>
-          <a class="cell" href="l08-pricing.html">
-            <span class="cell-ic"><svg class="ic" viewBox="0 0 24 24"><path d="M4 4h7l9 9-7 7-9-9z"/><circle cx="8.5" cy="8.5" r="1.6"/></svg></span>
-            <div class="cell-body">
-              <div class="cell-title">价格与 1对1 配置</div>
-              <div class="cell-desc">人头价 ¥88 · 默认 5 人团 · 当前版本 v2</div>
-            </div>
-            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+          <a class="row" href="l08-pricing.html">
+            <div class="ic">🏷</div>
+            <div class="tt"><b>价格配置</b><span>人头价 ¥99 · 当前版本 v3</span></div>
+            <span class="arrow">›</span>
+          </a>
+          <a class="row" href="l05-stats.html">
+            <div class="ic">📈</div>
+            <div class="tt"><b>场次数据看板</b><span>报名率 82% · 到场率 91%</span></div>
+            <span class="arrow">›</span>
+          </a>
+          <a class="row" href="l01-onboard.html">
+            <div class="ic">🛡</div>
+            <div class="tt"><b>资质与进件状态</b><span>审核通过 · 进件生效</span></div>
+            <span class="arrow">›</span>
           </a>
         </div>
-      </div>
+      </section>
 
-      <!-- 我的数据 -->
-      <div class="sec">
-        <div class="sec-head"><h3>我的数据</h3></div>
-        <div class="cells">
-          <a class="cell" href="l05-stats.html">
-            <span class="cell-ic"><svg class="ic" viewBox="0 0 24 24"><path d="M5 20V10M12 20V4M19 20v-7"/></svg></span>
-            <div class="cell-body">
-              <div class="cell-title">场次看板</div>
-              <div class="cell-desc">近 30 天：成团率 83% · 到场率 92%</div>
-            </div>
-            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
-          </a>
-          <div class="cell">
-            <span class="cell-ic gold"><svg class="ic" viewBox="0 0 24 24"><path d="M12 4.5l2.3 4.7 5.2.8-3.8 3.6.9 5.1-4.6-2.4-4.6 2.4.9-5.1-3.8-3.6 5.2-.8z"/></svg></span>
-            <div class="cell-body">
-              <div class="cell-title">服务评价</div>
-              <div class="cell-desc">近 90 天 127 条 · 响应速度与讲解清晰度最佳</div>
-            </div>
-            <span class="cell-val"><b class="num" style="color:var(--gold-600);">4.8</b><span class="small">/ 5</span></span>
+      <!-- 信用记录 -->
+      <section class="sec">
+        <div class="sec-h"><span class="t">信用记录</span><span class="cnt">当前 96 分</span></div>
+        <div class="card rows">
+          <div class="row">
+            <div class="tt"><b>正常履约 · 10-12 场次</b><span>按时开房 · 无缺席投诉</span></div>
+            <span class="rt ci b">+1</span>
+          </div>
+          <div class="row">
+            <div class="tt"><b>拒绝 C2B 拼团</b><span>10-05 · 响应规则内拒绝 · 用户已全额退款</span></div>
+            <span class="rt cs b">−5</span>
+          </div>
+          <div class="row">
+            <div class="tt"><b>正常履约 · 10-02 场次</b><span>到场率 100%</span></div>
+            <span class="rt ci b">+1</span>
           </div>
         </div>
-      </div>
+      </section>
 
-      <!-- 账号 -->
-      <div class="sec">
-        <div class="sec-head"><h3>账号</h3></div>
-        <div class="cells">
-          <a class="cell" href="l01-onboard.html">
-            <span class="cell-ic"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3.5 19 6v5.5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9 11.5l2 2 4-4"/></svg></span>
-            <div class="cell-body">
-              <div class="cell-title">资质与进件</div>
-              <div class="cell-desc">执业证 · 律所授权函 · 对公账户</div>
-            </div>
-            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+      <!-- 账户 -->
+      <section class="sec">
+        <div class="card rows">
+          <a class="row" href="../user/u02-home.html">
+            <div class="ic">🔄</div>
+            <div class="tt"><b>切换为用户身份</b><span>同一 App 双角色 · 返回用户端首页</span></div>
+            <span class="arrow">›</span>
           </a>
-          <div class="cell" style="cursor:pointer;" onclick="pop('m-rules')">
-            <span class="cell-ic"><svg class="ic" viewBox="0 0 24 24"><path d="M7 3.5h7l4 4V20.5H7z"/><path d="M14 3.5v4h4M10 12h6M10 15.5h6"/></svg></span>
-            <div class="cell-body">
-              <div class="cell-title">规则中心</div>
-              <div class="cell-desc">改价 / 取消 / 缺席规则</div>
-            </div>
-            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
-          </div>
-          <div class="cell" style="cursor:pointer;" onclick="pop('m-logout')">
-            <span class="cell-ic seal"><svg class="ic" viewBox="0 0 24 24"><path d="M14 4h5v16h-5"/><path d="M11 12H4M7 9l-3 3 3 3"/></svg></span>
-            <div class="cell-body">
-              <div class="cell-title" style="color:var(--seal-600);">退出登录</div>
-            </div>
-          </div>
+          <a class="row" href="l10-profile.html">
+            <div class="ic">⚙︎</div>
+            <div class="tt"><b>设置</b><span>通知 · 隐私 · 账号安全</span></div>
+            <span class="arrow">›</span>
+          </a>
         </div>
-      </div>
+        <div class="tc t12 c3 mt16">律聚人 · 律师端 v3.0</div>
+      </section>
+
     </div>
 
-    <!-- 规则中心弹层 -->
-    <div class="modal-mask" id="m-rules" onclick="if(event.target===this)unpop(this)">
-      <div class="modal" style="text-align:left;">
-        <h5 style="text-align:center;">规则中心 · 摘要</h5>
-        <p><b>C2B 响应</b>：12h 内确认 / 拒绝，超时自动拒绝 + 全额退款 + 信用 -5</p>
-        <p><b>改价</b>：30 天 ≤3 次；有进行中拼团——涨价 -5 · 降价≤10% 审批 -15 · 降价>10% 审批 -30 + 暂停接单 3 天</p>
-        <p><b>取消 / 缺席</b>：取消 ≥24h -10 · &lt;24h 审批 -30 + 20% 违约金 · 缺席 -50 + 50% 赔付 · 连续 2 次停接 7 天</p>
-        <p><b>结算</b>：款项结算至律所对公账户，平台前期 0 抽佣</p>
-        <p><b>Agent 草稿</b>：仅律师可见、永不直发公屏，标注「AI 辅助 仅供参考」</p>
-        <div class="btn-row mt12"><button class="btn btn-primary" onclick="unpop(this.closest('.modal-mask'))">我知道了</button></div>
-      </div>
-    </div>
-
-    <!-- 退出登录弹层 -->
-    <div class="modal-mask" id="m-logout" onclick="if(event.target===this)unpop(this)">
-      <div class="modal">
-        <h5>退出登录？</h5>
-        <p>退出后将无法接收 C2B 指名与房间消息提醒；进行中的场次与待确认任务不受影响。</p>
-        <div class="btn-row mt12">
-          <button class="btn btn-ghost" onclick="unpop(this.closest('.modal-mask'))">取消</button>
-          <button class="btn btn-danger" onclick="unpop(this.closest('.modal-mask'))">退出</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="tabbar">
+    <!-- Tabbar：律师端 -->
+    <nav class="tabbar">
       <a href="l02-workbench.html">
-        <svg class="ic" viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10.5V20h12v-9.5"/></svg>
+        <svg class="ti" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
         工作台
       </a>
       <a href="l03-sessions.html">
-        <svg class="ic" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M4 10h16M8 4v4M16 4v4"/></svg>
+        <svg class="ti" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
         场次管理
       </a>
       <a href="l06-hall.html">
-        <svg class="ic" viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3"/><path d="M3.5 19c.8-3 3-4.5 5.5-4.5s4.7 1.5 5.5 4.5"/><circle cx="16.8" cy="9.5" r="2.2"/><path d="M16 14.7c2.2.3 4 1.6 4.7 4.3"/></svg>
+        <svg class="ti" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M12 22V12M3 7l9 5 9-5"/></svg>
         接单大厅
+        <span class="bdg">1</span>
       </a>
       <a class="on" href="l10-profile.html">
-        <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19.5c1-3.4 3.5-5 6.5-5s5.5 1.6 6.5 5"/></svg>
+        <svg class="ti" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         我的
       </a>
-    </div>
-    <div class="homebar"></div>
+    </nav>
   </div>
 </div>
-
-<script>
-function pop(id){document.getElementById(id).classList.add('show');}
-function unpop(el){el.classList.remove('show');}
-</script>
 </body>
 </html>

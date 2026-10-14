@@ -3,258 +3,152 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>律聚人 · 运营后台 · 风控与敏感词</title>
+<title>a08 · 风控与敏感词 — 律聚人运营后台原型</title>
 <link rel="stylesheet" href="assets/admin.css">
 </head>
-<body class="admin">
+<body>
+
+<!-- ===== 侧栏（全站逐字一致，仅 class="on" 位置不同） ===== -->
 <aside class="sidebar">
-  <div class="brand">
-    <div class="logo">律</div>
-    <div><b>律聚人</b><small>运营后台 · Operations</small></div>
+  <div class="logo">
+    <div class="mk">律</div>
+    <div><b>律聚人</b><span>运营后台 · OPERATIONS</span></div>
   </div>
   <nav class="nav">
-    <div class="nav-group">总览</div>
+    <div class="grp">总览</div>
     <a href="a02-dashboard.html">
-      <svg class="ic" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="9" rx="1.5"/><rect x="13" y="4" width="7" height="5" rx="1.5"/><rect x="13" y="11" width="7" height="9" rx="1.5"/><rect x="4" y="15" width="7" height="5" rx="1.5"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
       数据看板
     </a>
-    <div class="nav-group">审核与风控</div>
+    <div class="grp">审核与风控</div>
     <a href="a03-lawyer-audit.html">
-      <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19.5c1-3.4 3.5-5 6.5-5s5.5 1.6 6.5 5"/></svg>
-      律师与资质管理<span class="n-badge num">5</span>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19.5c1-3.4 3.5-5 6.5-5s5.5 1.6 6.5 5"/></svg>
+      律师与资质管理<span class="bdg">5</span>
     </a>
     <a class="on" href="a08-risk.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M12 4l7 2.5v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9v-5z"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l7 2.5v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9v-5z"/></svg>
       风控与敏感词
     </a>
-    <div class="nav-group">交易与履约</div>
+    <div class="grp">交易与履约</div>
     <a href="a05-monitor.html">
-      <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4.5l3 2"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v4.5l3 2"/></svg>
       场次 / 房间监控
     </a>
     <a href="a06-tickets.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M4 5.5h16v10H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg>
-      纠纷工单与退款<span class="n-badge num">4</span>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5h16v10H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg>
+      纠纷工单与退款<span class="bdg">4</span>
     </a>
     <a href="a09-matching.html">
-      <svg class="ic" viewBox="0 0 24 24"><circle cx="8" cy="9" r="2.6"/><circle cx="16" cy="9" r="2.6"/><path d="M3 18c.7-2.4 2.6-3.6 5-3.6s4.3 1.2 5 3.6M13.5 14.8c2 .2 3.6 1.3 4.3 3.2"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="9" r="2.6"/><circle cx="16" cy="9" r="2.6"/><path d="M3 18c.7-2.4 2.6-3.6 5-3.6s4.3 1.2 5 3.6M13.5 14.8c2 .2 3.6 1.3 4.3 3.2"/></svg>
       人工撮合台
     </a>
-    <div class="nav-group">配置与合规</div>
+    <div class="grp">配置与合规</div>
     <a href="a10-rules.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M7 3.5h7l4 4V20.5H7z"/><path d="M14 3.5v4h4M10 12h6M10 15.5h6"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.5h7l4 4V20.5H7z"/><path d="M14 3.5v4h4M10 12h6M10 15.5h6"/></svg>
       规则中心
     </a>
     <a href="a11-specialty.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M12 4l1.8 5.2L19 11l-5.2 1.8L12 18l-1.8-5.2L5 11l5.2-1.8z"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l1.8 5.2L19 11l-5.2 1.8L12 18l-1.8-5.2L5 11l5.2-1.8z"/></svg>
       专项与知识库
     </a>
     <a href="a12-recruit.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10.5V20h12v-9.5"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10.5V20h12v-9.5"/></svg>
       招募与渠道
     </a>
     <a href="a13-compliance.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2.5h-15z"/><path d="M10 19a2 2 0 0 0 4 0"/><path d="M12 4V2.5"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2.5h-15z"/><path d="M10 19a2 2 0 0 0 4 0"/><path d="M12 4V2.5"/></svg>
       合规与审计
     </a>
-    <div class="nav-group">财务</div>
+    <div class="grp">财务</div>
     <a href="a14-settlement.html">
-      <svg class="ic" viewBox="0 0 24 24"><rect x="3.5" y="6.5" width="17" height="11" rx="2"/><path d="M3.5 10h17"/><circle cx="17" cy="14" r="1.2"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="6.5" width="17" height="11" rx="2"/><path d="M3.5 10h17"/><circle cx="17" cy="14" r="1.2"/></svg>
       资金与结算
     </a>
   </nav>
-  <div class="side-foot">律聚人运营后台 v1.0<br>只读角色操作全程留痕</div>
+  <div class="foot">律聚人运营后台 <b>v3.0</b><br>只读操作全程留痕 · 样例数据均为虚构</div>
 </aside>
 
 <div class="main">
   <header class="topbar">
     <div class="crumb">审核与风控 / <b>风控与敏感词</b></div>
-    <div class="spacer"></div>
+    <div class="sp"></div>
     <div class="search">
-      <svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5 20 20"/></svg>
-      搜索场次 / 律师 / 用户 / 工单
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5 20 20"/></svg>
+      搜索词条 / 会话 / 处置记录
+    </div>
+    <div class="tbtn">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+      <span class="dot"></span>
     </div>
     <div class="who"><span class="avatar">赵</span>赵谦 · 平台运营</div>
   </header>
 
   <div class="page">
+
     <div class="page-head">
       <div>
-        <h1>风控与敏感词管理</h1>
-        <div class="desc">H5 · 分级处置：拦截 / 人审 / 标记 · 当前生效：敏感词库 v12（2026-10-08）· 今日命中 23 条（拦截 9 / 人审 7 / 标记 7）</div>
+        <h1>风控与敏感词</h1>
+        <div class="sub">H5 · 双词库 · 分级处置 · 人审闭环 · 全文本会话统一链路 · 更新于 2026-10-13 09:30</div>
       </div>
-      <div class="actions">
-        <button class="btn btn-ghost">
-          <svg class="ic" viewBox="0 0 24 24"><path d="M7 3.5h7l4 4V20.5H7z"/><path d="M14 3.5v4h4"/></svg>
-          导出命中报表
-        </button>
+      <div class="ops">
+        <button class="btn btn-o">巡查报告</button>
+        <button class="btn btn-p">新增词条</button>
       </div>
     </div>
 
-    <div class="tabs">
-      <button class="on" onclick="tab('rk','lib1',this)">违法类型词库</button>
-      <button onclick="tab('rk','lib2',this);document.getElementById('lib2').scrollIntoView({behavior:'smooth'})">行业违规话术库</button>
-      <button onclick="tab('rk','queue',this)">人审队列<span class="num" style="margin-left:5px;background:var(--seal-500);color:#fff;border-radius:9px;padding:1px 7px;font-size:10.5px;">7</span></button>
+    <div class="kpi-grid">
+      <div class="kpi"><div class="l">今日拦截</div><div class="n red">12</div><div class="d">违法类型 3 · 违规话术 9</div></div>
+      <div class="kpi"><div class="l">人审队列</div><div class="n gold">3</div><div class="d">平均等待 8 分钟</div></div>
+      <div class="kpi"><div class="l">词库词条</div><div class="n">486</div><div class="d">违法 132 · 违规话术 354</div></div>
+      <div class="kpi"><div class="l">误判申诉（今日）</div><div class="n">1</div><div class="d"><span class="up">放行 1</span> · 申诉率 0.2%</div></div>
     </div>
 
-    <!-- 词库 tab：filters + 双词库 panel -->
-    <div data-tg="rk" data-tk="lib1 lib2">
-      <div class="filters">
-        <span class="f-label">分级处置</span>
-        <select class="select"><option>全部分级</option><option>拦截</option><option>人审</option><option>标记</option></select>
-        <span class="f-label">词库</span>
-        <select class="select"><option>全部词库</option><option>违法类型词库</option><option>行业违规话术库</option></select>
-        <input class="input" placeholder="搜索词条…">
-        <div class="grow"></div>
-        <button class="btn btn-ghost">白名单（12 条）</button>
-        <a class="btn btn-primary" href="a10-rules.html">提交发布（走规则中心）</a>
-      </div>
-
-      <div class="banner info">
-        <svg class="ic" viewBox="0 0 24 24"><path d="M12 4l7 2.5v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9v-5z"/><path d="M9 11.5l2 2 4-4"/></svg>
-        词库热更新须经规则中心版本化发布：<b>DictionaryUpdated</b> 事件 → D5 会话服务 / E1 检索服务缓存即时刷新；全文本会话（咨询 / 房间公屏）统一实时链路，语音 / 视频在 V1 为<b>事后审核</b>。
-      </div>
-
-      <div class="grid-2">
-        <div class="panel" id="lib1">
-          <div class="panel-head">
-            <h3>违法类型词库</h3>
-            <div class="ph-act"><span class="num">12 条</span><span>拦截 7 / 人审 3 / 标记 2</span></div>
-          </div>
-          <div class="panel-body">
-            <div class="chips">
-              <span class="chip seal">私下转账<span class="x" title="移除词条">×</span></span>
-              <span class="chip seal">加我微信<span class="x">×</span></span>
-              <span class="chip seal">直接打款给我<span class="x">×</span></span>
-              <span class="chip seal">绕开平台<span class="x">×</span></span>
-              <span class="chip seal">开个人发票<span class="x">×</span></span>
-              <span class="chip seal">扫我的收款码<span class="x">×</span></span>
-              <span class="chip seal">私人账户结算<span class="x">×</span></span>
-              <span class="chip">加个微信聊<i style="font-style:normal;font-size:11px;color:var(--warn-600)">·人审</i><span class="x">×</span></span>
-              <span class="chip">线下见面详谈<i style="font-style:normal;font-size:11px;color:var(--warn-600)">·人审</i><span class="x">×</span></span>
-              <span class="chip">电话联系我吧<i style="font-style:normal;font-size:11px;color:var(--warn-600)">·人审</i><span class="x">×</span></span>
-              <span class="chip">报酬线下付<i style="font-style:normal;font-size:11px;color:var(--text-3)">·标记</i><span class="x">×</span></span>
-              <span class="chip">佣金走现金<i style="font-style:normal;font-size:11px;color:var(--text-3)">·标记</i><span class="x">×</span></span>
-            </div>
-            <div class="small mt12">注：红色 = 拦截级（命中即拦截并转人审复核）；「·人审」= 进入队列；「·标记」= 仅记录不处置。</div>
-            <div class="row mt12">
-              <input class="input" style="flex:1;min-width:150px" placeholder="输入新词条，回车或点击添加">
-              <select class="select"><option>拦截</option><option selected>人审</option><option>标记</option></select>
-              <button class="btn btn-primary btn-sm">添加词条</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="panel" id="lib2">
-          <div class="panel-head">
-            <h3>行业违规话术库</h3>
-            <div class="ph-act"><span class="num">11 条</span><span>拦截 6 / 人审 3 / 标记 2</span></div>
-          </div>
-          <div class="panel-body">
-            <div class="chips">
-              <span class="chip seal">包赢<span class="x">×</span></span>
-              <span class="chip seal">保证胜诉<span class="x">×</span></span>
-              <span class="chip seal">百分百成功<span class="x">×</span></span>
-              <span class="chip seal">认识仲裁员<span class="x">×</span></span>
-              <span class="chip seal">关系费<span class="x">×</span></span>
-              <span class="chip seal">包过<span class="x">×</span></span>
-              <span class="chip">这案子稳了<i style="font-style:normal;font-size:11px;color:var(--warn-600)">·人审</i><span class="x">×</span></span>
-              <span class="chip">输了退你钱<i style="font-style:normal;font-size:11px;color:var(--warn-600)">·人审</i><span class="x">×</span></span>
-              <span class="chip">别请别的律师<i style="font-style:normal;font-size:11px;color:var(--warn-600)">·人审</i><span class="x">×</span></span>
-              <span class="chip">内部消息<i style="font-style:normal;font-size:11px;color:var(--text-3)">·标记</i><span class="x">×</span></span>
-              <span class="chip">特殊渠道<i style="font-style:normal;font-size:11px;color:var(--text-3)">·标记</i><span class="x">×</span></span>
-            </div>
-            <div class="small mt12">承诺结果类 / 关系勾兑类话术为高压线，命中即拦截并计入律师信用事件。</div>
-            <div class="row mt12">
-              <input class="input" style="flex:1;min-width:150px" placeholder="输入新词条，回车或点击添加">
-              <select class="select"><option>拦截</option><option selected>人审</option><option>标记</option></select>
-              <button class="btn btn-primary btn-sm">添加词条</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 人审队列 tab -->
-    <div data-tg="rk" data-tk="queue" style="display:none">
+    <div class="grid2">
       <div class="panel">
-        <div class="panel-head">
-          <h3>人审队列</h3>
-          <div class="ph-act"><span>待复核 7 条</span><span>SLA 24h</span></div>
+        <div class="panel-h"><span class="t">违法类型词库</span><span class="cnt">132 条 · 处置 = 拦截</span></div>
+        <div class="flex gap8 wrap">
+          <span class="badge r">赌博</span><span class="badge r">诈骗</span><span class="badge r">洗钱</span><span class="badge r">传销</span><span class="badge r">非法集资</span><span class="badge r">色情</span><span class="badge r">毒品</span><span class="badge r">暴恐</span><span class="badge gray plain">… 共 132 条</span>
         </div>
-        <div class="table-wrap">
-          <table class="table">
-            <thead><tr><th>触发词</th><th>上下文摘录</th><th>房间或会话</th><th>命中时间</th><th>处置操作</th></tr></thead>
-            <tbody>
-              <tr>
-                <td><span class="badge badge-seal">拦截级</span><b class="strong"> 加我微信</b></td>
-                <td class="t-dim">"方案文档比较大，加我微信我直接发你"</td>
-                <td>咨询会话 #C1024 · 周女士 × 李慧敏</td>
-                <td class="num">10-13 09:12</td>
-                <td><div class="t-ops"><button class="btn btn-sm btn-ghost">放行 · 转标记</button><button class="btn btn-sm btn-danger">拦截确认</button><a class="link">误报 · 白名单</a></div></td>
-              </tr>
-              <tr>
-                <td><span class="badge badge-seal">拦截级</span><b class="strong"> 包赢</b></td>
-                <td class="t-dim">"证据链齐的话这个案子包赢，放心委托"</td>
-                <td>房间 R2088 · 加班费答疑（公屏）</td>
-                <td class="num">10-13 08:47</td>
-                <td><div class="t-ops"><button class="btn btn-sm btn-ghost">放行 · 转标记</button><button class="btn btn-sm btn-danger">拦截确认</button><a class="link">误报 · 白名单</a></div></td>
-              </tr>
-              <tr>
-                <td><span class="badge badge-seal">拦截级</span><b class="strong"> 直接打款给我</b></td>
-                <td class="t-dim">"走平台要手续费，直接打款给你便宜 20"</td>
-                <td>咨询会话 #C1031 · 吴先生 × 张明远</td>
-                <td class="num">10-12 22:31</td>
-                <td><div class="t-ops"><button class="btn btn-sm btn-ghost">放行 · 转标记</button><button class="btn btn-sm btn-danger">拦截确认</button><a class="link">误报 · 白名单</a></div></td>
-              </tr>
-              <tr>
-                <td><span class="badge badge-seal">拦截级</span><b class="strong"> 认识仲裁员</b></td>
-                <td class="t-dim">"我们认识仲裁员，关系费另算，稳过"</td>
-                <td>房间 R2071 · 拖欠工资答疑（公屏）</td>
-                <td class="num">10-12 20:15</td>
-                <td><div class="t-ops"><button class="btn btn-sm btn-ghost">放行 · 转标记</button><button class="btn btn-sm btn-danger">拦截确认</button><a class="link">误报 · 白名单</a></div></td>
-              </tr>
-              <tr>
-                <td><span class="badge badge-seal">拦截级</span><b class="strong"> 保证胜诉</b></td>
-                <td class="t-dim">"材料齐了基本保证胜诉，不用担心"</td>
-                <td>咨询会话 #C0998 · 郑女士 × 王振宇</td>
-                <td class="num">10-12 16:40</td>
-                <td><div class="t-ops"><button class="btn btn-sm btn-ghost">放行 · 转标记</button><button class="btn btn-sm btn-danger">拦截确认</button><a class="link">误报 · 白名单</a></div></td>
-              </tr>
-              <tr>
-                <td><span class="badge badge-seal">拦截级</span><b class="strong"> 绕开平台</b></td>
-                <td class="t-dim">"咱们签个私下协议，绕开平台手续简单"</td>
-                <td>房间 R2065 · 违法解除专题（公屏）</td>
-                <td class="num">10-12 14:02</td>
-                <td><div class="t-ops"><button class="btn btn-sm btn-ghost">放行 · 转标记</button><button class="btn btn-sm btn-danger">拦截确认</button><a class="link">误报 · 白名单</a></div></td>
-              </tr>
-              <tr>
-                <td><span class="badge badge-warn">人审级</span><b class="strong"> 这案子稳了</b></td>
-                <td class="t-dim">"放心，这案子稳了，仲裁那边我们熟"</td>
-                <td>咨询会话 #C0976 · 周女士 × 陈晓薇</td>
-                <td class="num">10-11 19:26</td>
-                <td><div class="t-ops"><button class="btn btn-sm btn-ghost">放行 · 转标记</button><button class="btn btn-sm btn-danger">拦截确认</button><a class="link">误报 · 白名单</a></div></td>
-              </tr>
-            </tbody>
-          </table>
+        <div class="note mt14">命中即拦截：消息不发出并提示用户；触发记录留存，高频触发自动生成风控工单。</div>
+      </div>
+      <div class="panel">
+        <div class="panel-h"><span class="t">行业违规话术库</span><span class="cnt">354 条 · 拦截 / 人审</span></div>
+        <div class="flex gap8 wrap">
+          <span class="badge r">加微信</span><span class="badge r">私下交易</span><span class="badge r">个人收款</span><span class="badge r">保证胜诉</span><span class="badge y">包过</span><span class="badge y">关系疏通</span><span class="badge gray plain">… 共 354 条</span>
         </div>
-        <div class="pager"><span>共 7 条</span><span class="pg on num">1</span></div>
+        <div class="note mt14">禁止引导私下交易、加微信、个人收款（PRD §7.2.8 私聊限制）；「保证胜诉」类违反律师执业合规（不得承诺结果）。</div>
       </div>
     </div>
+
+    <div class="panel">
+      <div class="panel-h"><span class="t">分级处置规则</span><span class="cnt">D5 同步风控前置 → 广播 → 落库</span></div>
+      <table class="tbl">
+        <thead><tr><th>级别</th><th>处置</th><th>作用范围</th><th>用户感知</th><th>后续动作</th></tr></thead>
+        <tbody>
+          <tr><td><span class="badge r">拦截</span></td><td>消息不发出</td><td>违法类型 + 高危话术</td><td>提示「包含违规内容，请修改」</td><td>记录留存 · 高频生成工单</td></tr>
+          <tr><td><span class="badge y">人审</span></td><td>先审后发（延迟展示）</td><td>中危话术（如「包过」）</td><td>消息延迟数分钟展示</td><td>人审通过/拦截 · 回填词库</td></tr>
+          <tr><td><span class="badge g">标记</span></td><td>放行 + 复核标记</td><td>低危 / 疑似</td><td>无感知</td><td>进入定期巡查样本</td></tr>
+        </tbody>
+      </table>
+      <div class="note mt14">语音 / 视频房间 V1 为<b>事后审核</b>边界：不实时拦截，转写文本事后进入同一词库链路；词库热更新走规则中心（H7）版本化发布。</div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-h"><span class="t">人审队列</span><span class="cnt">3 条待处置</span>
+        <div class="ops"><span class="chip">待处置 3</span><span class="chip">今日已处置 21</span></div>
+      </div>
+      <table class="tbl">
+        <thead><tr><th>消息摘要</th><th>会话</th><th>触发词</th><th>处置建议</th><th class="tr">操作</th></tr></thead>
+        <tbody>
+          <tr><td class="b">「方便加个微信详聊吗，这边有内部渠道」</td><td>u09 房间 · 10-12 20:14</td><td><span class="badge r">加微信</span></td><td>拦截 + 提示</td><td class="tr"><button class="btn btn-p btn-sm">通过</button> <button class="btn btn-danger btn-sm">拦截</button></td></tr>
+          <tr><td class="b">「这个案子我保证能胜诉」</td><td>1对1 会话 · 10-12 21:03</td><td><span class="badge r">保证胜诉</span></td><td>拦截 + 律师合规提示</td><td class="tr"><button class="btn btn-p btn-sm">通过</button> <button class="btn btn-danger btn-sm">拦截</button></td></tr>
+          <tr><td class="b">「转账到我这个卡号就行」</td><td>C2B 沟通 · 10-13 09:12</td><td><span class="badge r">个人收款</span></td><td>拦截 + 信用标记</td><td class="tr"><button class="btn btn-p btn-sm">通过</button> <button class="btn btn-danger btn-sm">拦截</button></td></tr>
+        </tbody>
+      </table>
+    </div>
+
   </div>
 </div>
 
-<script>
-function show(id){document.getElementById(id).classList.add('show');}
-function hide(id){document.getElementById(id).classList.remove('show');}
-function tab(g,k,btn){
-  document.querySelectorAll('[data-tg="'+g+'"]').forEach(function(p){
-    p.style.display = p.getAttribute('data-tk').split(' ').indexOf(k)>=0 ? '' : 'none';
-  });
-  var ts=btn.parentNode.children;
-  for(var i=0;i<ts.length;i++){ts[i].classList.remove('on');}
-  btn.classList.add('on');
-}
-</script>
 </body>
 </html>

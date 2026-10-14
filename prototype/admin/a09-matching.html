@@ -3,278 +3,164 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>律聚人 · 运营后台 · 人工撮合台</title>
+<title>a09 · 人工撮合台 — 律聚人运营后台原型</title>
 <link rel="stylesheet" href="assets/admin.css">
 </head>
-<body class="admin">
+<body>
+
+<!-- ===== 侧栏（全站逐字一致，仅 class="on" 位置不同） ===== -->
 <aside class="sidebar">
-  <div class="brand">
-    <div class="logo">律</div>
-    <div><b>律聚人</b><small>运营后台 · Operations</small></div>
+  <div class="logo">
+    <div class="mk">律</div>
+    <div><b>律聚人</b><span>运营后台 · OPERATIONS</span></div>
   </div>
   <nav class="nav">
-    <div class="nav-group">总览</div>
+    <div class="grp">总览</div>
     <a href="a02-dashboard.html">
-      <svg class="ic" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="9" rx="1.5"/><rect x="13" y="4" width="7" height="5" rx="1.5"/><rect x="13" y="11" width="7" height="9" rx="1.5"/><rect x="4" y="15" width="7" height="5" rx="1.5"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
       数据看板
     </a>
-    <div class="nav-group">审核与风控</div>
+    <div class="grp">审核与风控</div>
     <a href="a03-lawyer-audit.html">
-      <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19.5c1-3.4 3.5-5 6.5-5s5.5 1.6 6.5 5"/></svg>
-      律师与资质管理<span class="n-badge num">5</span>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19.5c1-3.4 3.5-5 6.5-5s5.5 1.6 6.5 5"/></svg>
+      律师与资质管理<span class="bdg">5</span>
     </a>
     <a href="a08-risk.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M12 4l7 2.5v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9v-5z"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l7 2.5v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9v-5z"/></svg>
       风控与敏感词
     </a>
-    <div class="nav-group">交易与履约</div>
+    <div class="grp">交易与履约</div>
     <a href="a05-monitor.html">
-      <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4.5l3 2"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v4.5l3 2"/></svg>
       场次 / 房间监控
     </a>
     <a href="a06-tickets.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M4 5.5h16v10H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg>
-      纠纷工单与退款<span class="n-badge num">4</span>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5h16v10H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg>
+      纠纷工单与退款<span class="bdg">4</span>
     </a>
     <a class="on" href="a09-matching.html">
-      <svg class="ic" viewBox="0 0 24 24"><circle cx="8" cy="9" r="2.6"/><circle cx="16" cy="9" r="2.6"/><path d="M3 18c.7-2.4 2.6-3.6 5-3.6s4.3 1.2 5 3.6M13.5 14.8c2 .2 3.6 1.3 4.3 3.2"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="9" r="2.6"/><circle cx="16" cy="9" r="2.6"/><path d="M3 18c.7-2.4 2.6-3.6 5-3.6s4.3 1.2 5 3.6M13.5 14.8c2 .2 3.6 1.3 4.3 3.2"/></svg>
       人工撮合台
     </a>
-    <div class="nav-group">配置与合规</div>
+    <div class="grp">配置与合规</div>
     <a href="a10-rules.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M7 3.5h7l4 4V20.5H7z"/><path d="M14 3.5v4h4M10 12h6M10 15.5h6"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.5h7l4 4V20.5H7z"/><path d="M14 3.5v4h4M10 12h6M10 15.5h6"/></svg>
       规则中心
     </a>
     <a href="a11-specialty.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M12 4l1.8 5.2L19 11l-5.2 1.8L12 18l-1.8-5.2L5 11l5.2-1.8z"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l1.8 5.2L19 11l-5.2 1.8L12 18l-1.8-5.2L5 11l5.2-1.8z"/></svg>
       专项与知识库
     </a>
     <a href="a12-recruit.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10.5V20h12v-9.5"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10.5V20h12v-9.5"/></svg>
       招募与渠道
     </a>
     <a href="a13-compliance.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2.5h-15z"/><path d="M10 19a2 2 0 0 0 4 0"/><path d="M12 4V2.5"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2.5h-15z"/><path d="M10 19a2 2 0 0 0 4 0"/><path d="M12 4V2.5"/></svg>
       合规与审计
     </a>
-    <div class="nav-group">财务</div>
+    <div class="grp">财务</div>
     <a href="a14-settlement.html">
-      <svg class="ic" viewBox="0 0 24 24"><rect x="3.5" y="6.5" width="17" height="11" rx="2"/><path d="M3.5 10h17"/><circle cx="17" cy="14" r="1.2"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="6.5" width="17" height="11" rx="2"/><path d="M3.5 10h17"/><circle cx="17" cy="14" r="1.2"/></svg>
       资金与结算
     </a>
   </nav>
-  <div class="side-foot">律聚人运营后台 v1.0<br>只读角色操作全程留痕</div>
+  <div class="foot">律聚人运营后台 <b>v3.0</b><br>只读操作全程留痕 · 样例数据均为虚构</div>
 </aside>
 
 <div class="main">
   <header class="topbar">
     <div class="crumb">交易与履约 / <b>人工撮合台</b></div>
-    <div class="spacer"></div>
+    <div class="sp"></div>
     <div class="search">
-      <svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5 20 20"/></svg>
-      搜索场次 / 律师 / 用户 / 工单
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5 20 20"/></svg>
+      搜索专项 / 时段 / 用户
+    </div>
+    <div class="tbtn">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+      <span class="dot"></span>
     </div>
     <div class="who"><span class="avatar">赵</span>赵谦 · 平台运营</div>
   </header>
 
   <div class="page">
+
     <div class="page-head">
       <div>
         <h1>人工撮合台</h1>
-        <div class="desc">H6 · V1 半自动撮合：运营发起引导 → 用户主动确认 → C4 转化守卫校验快照价与余位</div>
+        <div class="sub">H6 · 供需视图 · V1 半自动：站内信引导，用户确认后走 C4 转化守卫 · 2026-10-13</div>
       </div>
-      <div class="actions">
-        <select class="select"><option>专项：劳动仲裁</option><option>全部专项</option></select>
-        <button class="btn btn-ghost">
-          <svg class="ic" viewBox="0 0 24 24"><path d="M7 3.5h7l4 4V20.5H7z"/><path d="M14 3.5v4h4"/></svg>
-          导出撮合记录
-        </button>
+      <div class="ops">
+        <select class="input" style="width:132px;height:36px;padding:6px 12px"><option>劳动仲裁</option></select>
+        <button class="btn btn-o">导出供需清单</button>
       </div>
     </div>
 
-    <div class="banner info">
-      <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4.5l3 2"/></svg>
-      V1 半自动：运营仅可<b>发起引导</b>，任何转化（并团 / 迁移席位）必须经<b>用户主动确认</b>，由 C4 转化守卫放行；迁移后<b>维持原订单快照价</b>，不重新计价。
-    </div>
+    <div class="note mb12">撮合只做「引导」不做强制：发送站内信引导分散用户合并至同一场次/拼团；<b>用户确认后走 C4 转化守卫</b>——快照价自动迁移、新加入用户按 B2C 定价、受影响用户 24h 内可申请退款。</div>
 
-    <div class="grid-2">
-      <!-- 左：C2B 未成团任务 -->
+    <div class="g21">
+      <!-- 分散需求 -->
       <div class="panel">
-        <div class="panel-head">
-          <h3>同专项 C2B 未成团任务</h3>
-          <div class="ph-act"><span>3 个任务</span></div>
-        </div>
-        <div class="table-wrap">
-          <table class="table">
-            <thead><tr><th>任务</th><th>应团律师</th><th>期望时间</th><th>进度</th><th>距截止</th><th>操作</th></tr></thead>
-            <tbody>
-              <tr>
-                <td><span class="t-strong">调岗降薪维权</span><div class="t-dim">发起：周女士</div></td>
-                <td>@李慧敏</td>
-                <td class="num">10-17 14:00</td>
-                <td>
-                  <div class="row" style="gap:6px">
-                    <span class="num t-strong">2/5</span>
-                    <i style="width:52px;height:5px;border-radius:3px;background:var(--ink-100);display:inline-block;position:relative"><b style="position:absolute;left:0;top:0;bottom:0;width:40%;background:var(--seal-500);border-radius:3px"></b></i>
-                  </div>
-                </td>
-                <td><span class="seal-text num">06:12</span></td>
-                <td><button class="btn btn-sm btn-ghost">引导并入</button></td>
-              </tr>
-              <tr>
-                <td><span class="t-strong">工伤认定</span><div class="t-dim">发起：郑女士</div></td>
-                <td>@陈晓薇</td>
-                <td class="num">10-18 10:00</td>
-                <td>
-                  <div class="row" style="gap:6px">
-                    <span class="num t-strong">3/4</span>
-                    <i style="width:52px;height:5px;border-radius:3px;background:var(--ink-100);display:inline-block;position:relative"><b style="position:absolute;left:0;top:0;bottom:0;width:75%;background:var(--ink-600);border-radius:3px"></b></i>
-                  </div>
-                </td>
-                <td><span class="num" style="color:var(--warn-600);font-weight:600">1天 02:40</span></td>
-                <td><button class="btn btn-sm btn-ghost">引导并入</button></td>
-              </tr>
-              <tr>
-                <td><span class="t-strong">试用期辞退</span><div class="t-dim">发起：吴先生</div></td>
-                <td>@王振宇</td>
-                <td class="num">10-19 15:00</td>
-                <td>
-                  <div class="row" style="gap:6px">
-                    <span class="num t-strong">3/4</span>
-                    <i style="width:52px;height:5px;border-radius:3px;background:var(--ink-100);display:inline-block;position:relative"><b style="position:absolute;left:0;top:0;bottom:0;width:75%;background:var(--ink-600);border-radius:3px"></b></i>
-                  </div>
-                </td>
-                <td><span class="num t-dim">1天 21:05</span></td>
-                <td><button class="btn btn-sm btn-ghost">引导并入</button></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <div class="panel-h"><span class="t">分散的 C2B 需求</span><span class="cnt">同专项相近时段</span></div>
+        <table class="tbl">
+          <thead><tr><th>拼团任务</th><th>意向时段</th><th>已加入</th><th>意向律师</th><th>状态</th></tr></thead>
+          <tbody>
+            <tr><td class="b">社保补缴咨询</td><td>10-17 周六 15:00</td><td class="num">2/4</td><td>未指定</td><td><span class="badge y">拼团中</span></td></tr>
+            <tr><td class="b">加班费计算基数追问</td><td>10-17 周六 15:00</td><td class="num">1/3</td><td>未指定</td><td><span class="badge y">拼团中</span></td></tr>
+            <tr><td class="b">拖欠工资三个月</td><td>10-18 周日 14:00</td><td class="num">3/4</td><td>张明远</td><td><span class="badge y">拼团中</span></td></tr>
+          </tbody>
+        </table>
       </div>
-
-      <!-- 右：可并入 B2C 场次 -->
+      <!-- 可承接场次 -->
       <div class="panel">
-        <div class="panel-head">
-          <h3>可并入 B2C 场次（未满员）</h3>
-          <div class="ph-act"><a class="link" href="a05-monitor.html">进入监控</a></div>
-        </div>
-        <div class="table-wrap">
-          <table class="table">
-            <thead><tr><th>场次</th><th>主理律师</th><th>开讲时间</th><th>报名</th><th>余位</th><th>操作</th></tr></thead>
-            <tbody>
-              <tr>
-                <td class="t-strong">被违法解除维权专题</td>
-                <td>李慧敏</td>
-                <td class="num">10-15 19:30</td>
-                <td class="num">4/6</td>
-                <td><span class="badge badge-warn num">还差 2</span></td>
-                <td><a class="btn btn-sm btn-ghost" href="a05-monitor.html">查看场次</a></td>
-              </tr>
-              <tr>
-                <td class="t-strong">拖欠工资答疑</td>
-                <td>张明远</td>
-                <td class="num">10-14 20:00</td>
-                <td class="num">3/5</td>
-                <td><span class="badge badge-warn num">还差 2</span></td>
-                <td><a class="btn btn-sm btn-ghost" href="a05-monitor.html">查看场次</a></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="panel-body" style="padding-top:12px">
-          <div class="small">提示：并入后按 B2C 场次余位承接 C2B 任务用户，价格一律维持用户原下单快照价。</div>
-        </div>
+        <div class="panel-h"><span class="t">未满员 B2C 场次</span><span class="cnt">可承接引导</span></div>
+        <table class="tbl">
+          <thead><tr><th>场次</th><th>律师</th><th>余位</th><th>状态</th></tr></thead>
+          <tbody>
+            <tr><td class="b">加班费与社保补缴答疑</td><td>张明远</td><td class="num">2</td><td><span class="badge g">报名中 4/6</span></td></tr>
+            <tr><td class="b">竞业限制与保密协议</td><td>张明远</td><td class="num">3</td><td><span class="badge g">报名中 2/5</span></td></tr>
+            <tr><td class="b">试用期被辞退主张</td><td>王振宇</td><td class="num">4</td><td><span class="badge g">报名中 1/5</span></td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
 
     <!-- 撮合建议 -->
     <div class="panel">
-      <div class="panel-head">
-        <h3>撮合建议</h3>
-        <div class="ph-act"><span>今日 1 条</span></div>
-      </div>
-      <div class="panel-body">
-        <div style="border:1px solid var(--line);border-left:4px solid var(--ok-600);border-radius:var(--r-md);padding:16px 18px;background:linear-gradient(180deg,#FFFFFF 55%,var(--ok-50) 160%)">
-          <div class="between">
-            <div class="row" style="flex-wrap:wrap">
-              <span class="badge badge-ok">匹配度 高 · 92%</span>
-              <b>C2B 任务「工伤认定」1 人 → 陈晓薇周日 B2C 场「工伤认定专题答疑」</b>
-            </div>
-            <button class="btn btn-primary btn-sm" onclick="show('m-guide')">发送站内信引导</button>
+      <div class="panel-h"><span class="t">撮合建议</span><span class="cnt">算法生成 · 人工确认后发送</span></div>
+      <div class="grid2">
+        <div class="flex gap10" style="padding:10px;background:var(--ink-50);border-radius:12px">
+          <div class="col gap4 grow">
+            <div class="t13"><span class="badge y">需求 2 个</span> 社保补缴咨询（2 人）＋ 加班费基数追问（1 人）→ <span class="badge g">加班费与社保补缴答疑</span>（张明远 · 10-16 周五 20:00 · 余 2）</div>
+            <div class="t12 c3">主题匹配度 92% · 时段相近（用户可选改期）· 快照价按 B2C 场次价 ¥99</div>
           </div>
-          <div class="kv mt12" style="grid-template-columns:96px 1fr">
-            <dt>来源任务</dt><dd>工伤认定 · @陈晓薇 · 3/4 · 距截止 1天 02:40（郑女士席位待锁定）</dd>
-            <dt>目标场次</dt><dd>工伤认定专题答疑 · 陈晓薇 · <b>10-18（周日）10:00</b> · 4/6 还差 2</dd>
-            <dt>匹配依据</dt><dd>同专项 · 同律师 · 开讲时间与任务期望时间吻合（10-18）· 维持原快照价 ¥88</dd>
-            <dt>引导对象</dt><dd>郑女士（近 7 日浏览该 B2C 场 2 次，意向高；其余 3 人拼单保持不动）</dd>
+          <button class="btn btn-p btn-sm">发送站内信引导</button>
+        </div>
+        <div class="flex gap10" style="padding:10px;background:var(--ink-50);border-radius:12px">
+          <div class="col gap4 grow">
+            <div class="t13"><span class="badge y">需求 1 个</span> 试用期纠纷单独咨询 → <span class="badge g">试用期被辞退主张</span>（王振宇 · 10-19 周一 20:00 · 余 4）</div>
+            <div class="t12 c3">主题匹配度 87% · 用户确认加入后按 B2C 价 ¥79 支付</div>
           </div>
+          <button class="btn btn-o btn-sm">发送引导</button>
         </div>
       </div>
     </div>
 
-    <!-- 撮合记录 -->
+    <!-- 已转化记录 -->
     <div class="panel">
-      <div class="panel-head">
-        <h3>撮合记录</h3>
-        <div class="ph-act"><span>近 7 日 3 条</span></div>
-      </div>
-      <div class="table-wrap">
-        <table class="table">
-          <thead><tr><th>时间</th><th>任务</th><th>场次</th><th>引导人数</th><th>确认人数</th><th>状态</th></tr></thead>
-          <tbody>
-            <tr>
-              <td class="num">10-12 16:20</td>
-              <td class="t-strong">试用期辞退 C2B（@王振宇）</td>
-              <td>王振宇 B2C 场 · 10-16 20:00</td>
-              <td class="num">2</td>
-              <td class="num">2</td>
-              <td><span class="badge badge-ok">已迁移</span></td>
-            </tr>
-            <tr>
-              <td class="num">10-11 11:05</td>
-              <td class="t-strong">社保补缴 C2B（@张明远）</td>
-              <td>张明远 B2C 场 · 10-14 20:00</td>
-              <td class="num">3</td>
-              <td class="num">1</td>
-              <td><span class="badge badge-warn">部分确认</span></td>
-            </tr>
-            <tr>
-              <td class="num">10-09 09:48</td>
-              <td class="t-strong">加班费 C2B（@李慧敏）</td>
-              <td>李慧敏 B2C 场 · 10-12 19:30</td>
-              <td class="num">5</td>
-              <td class="num">4</td>
-              <td><span class="badge badge-ok">已迁移</span></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <div class="panel-h"><span class="t">近期撮合与转化记录</span><span class="cnt">MatchingInvited / GroupBuyConverted</span></div>
+      <table class="tbl">
+        <thead><tr><th>时间</th><th>动作</th><th>对象</th><th>结果</th><th>状态</th></tr></thead>
+        <tbody>
+          <tr><td>10-11 15:20</td><td>站内信引导</td><td>「竞业限制答疑」C2B 5 人 → 陈晓薇 B2C 场次</td><td>5 人确认迁移，快照价保持 ¥100</td><td><span class="badge g">已转化</span></td></tr>
+          <tr><td>10-10 11:03</td><td>站内信引导</td><td>「年假折算」C2B 2 人 → 张明远场次</td><td>1 人确认 · 1 人 24h 内退款</td><td><span class="badge g">部分转化</span></td></tr>
+          <tr><td>10-08 09:41</td><td>站内信引导</td><td>「工时认定」C2B 3 人</td><td>无人确认，7 日后过期</td><td><span class="badge gray">已过期</span></td></tr>
+        </tbody>
+      </table>
     </div>
+
   </div>
 </div>
 
-<!-- 引导弹窗 -->
-<div class="modal-mask" id="m-guide">
-  <div class="modal">
-    <h4>发送站内信引导</h4>
-    <p class="small" style="margin-bottom:8px">引导话术预览（用户侧 · 站内信）</p>
-    <div style="border:1px solid var(--ink-100);background:var(--ink-50);border-radius:var(--r-md);padding:12px 14px;font-size:12.5px;color:var(--text-2);line-height:1.85">
-      郑女士您好：您参与的「工伤认定」拼单当前 3/4，距成团截止约 26 小时。若最终未能成团，陈晓薇律师 <b>10-18（周日）10:00</b> 的「工伤认定专题答疑」B2C 场可直接承接您的咨询，价格<b>维持您下单时的快照价 ¥88</b>。点击「确认迁移」将自动为您锁定席位；迁移后 <b>24 小时内</b>可无责取消、全额原路退回。
-    </div>
-    <div class="banner info mt12" style="margin-bottom:0">
-      <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4.5l3 2"/></svg>
-      用户点击确认后才执行迁移（C4 转化守卫校验快照价与余位，未确认不动账、不迁移）；运营仅可发起引导，不可代用户操作。
-    </div>
-    <div class="m-foot">
-      <button class="btn btn-ghost" onclick="hide('m-guide')">取消</button>
-      <button class="btn btn-primary" onclick="hide('m-guide')">确认发送</button>
-    </div>
-  </div>
-</div>
-
-<script>
-function show(id){document.getElementById(id).classList.add('show');}
-function hide(id){document.getElementById(id).classList.remove('show');}
-</script>
 </body>
 </html>

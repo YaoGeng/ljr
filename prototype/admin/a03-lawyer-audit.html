@@ -3,204 +3,205 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>律聚人 · 运营后台 · 律师与资质管理</title>
+<title>a03 · 律师与资质管理 — 律聚人运营后台原型</title>
 <link rel="stylesheet" href="assets/admin.css">
 </head>
-<body class="admin">
+<body>
+
+<!-- ===== 侧栏（全站逐字一致，仅 class="on" 位置不同） ===== -->
 <aside class="sidebar">
-  <div class="brand">
-    <div class="logo">律</div>
-    <div><b>律聚人</b><small>运营后台 · Operations</small></div>
+  <div class="logo">
+    <div class="mk">律</div>
+    <div><b>律聚人</b><span>运营后台 · OPERATIONS</span></div>
   </div>
   <nav class="nav">
-    <div class="nav-group">总览</div>
+    <div class="grp">总览</div>
     <a href="a02-dashboard.html">
-      <svg class="ic" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="9" rx="1.5"/><rect x="13" y="4" width="7" height="5" rx="1.5"/><rect x="13" y="11" width="7" height="9" rx="1.5"/><rect x="4" y="15" width="7" height="5" rx="1.5"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
       数据看板
     </a>
-    <div class="nav-group">审核与风控</div>
+    <div class="grp">审核与风控</div>
     <a class="on" href="a03-lawyer-audit.html">
-      <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19.5c1-3.4 3.5-5 6.5-5s5.5 1.6 6.5 5"/></svg>
-      律师与资质管理<span class="n-badge num">5</span>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19.5c1-3.4 3.5-5 6.5-5s5.5 1.6 6.5 5"/></svg>
+      律师与资质管理<span class="bdg">5</span>
     </a>
     <a href="a08-risk.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M12 4l7 2.5v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9v-5z"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l7 2.5v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9v-5z"/></svg>
       风控与敏感词
     </a>
-    <div class="nav-group">交易与履约</div>
+    <div class="grp">交易与履约</div>
     <a href="a05-monitor.html">
-      <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4.5l3 2"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v4.5l3 2"/></svg>
       场次 / 房间监控
     </a>
     <a href="a06-tickets.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M4 5.5h16v10H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg>
-      纠纷工单与退款<span class="n-badge num">4</span>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5h16v10H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg>
+      纠纷工单与退款<span class="bdg">4</span>
     </a>
     <a href="a09-matching.html">
-      <svg class="ic" viewBox="0 0 24 24"><circle cx="8" cy="9" r="2.6"/><circle cx="16" cy="9" r="2.6"/><path d="M3 18c.7-2.4 2.6-3.6 5-3.6s4.3 1.2 5 3.6M13.5 14.8c2 .2 3.6 1.3 4.3 3.2"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="9" r="2.6"/><circle cx="16" cy="9" r="2.6"/><path d="M3 18c.7-2.4 2.6-3.6 5-3.6s4.3 1.2 5 3.6M13.5 14.8c2 .2 3.6 1.3 4.3 3.2"/></svg>
       人工撮合台
     </a>
-    <div class="nav-group">配置与合规</div>
+    <div class="grp">配置与合规</div>
     <a href="a10-rules.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M7 3.5h7l4 4V20.5H7z"/><path d="M14 3.5v4h4M10 12h6M10 15.5h6"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.5h7l4 4V20.5H7z"/><path d="M14 3.5v4h4M10 12h6M10 15.5h6"/></svg>
       规则中心
     </a>
     <a href="a11-specialty.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M12 4l1.8 5.2L19 11l-5.2 1.8L12 18l-1.8-5.2L5 11l5.2-1.8z"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l1.8 5.2L19 11l-5.2 1.8L12 18l-1.8-5.2L5 11l5.2-1.8z"/></svg>
       专项与知识库
     </a>
     <a href="a12-recruit.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10.5V20h12v-9.5"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10.5V20h12v-9.5"/></svg>
       招募与渠道
     </a>
     <a href="a13-compliance.html">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2.5h-15z"/><path d="M10 19a2 2 0 0 0 4 0"/><path d="M12 4V2.5"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2.5h-15z"/><path d="M10 19a2 2 0 0 0 4 0"/><path d="M12 4V2.5"/></svg>
       合规与审计
     </a>
-    <div class="nav-group">财务</div>
+    <div class="grp">财务</div>
     <a href="a14-settlement.html">
-      <svg class="ic" viewBox="0 0 24 24"><rect x="3.5" y="6.5" width="17" height="11" rx="2"/><path d="M3.5 10h17"/><circle cx="17" cy="14" r="1.2"/></svg>
+      <svg class="ni" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="6.5" width="17" height="11" rx="2"/><path d="M3.5 10h17"/><circle cx="17" cy="14" r="1.2"/></svg>
       资金与结算
     </a>
   </nav>
-  <div class="side-foot">律聚人运营后台 v1.0<br>只读角色操作全程留痕</div>
+  <div class="foot">律聚人运营后台 <b>v3.0</b><br>只读操作全程留痕 · 样例数据均为虚构</div>
 </aside>
 
 <div class="main">
   <header class="topbar">
     <div class="crumb">审核与风控 / <b>律师与资质管理</b></div>
-    <div class="spacer"></div>
+    <div class="sp"></div>
     <div class="search">
-      <svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5 20 20"/></svg>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5 20 20"/></svg>
       搜索场次 / 律师 / 用户 / 工单
+    </div>
+    <div class="tbtn">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+      <span class="dot"></span>
     </div>
     <div class="who"><span class="avatar">赵</span>赵谦 · 平台运营</div>
   </header>
 
   <div class="page">
+
     <div class="page-head">
       <div>
         <h1>律师与资质管理</h1>
-        <div class="desc">审核 SLA 3 个工作日 · A3a 资质审核 + A3b 进件状态只读 · 今天 2026-10-13</div>
+        <div class="sub">H1 审核工作台 · A3a 资质审核 SLA 3 个工作日 · 2026-10-13（周二）</div>
       </div>
-      <div class="actions">
-        <button class="btn btn-ghost">
-          <svg class="ic" viewBox="0 0 24 24"><path d="M7 3.5h7l4 4V20.5H7z"/><path d="M14 3.5v4h4"/></svg>
-          导出待审清单
-        </button>
+      <div class="ops">
+        <button class="btn btn-o">导出待审清单</button>
       </div>
     </div>
 
-    <div class="banner info">
-      <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 11v5M12 8v.5"/></svg>
-      审核通过后律师才会出现在用户端场次列表与接单大厅（LawyerAuditPassed 事件）；进件状态（A3b）为只读同步，不在此页操作。
-    </div>
-
-    <div class="tabs">
-      <a class="on">待审核&nbsp;<span class="num" style="font-size:11px;padding:1px 8px;border-radius:9px;background:var(--seal-50);color:var(--seal-600);font-weight:700;">5</span></a>
-      <button>已通过&nbsp;<span class="num" style="font-size:11px;padding:1px 8px;border-radius:9px;background:#EEF1F5;color:var(--text-2);font-weight:600;">32</span></button>
-      <button>已拒绝&nbsp;<span class="num" style="font-size:11px;padding:1px 8px;border-radius:9px;background:#EEF1F5;color:var(--text-2);font-weight:600;">3</span></button>
-      <button>已停用&nbsp;<span class="num" style="font-size:11px;padding:1px 8px;border-radius:9px;background:#EEF1F5;color:var(--text-2);font-weight:600;">2</span></button>
+    <div class="kpi-grid">
+      <div class="kpi"><div class="l">待审核</div><div class="n red">5</div><div class="d"><span class="down">1 件已超时</span> · SLA 3 个工作日</div></div>
+      <div class="kpi"><div class="l">今日通过</div><div class="n">3</div><div class="d">盖章通过 · 同步用户端可见</div></div>
+      <div class="kpi"><div class="l">累计在册</div><div class="n">128</div><div class="d">劳动仲裁专项 · 北京首发</div></div>
+      <div class="kpi"><div class="l">停用</div><div class="n">2</div><div class="d">停用后不出现在场次列表与接单大厅</div></div>
     </div>
 
     <div class="filters">
-      <span class="f-label">状态</span>
-      <select class="select"><option>全部状态</option><option selected>待审核</option><option>已通过</option><option>已拒绝</option><option>已停用</option></select>
-      <span class="f-label">专项</span>
-      <select class="select"><option>全部专项</option><option>加班费与社保补缴</option><option>违法解除劳动合同</option><option>经济补偿金 N / N+1</option><option>未签劳动合同双倍工资</option></select>
-      <input class="input" placeholder="律所关键词，如：京辰">
-      <span class="f-label">提交时间</span>
-      <select class="select"><option>近 7 天</option><option>近 30 天</option><option>自定义</option></select>
-      <div class="grow"></div>
-      <button class="btn btn-primary btn-sm">查询</button>
-      <button class="btn btn-ghost btn-sm">重置</button>
+      <div class="search">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5 20 20"/></svg>
+        <input placeholder="搜索姓名 / 律所 / 执业证号">
+      </div>
+      <select>
+        <option>全部状态</option><option>待审核</option><option>已通过</option><option>已驳回</option><option>停用</option>
+      </select>
+      <button class="chip on">全部</button>
+      <button class="chip">待审核 5</button>
+      <button class="chip">已通过</button>
+      <button class="chip">已驳回</button>
+      <button class="chip">停用</button>
     </div>
 
     <div class="panel">
-      <div class="panel-head">
-        <h3>待审核律师</h3>
-        <div class="ph-act"><span>SLA = 提交后 3 个工作日</span></div>
-      </div>
-      <div class="table-wrap">
-        <table class="table">
-          <thead><tr><th>律师</th><th>执业证号</th><th>律所</th><th>提交时间</th><th>SLA 剩余</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr>
-              <td>
-                <div class="row">
-                  <span class="avatar" style="width:27px;height:27px;font-size:11.5px;">刘</span>
-                  <div><div class="t-strong">刘鹏</div><div class="t-dim">劳动仲裁 · 加班费专项</div></div>
-                </div>
-              </td>
-              <td class="mono">1101**********3X</td>
-              <td>京辰律师事务所</td>
-              <td class="num t-dim">2026-10-11 14:32</td>
-              <td><span class="badge badge-warn">剩余 1 个工作日</span></td>
-              <td><div class="t-ops"><a class="btn btn-sm btn-primary" href="a04-lawyer-detail.html">审核</a></div></td>
-            </tr>
-            <tr>
-              <td>
-                <div class="row">
-                  <span class="avatar" style="width:27px;height:27px;font-size:11.5px;">赵</span>
-                  <div><div class="t-strong">赵一鸣</div><div class="t-dim">劳动仲裁 · 违法解除专项</div></div>
-                </div>
-              </td>
-              <td class="mono">1101**********7M</td>
-              <td>恒略律师事务所</td>
-              <td class="num t-dim">2026-10-12 09:18</td>
-              <td><span class="badge badge-info">剩余 2 个工作日</span></td>
-              <td><div class="t-ops"><a class="btn btn-sm btn-ghost" href="a04-lawyer-detail.html">审核</a></div></td>
-            </tr>
-            <tr>
-              <td>
-                <div class="row">
-                  <span class="avatar" style="width:27px;height:27px;font-size:11.5px;">马</span>
-                  <div><div class="t-strong">马晓峰</div><div class="t-dim">劳动仲裁 · 社保补缴专项</div></div>
-                </div>
-              </td>
-              <td class="mono">1101**********2K</td>
-              <td>众睿律师事务所</td>
-              <td class="num t-dim">2026-10-12 16:45</td>
-              <td><span class="badge badge-info">剩余 2 个工作日</span></td>
-              <td><div class="t-ops"><a class="btn btn-sm btn-ghost" href="a04-lawyer-detail.html">审核</a></div></td>
-            </tr>
-            <tr>
-              <td>
-                <div class="row">
-                  <span class="avatar" style="width:27px;height:27px;font-size:11.5px;">林</span>
-                  <div><div class="t-strong">林嘉怡</div><div class="t-dim">劳动仲裁 · 经济补偿金专项</div></div>
-                </div>
-              </td>
-              <td class="mono">1101**********9F</td>
-              <td>昱衡律师事务所</td>
-              <td class="num t-dim">2026-10-13 08:50</td>
-              <td><span class="badge badge-info">剩余 3 个工作日</span></td>
-              <td><div class="t-ops"><a class="btn btn-sm btn-ghost" href="a04-lawyer-detail.html">审核</a></div></td>
-            </tr>
-            <tr>
-              <td>
-                <div class="row">
-                  <span class="avatar" style="width:27px;height:27px;font-size:11.5px;">郑</span>
-                  <div><div class="t-strong">郑立文</div><div class="t-dim">劳动仲裁 · 取证指导专项</div></div>
-                </div>
-              </td>
-              <td class="mono">1101**********5B</td>
-              <td>铸成律师事务所</td>
-              <td class="num t-dim">2026-10-13 10:05</td>
-              <td><span class="badge badge-info">剩余 3 个工作日</span></td>
-              <td><div class="t-ops"><a class="btn btn-sm btn-ghost" href="a04-lawyer-detail.html">审核</a></div></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="pager">
-        <span>共 5 条 · 1 / 1 页</span>&nbsp;&nbsp;
-        <a href="a03-lawyer-audit.html">上一页</a>
-        <span class="pg on num">1</span>
-        <a href="a03-lawyer-audit.html">下一页</a>
-      </div>
+      <div class="panel-h"><span class="t">资质审核列表</span><span class="cnt">提交时间倒序 · 审核通过触发 LawyerAuditPassed</span></div>
+      <table class="tbl">
+        <thead><tr><th>姓名</th><th>律所</th><th>执业证号</th><th>提交时间</th><th>SLA 剩余</th><th>状态</th><th class="tr">操作</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><div class="flex gap8"><span class="avatar v2" style="width:28px;height:28px;font-size:11.5px">赵</span><b>赵启铭</b></div></td>
+            <td>天元（虚构）律师事务所</td><td class="num">111****234</td>
+            <td class="num c2">10-12 09:18</td>
+            <td><span class="badge y">剩 1 个工作日</span></td>
+            <td><span class="badge y">待审核</span></td>
+            <td class="tr"><a class="btn btn-p btn-sm" href="a04-lawyer-detail.html">审核</a></td>
+          </tr>
+          <tr>
+            <td><div class="flex gap8"><span class="avatar v3" style="width:28px;height:28px;font-size:11.5px">孙</span><b>孙慕白</b></div></td>
+            <td>观韬（虚构）律师事务所</td><td class="num">111****876</td>
+            <td class="num c2">10-12 16:45</td>
+            <td><span class="badge y">剩 1 个工作日</span></td>
+            <td><span class="badge y">待审核</span></td>
+            <td class="tr"><a class="btn btn-p btn-sm" href="a04-lawyer-detail.html">审核</a></td>
+          </tr>
+          <tr>
+            <td><div class="flex gap8"><span class="avatar" style="width:28px;height:28px;font-size:11.5px">韩</span><b>韩立诚</b></div></td>
+            <td>环球（虚构）律师事务所</td><td class="num">111****552</td>
+            <td class="num c2">10-09 14:02</td>
+            <td><span class="badge r">已超时 4h</span></td>
+            <td><span class="badge y">待审核</span></td>
+            <td class="tr"><a class="btn btn-p btn-sm" href="a04-lawyer-detail.html">审核</a></td>
+          </tr>
+          <tr>
+            <td><div class="flex gap8"><span class="avatar v2" style="width:28px;height:28px;font-size:11.5px">周</span><b>周正邦</b></div></td>
+            <td>金杜（虚构）律师事务所</td><td class="num">111****309</td>
+            <td class="num c2">10-13 08:50</td>
+            <td><span class="badge gray">剩 3 个工作日</span></td>
+            <td><span class="badge y">待审核</span></td>
+            <td class="tr"><a class="btn btn-p btn-sm" href="a04-lawyer-detail.html">审核</a></td>
+          </tr>
+          <tr>
+            <td><div class="flex gap8"><span class="avatar v3" style="width:28px;height:28px;font-size:11.5px">林</span><b>林晚亭</b></div></td>
+            <td>方达（虚构）律师事务所</td><td class="num">111****741</td>
+            <td class="num c2">10-13 10:05</td>
+            <td><span class="badge gray">剩 3 个工作日</span></td>
+            <td><span class="badge y">待审核</span></td>
+            <td class="tr"><a class="btn btn-p btn-sm" href="a04-lawyer-detail.html">审核</a></td>
+          </tr>
+          <tr>
+            <td><div class="flex gap8"><span class="avatar" style="width:28px;height:28px;font-size:11.5px">张</span><b>张明远</b></div></td>
+            <td>京师（虚构）律师事务所</td><td class="num">111****567</td>
+            <td class="num c2">10-09 11:24</td>
+            <td class="c3 t12">10-11 通过</td>
+            <td><span class="badge g">已通过</span></td>
+            <td class="tr"><a class="btn btn-o btn-sm" href="a04-lawyer-detail.html">查看</a></td>
+          </tr>
+          <tr>
+            <td><div class="flex gap8"><span class="avatar v2" style="width:28px;height:28px;font-size:11.5px">李</span><b>李慧敏</b></div></td>
+            <td>大成（虚构）律师事务所</td><td class="num">111****882</td>
+            <td class="num c2">10-08 15:40</td>
+            <td class="c3 t12">10-10 通过</td>
+            <td><span class="badge g">已通过</span></td>
+            <td class="tr"><a class="btn btn-o btn-sm" href="a04-lawyer-detail.html">查看</a></td>
+          </tr>
+          <tr>
+            <td><div class="flex gap8"><span class="avatar v3" style="width:28px;height:28px;font-size:11.5px">吴</span><b>吴敬亭</b></div></td>
+            <td>锦天城（虚构）律师事务所</td><td class="num">111****208</td>
+            <td class="num c2">10-07 10:12</td>
+            <td class="c3 t12">材料不全</td>
+            <td><span class="badge r">已驳回</span></td>
+            <td class="tr"><a class="btn btn-o btn-sm" href="a04-lawyer-detail.html">查看</a></td>
+          </tr>
+          <tr>
+            <td><div class="flex gap8"><span class="avatar" style="width:28px;height:28px;font-size:11.5px">郑</span><b>郑北山</b></div></td>
+            <td>德恒（虚构）律师事务所</td><td class="num">111****496</td>
+            <td class="num c2">09-28 09:30</td>
+            <td class="c3 t12">多次违规</td>
+            <td><span class="badge gray">停用</span></td>
+            <td class="tr"><a class="btn btn-o btn-sm" href="a04-lawyer-detail.html">查看</a></td>
+          </tr>
+        </tbody>
+      </table>
     </div>
+
+    <div class="note">审核 SLA 3 个工作日（PRD §7.2.1），剩余不足 24h 标黄、超时标红；进件（A3b）状态由支付网关持有，本页只读展示，明细见律师详情页。</div>
+
   </div>
 </div>
+
 </body>
 </html>

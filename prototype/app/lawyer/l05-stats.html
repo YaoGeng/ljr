@@ -3,130 +3,88 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>律聚人 · 律师端 · 场次数据</title>
+<title>l05 · 场次数据看板 — 律聚人原型</title>
 <link rel="stylesheet" href="../assets/app.css">
 </head>
-<body class="role-lawyer">
+<body>
 <div class="desk">
-  <div class="desk-label"><b>律聚人 · 律师端</b><code>l05 场次数据看板</code><span>PRD §7.2.6 律师看板 / C1 · H4 数据聚合（T+1）</span></div>
-
+  <div class="desk-label">律聚人 · <b>律师端 l05</b> · 场次数据看板</div>
   <div class="phone">
-    <div class="statusbar"><span class="num">20:15</span><div class="notch"></div><span>5G&nbsp;▮▮▮</span></div>
-
-    <div class="appbar">
-      <a class="back" href="l03-sessions.html"><svg class="ic" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></a>
-      <div class="title">场次数据</div>
-      <div class="spacer"></div>
-      <span class="tag num" style="margin-right:2px;">近 30 天</span>
-    </div>
-
     <div class="screen">
-      <!-- 核心指标 -->
-      <div class="stat-grid mb12" style="grid-template-columns:repeat(2,1fr);gap:10px;">
-        <div class="stat" style="padding:16px 10px;"><div class="s-num num">71<small>%</small></div><div class="s-label">报名率</div></div>
-        <div class="stat" style="padding:16px 10px;"><div class="s-num num">83<small>%</small></div><div class="s-label">成团率</div></div>
-        <div class="stat" style="padding:16px 10px;"><div class="s-num num">92<small>%</small></div><div class="s-label">到场率</div></div>
-        <div class="stat hl" style="padding:16px 10px;"><div class="s-num num">17<small>%</small></div><div class="s-label">1对1 转化率</div></div>
+
+      <div class="statusbar">
+        <span>9:41</span>
+        <span class="sic">
+          <svg width="17" height="12" viewBox="0 0 17 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="4.5" y="5" width="3" height="7" rx="1"/><rect x="9" y="2.5" width="3" height="9.5" rx="1"/><rect x="13.5" y="0" width="3" height="12" rx="1"/></svg>
+          <svg width="24" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3.5" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="15" height="8" rx="2" fill="currentColor"/><path d="M23 4v4c1.2-.3 2-1 2-2s-.8-1.7-2-2z" fill="currentColor" opacity=".4"/></svg>
+        </span>
+      </div>
+      <div class="navbar">
+        <a class="back" href="l02-workbench.html">‹</a>
+        <div class="ttl">场次数据看板</div>
+        <span class="act">近 30 天</span>
       </div>
 
-      <!-- 近 7 日报名 -->
-      <div class="sec">
-        <div class="sec-head"><h3>近 7 日 · 每日报名人数</h3><span class="more small num">合计 32 人</span></div>
-        <div class="card card--pad0" style="padding:14px 14px 10px;">
-          <div style="display:flex;gap:10px;">
-            <div style="flex:1;display:flex;flex-direction:column;align-items:center;">
-              <span class="num" style="font-size:10px;color:var(--text-3);">5</span>
-              <div style="width:100%;height:78px;display:flex;align-items:flex-end;"><span style="width:100%;height:55px;background:linear-gradient(180deg,var(--ink-500),var(--ink-600));border-radius:5px 5px 2px 2px;"></span></div>
-              <span class="num" style="font-size:10px;color:var(--text-3);margin-top:4px;">10-07</span>
-            </div>
-            <div style="flex:1;display:flex;flex-direction:column;align-items:center;">
-              <span class="num" style="font-size:10px;color:var(--text-3);">4</span>
-              <div style="width:100%;height:78px;display:flex;align-items:flex-end;"><span style="width:100%;height:44px;background:linear-gradient(180deg,var(--ink-500),var(--ink-600));border-radius:5px 5px 2px 2px;"></span></div>
-              <span class="num" style="font-size:10px;color:var(--text-3);margin-top:4px;">10-08</span>
-            </div>
-            <div style="flex:1;display:flex;flex-direction:column;align-items:center;">
-              <span class="num" style="font-size:10px;color:var(--text-3);">6</span>
-              <div style="width:100%;height:78px;display:flex;align-items:flex-end;"><span style="width:100%;height:66px;background:linear-gradient(180deg,var(--ink-500),var(--ink-600));border-radius:5px 5px 2px 2px;"></span></div>
-              <span class="num" style="font-size:10px;color:var(--text-3);margin-top:4px;">10-09</span>
-            </div>
-            <div style="flex:1;display:flex;flex-direction:column;align-items:center;">
-              <span class="num" style="font-size:10px;color:var(--text-3);">3</span>
-              <div style="width:100%;height:78px;display:flex;align-items:flex-end;"><span style="width:100%;height:33px;background:linear-gradient(180deg,var(--ink-500),var(--ink-600));border-radius:5px 5px 2px 2px;"></span></div>
-              <span class="num" style="font-size:10px;color:var(--text-3);margin-top:4px;">10-10</span>
-            </div>
-            <div style="flex:1;display:flex;flex-direction:column;align-items:center;">
-              <span class="num" style="font-size:10px;color:var(--text-3);">5</span>
-              <div style="width:100%;height:78px;display:flex;align-items:flex-end;"><span style="width:100%;height:55px;background:linear-gradient(180deg,var(--ink-500),var(--ink-600));border-radius:5px 5px 2px 2px;"></span></div>
-              <span class="num" style="font-size:10px;color:var(--text-3);margin-top:4px;">10-11</span>
-            </div>
-            <div style="flex:1;display:flex;flex-direction:column;align-items:center;">
-              <span class="num" style="font-size:10px;color:var(--text-3);">7</span>
-              <div style="width:100%;height:78px;display:flex;align-items:flex-end;"><span style="width:100%;height:77px;background:linear-gradient(180deg,var(--ink-500),var(--ink-600));border-radius:5px 5px 2px 2px;"></span></div>
-              <span class="num" style="font-size:10px;color:var(--text-3);margin-top:4px;">10-12</span>
-            </div>
-            <div style="flex:1;display:flex;flex-direction:column;align-items:center;">
-              <span class="num" style="font-size:10px;color:var(--seal-600);">2</span>
-              <div style="width:100%;height:78px;display:flex;align-items:flex-end;"><span style="width:100%;height:22px;background:linear-gradient(180deg,var(--ink-300),var(--ink-500));border-radius:5px 5px 2px 2px;"></span></div>
-              <span class="num" style="font-size:10px;color:var(--seal-600);margin-top:4px;">10-13</span>
-            </div>
-          </div>
-          <div class="small tac" style="margin-top:6px;">今日（10-13）报名进行中</div>
-        </div>
-      </div>
-
-      <!-- 场次明细 -->
-      <div class="sec">
-        <div class="sec-head"><h3>场次明细 · 最近 5 场</h3></div>
-        <div class="card card--pad0">
-          <div style="display:grid;grid-template-columns:1.7fr .85fr .6fr .6fr .6fr .85fr;padding:10px 14px;font-size:10.5px;color:var(--text-3);">
-            <span>场次</span><span>日期</span><span class="tac">报名</span><span class="tac">到场</span><span class="tac">1对1</span><span class="tac" style="color:var(--seal-600);">收入</span>
-          </div>
-          <div style="display:grid;grid-template-columns:1.7fr .85fr .6fr .6fr .6fr .85fr;padding:9px 14px;font-size:12px;border-top:1px solid var(--line);align-items:center;">
-            <span style="font-weight:600;">拖欠工资夜谈</span><span class="num" style="color:var(--text-2);">10-08</span><span class="tac num">5</span><span class="tac num">4</span><span class="tac num">1</span><span class="tac num" style="color:var(--seal-600);font-weight:700;">¥387</span>
-          </div>
-          <div style="display:grid;grid-template-columns:1.7fr .85fr .6fr .6fr .6fr .85fr;padding:9px 14px;font-size:12px;border-top:1px solid var(--line);align-items:center;color:var(--text-3);">
-            <span style="font-weight:600;">违约金专题（流标）</span><span class="num">10-05</span><span class="tac num">2</span><span class="tac">—</span><span class="tac">—</span><span class="tac num">¥0</span>
-          </div>
-          <div style="display:grid;grid-template-columns:1.7fr .85fr .6fr .6fr .6fr .85fr;padding:9px 14px;font-size:12px;border-top:1px solid var(--line);align-items:center;">
-            <span style="font-weight:600;">违法解除赔偿要点</span><span class="num" style="color:var(--text-2);">09-28</span><span class="tac num">5</span><span class="tac num">5</span><span class="tac num">1</span><span class="tac num" style="color:var(--seal-600);font-weight:700;">¥440</span>
-          </div>
-          <div style="display:grid;grid-template-columns:1.7fr .85fr .6fr .6fr .6fr .85fr;padding:9px 14px;font-size:12px;border-top:1px solid var(--line);align-items:center;">
-            <span style="font-weight:600;">社保补缴答疑</span><span class="num" style="color:var(--text-2);">09-24</span><span class="tac num">4</span><span class="tac num">3</span><span class="tac num">0</span><span class="tac num" style="color:var(--seal-600);font-weight:700;">¥352</span>
-          </div>
-          <div style="display:grid;grid-template-columns:1.7fr .85fr .6fr .6fr .6fr .85fr;padding:9px 14px;font-size:12px;border-top:1px solid var(--line);align-items:center;">
-            <span style="font-weight:600;">仲裁申请材料清单</span><span class="num" style="color:var(--text-2);">09-19</span><span class="tac num">6</span><span class="tac num">5</span><span class="tac num">2</span><span class="tac num" style="color:var(--seal-600);font-weight:700;">¥528</span>
+      <!-- KPI -->
+      <section class="sec">
+        <div class="card">
+          <div class="flex" style="gap:0">
+            <div class="stat grow"><div class="n">82%</div><div class="l">报名率</div></div>
+            <div class="stat grow"><div class="n">68%</div><div class="l">成团率</div></div>
+            <div class="stat grow"><div class="n">91%</div><div class="l">到场率</div></div>
+            <div class="stat grow"><div class="n gold">12%</div><div class="l">1对1 转化率</div></div>
           </div>
         </div>
-      </div>
+      </section>
 
-      <!-- 平台对比 -->
-      <div class="notice ok mb12">
-        <svg class="ic ic-sm" viewBox="0 0 24 24"><path d="M12 3.5 19 6v5.5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9 11.5l2 2 4-4"/></svg>
-        <div>高于平台平均：成团率 <b>83%</b> vs 平台 62%（+21pp）；到场率 <b>92%</b> vs 平台 87%（+5pp）。保持当前排期与响应节奏即可获得更多指名推荐。</div>
-      </div>
+      <!-- 近 8 周趋势 -->
+      <section class="sec">
+        <div class="sec-h"><span class="t">报名率趋势</span><span class="cnt">近 8 周 · 按场次</span></div>
+        <div class="card">
+          <div class="flex" style="align-items:flex-end;gap:8px;height:108px">
+            <div class="grow col" style="align-items:center;gap:5px"><span class="t12 c3">55</span><div style="width:100%;height:48px;border-radius:6px 6px 2px 2px;background:var(--ink-200)"></div><span class="t12 c3" style="font-size:10px">08-21</span></div>
+            <div class="grow col" style="align-items:center;gap:5px"><span class="t12 c3">60</span><div style="width:100%;height:53px;border-radius:6px 6px 2px 2px;background:var(--ink-200)"></div><span class="t12 c3" style="font-size:10px">08-28</span></div>
+            <div class="grow col" style="align-items:center;gap:5px"><span class="t12 c3">62</span><div style="width:100%;height:55px;border-radius:6px 6px 2px 2px;background:var(--ink-200)"></div><span class="t12 c3" style="font-size:10px">09-04</span></div>
+            <div class="grow col" style="align-items:center;gap:5px"><span class="t12 c3">70</span><div style="width:100%;height:62px;border-radius:6px 6px 2px 2px;background:var(--ink-300)"></div><span class="t12 c3" style="font-size:10px">09-11</span></div>
+            <div class="grow col" style="align-items:center;gap:5px"><span class="t12 c3">66</span><div style="width:100%;height:58px;border-radius:6px 6px 2px 2px;background:var(--ink-300)"></div><span class="t12 c3" style="font-size:10px">09-18</span></div>
+            <div class="grow col" style="align-items:center;gap:5px"><span class="t12 c3">74</span><div style="width:100%;height:66px;border-radius:6px 6px 2px 2px;background:var(--ink-400)"></div><span class="t12 c3" style="font-size:10px">09-25</span></div>
+            <div class="grow col" style="align-items:center;gap:5px"><span class="t12 c3">80</span><div style="width:100%;height:71px;border-radius:6px 6px 2px 2px;background:var(--ink-500)"></div><span class="t12 c3" style="font-size:10px">10-02</span></div>
+            <div class="grow col" style="align-items:center;gap:5px"><span class="t12 ci b">82</span><div style="width:100%;height:73px;border-radius:6px 6px 2px 2px;background:linear-gradient(180deg,var(--ink-500),var(--ink-700))"></div><span class="t12 ci b" style="font-size:10px">10-09</span></div>
+          </div>
+        </div>
+      </section>
 
-      <div class="small tac">数据来自 H4 聚合统计，T+1 更新 · 1对1 转化率 = 1对1 成交场次 / 完成场次数</div>
+      <!-- 单场次表现 -->
+      <section class="sec">
+        <div class="sec-h"><span class="t">单场次表现</span><span class="cnt">近 30 天</span></div>
+        <div class="card rows">
+          <div class="row">
+            <div class="tt"><b>未签劳动合同双倍工资主张</b><span>10-09 · 报名率 100%（6/6）· 到场 5/6</span></div>
+            <span class="rt ci b">1对1 +1 人</span>
+          </div>
+          <div class="row">
+            <div class="tt"><b>加班费计算基数专项答疑</b><span>09-18 · 报名率 100%（6/6）· 到场 6/6</span></div>
+            <span class="rt ci b">1对1 +1 人</span>
+          </div>
+          <div class="row">
+            <div class="tt"><b>试用期辞退权益答疑</b><span>10-02 · 报名率 80%（4/5）· 到场 4/4</span></div>
+            <span class="rt c3">1对1 +0 人</span>
+          </div>
+          <div class="row">
+            <div class="tt"><b>社保补缴材料与流程</b><span>09-25 · 报名率 20%（1/5）· 流标退款</span></div>
+            <span class="rt c3">—</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="sec">
+        <div class="note">
+          <span class="ic">ℹ︎</span>
+          <span>数据口径来自平台数据看板（H4 聚合，T+1 生成）；1对1 转化率 = 场次用户中发起 1对1 订单的比例。</span>
+        </div>
+      </section>
+
     </div>
-
-    <div class="tabbar">
-      <a href="l02-workbench.html">
-        <svg class="ic" viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10.5V20h12v-9.5"/></svg>
-        工作台
-      </a>
-      <a class="on" href="l03-sessions.html">
-        <svg class="ic" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M4 10h16M8 4v4M16 4v4"/></svg>
-        场次管理
-      </a>
-      <a href="l06-hall.html">
-        <svg class="ic" viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3"/><path d="M3.5 19c.8-3 3-4.5 5.5-4.5s4.7 1.5 5.5 4.5"/><circle cx="16.8" cy="9.5" r="2.2"/><path d="M16 14.7c2.2.3 4 1.6 4.7 4.3"/></svg>
-        接单大厅
-      </a>
-      <a href="l10-profile.html">
-        <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19.5c1-3.4 3.5-5 6.5-5s5.5 1.6 6.5 5"/></svg>
-        我的
-      </a>
-    </div>
-    <div class="homebar"></div>
   </div>
 </div>
 </body>

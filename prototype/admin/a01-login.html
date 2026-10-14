@@ -3,59 +3,49 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>律聚人 · 运营后台 · 登录</title>
+<title>a01 · 登录 — 律聚人运营后台原型</title>
 <link rel="stylesheet" href="assets/admin.css">
 </head>
-<body class="admin" style="background:linear-gradient(155deg,var(--ink-950) 0%,var(--ink-900) 48%,var(--ink-800) 100%);align-items:center;justify-content:center;">
+<body>
 
-  <div style="width:400px;max-width:92vw;">
-    <div style="background:var(--paper);border-radius:var(--r-lg);padding:34px 34px 24px;box-shadow:0 26px 64px rgba(4,12,22,.45), inset 0 0 0 1px rgba(255,255,255,.04);">
-      <!-- 品牌区 -->
-      <div style="display:flex;align-items:center;gap:13px;">
-        <div style="width:46px;height:46px;border-radius:12px;flex:none;background:var(--seal-600);color:#fff;display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:24px;font-weight:700;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.22);">律</div>
-        <div>
-          <div style="font-family:var(--font-display);font-size:21px;font-weight:700;letter-spacing:3px;color:var(--ink-900);">律聚人 运营后台</div>
-          <div style="font-size:11px;color:var(--text-3);letter-spacing:1.5px;margin-top:2px;">Lvjuren · Operations Console</div>
-        </div>
-      </div>
+<div class="login-wrap">
+  <div class="panel login-card" style="padding:32px 32px 24px">
 
-      <!-- 表单 -->
-      <div style="margin-top:26px;">
-        <div style="margin-bottom:14px;">
-          <div style="font-size:12.5px;color:var(--text-2);margin-bottom:6px;">账号</div>
-          <input class="input" style="width:100%;height:38px;" placeholder="手机号 / 运营工号">
-        </div>
-        <div style="margin-bottom:14px;">
-          <div style="font-size:12.5px;color:var(--text-2);margin-bottom:6px;">密码</div>
-          <input class="input" type="password" style="width:100%;height:38px;" placeholder="请输入密码">
-        </div>
-        <div style="margin-bottom:20px;">
-          <div style="font-size:12.5px;color:var(--text-2);margin-bottom:6px;">短信验证码</div>
-          <div style="display:flex;gap:8px;">
-            <input class="input" style="flex:1;height:38px;" placeholder="6 位验证码">
-            <button class="btn btn-ghost" style="height:38px;flex:none;" onclick="this.textContent='已发送 60s';this.disabled=true;">获取验证码</button>
-          </div>
-        </div>
-        <a class="btn btn-primary" href="a02-dashboard.html" style="width:100%;height:42px;font-size:14.5px;letter-spacing:6px;">登 录</a>
-      </div>
-
-      <!-- 角色说明 -->
-      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line);font-size:11.5px;color:var(--text-3);line-height:1.9;">
-        三角色 RBAC 权限：<b style="color:var(--text-2);">运营</b>（审核 / 工单 / 撮合）·
-        <b style="color:var(--text-2);">合规</b>（可调取录音，需审批 + 双人复核）·
-        <b style="color:var(--text-2);">财务</b>（对账 / 退款 / 结算）<br>
-        所有只读与审批操作全程审计留痕，登录即视为接受留痕约定。
+    <!-- 品牌 -->
+    <div class="flex gap12 mb16">
+      <div style="width:46px;height:46px;border-radius:13px;flex:none;display:flex;align-items:center;justify-content:center;font-family:var(--fd);font-size:23px;font-weight:700;color:#fff;background:linear-gradient(155deg,var(--seal-500),#A84535);box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.25),0 6px 14px -4px rgba(193,78,58,.5)">律</div>
+      <div>
+        <div class="fd b" style="font-size:20px;letter-spacing:3px">律聚人运营后台</div>
+        <div class="t12 c3" style="margin-top:2px;letter-spacing:.5px">AI 增强型法律服务交易平台 · 劳动仲裁首发专项</div>
       </div>
     </div>
 
-    <!-- 定位语 + 备案 -->
-    <div style="text-align:center;margin-top:18px;font-size:12.5px;color:var(--ink-300);letter-spacing:2px;">
-      AI 增强型法律服务交易平台 · 运营后台
+    <!-- 表单 -->
+    <div class="field">
+      <label class="lb">账号</label>
+      <input class="input" value="zhaoqian@ljr.example">
     </div>
-    <div style="text-align:center;margin-top:10px;font-size:10.5px;color:#5F7492;">
-      京ICP备XXXXXXXX号-X · © 2026 律聚人（备案号占位）
+    <div class="field">
+      <label class="lb">密码</label>
+      <input class="input" type="password" value="••••••••">
     </div>
+    <div class="field">
+      <label class="lb">角色</label>
+      <select class="select2">
+        <option selected>平台运营（赵谦）</option>
+        <option>合规专员（孙恪）</option>
+        <option>财务（钱荟）</option>
+      </select>
+      <div class="hint">三角色 RBAC——运营：审核 / 工单 / 撮合；合规：PIA / 审计 / 录音调取（审批+双人复核）；财务：对账 / 分账 / 结算只读视图。</div>
+    </div>
+
+    <a class="btn btn-p" href="a02-dashboard.html" style="width:100%;height:42px;font-size:14.5px;letter-spacing:6px">登 录</a>
+
+    <div class="note mt14">操作全程审计留痕 · 生产环境开启双因素认证（2FA）</div>
+
+    <div class="tc t12 c3 mt14">样例数据均为虚构 · 原型 v3.0</div>
   </div>
+</div>
 
 </body>
 </html>
