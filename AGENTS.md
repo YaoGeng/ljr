@@ -12,10 +12,8 @@ docs/                    需求与设计的唯一事实源（改动代码/原型
   04-功能模块设计.md       42 模块总览 + 角色权限矩阵 + 待澄清点 §8
   05-开发计划与里程碑.md    里程碑与排期（M0 已收尾，M1 起逐模块施工）
   modules/<域>/<ID>-*.md  每模块施工规格：DDL、接口契约、事件、R-xx 规则、验收清单
-prototype/               三端 HTML 原型（入口 index.html，说明 README.md）
-  app/user/  app/lawyer/  app/assets/app.css（App 共用设计系统）
-  admin/  admin/assets/admin.css（后台共用设计系统）
-  tools/check.js          链接完整性检查
+prototype/               单文件全量 UI 原型 v4.0（index.html 内嵌 CSS/JS，三端 SPA 共 37 视图；说明 README.md）
+  tools/check.js          原型完整性检查（断链/外链/UTF-8/结构）
 services/core            NestJS 单体 @ljr/core（M0 基座就位：config/观测/outbox+状态机+demo 样板；13 schema/14 role 已在 V1 落库，**业务模块自 M1 才落位**=docs/02 §3.2；vitest；子目录另有 AGENTS.md）
 services/{rtc-im,agent-assist,payment-gateway}  独立服务空壳（实现栈随各自施工定）
 apps/app（Expo/RN）  apps/admin（React/Vite）  packages/shared（类型+事件契约，bun test）
@@ -54,11 +52,11 @@ docs/plans/              M0 全套报告（执行/复审/技能验收/隔离演�
 
 ## 原型（prototype/）约定
 
-- 设计体系 v3.0「纸币绿 · 玻璃拟态 · 简约」（2026-10-14 起，以 PRD/功能模块为输入全面重设计；旧版为墨蓝「契约与印章」→ v2.0 薄荷绿）：纸币绿 `--ink-*` 系为主色（50 元人民币色系推演，`--ink-600` #2A7057）；米白 `#F4F3EA` 底 + 磨砂玻璃卡片（半透明白 + backdrop 虚化 + 大圆角）；**印章红 `--seal-600` 只用于价格、已成团印章、危险/超阈状态**；宋体衬线只用于标题/品牌/印章/价格，正文系统无衬线。令牌在 app.css 与 admin.css 中同源
-- App 屏统一骨架：`.desk > .desk-label + .phone`（390×844 手机框 + tabbar）；后台统一 sidebar/topbar 骨架，侧边栏导航项各页逐字一致
-- 禁止外链资源（CDN/字体/图片）；弹层用最小 JS（onclick 加删 'show' 类）
-- 样例数据为虚构且跨屏共享（律师张明远/李慧敏/王振宇/陈晓薇，用户周女士）；**静态原型的多时点叙事**：浏览/配置类屏锚定 10-13，房间直播屏（u09/l09）与监控（a05）锚定 10-16 周五 20:32 同刻——改场次状态/时间时先读 prototype/README.md §5 时间口径，避免跨屏矛盾
-- 新增页面后必须跑 `node tools/check.js`
+- **形态**：单文件 SPA——`index.html` 内嵌全部 CSS/JS，`VIEWS` 视图注册表 + `go()` 路由承载三端 37 视图（用户端 12 / 律师端 11 / 后台 13，含 hub 导航）；顶栏 seg 切端，App 端渲染 390 宽手机框（tabbar），后台渲染 sidebar 布局；数据为内置虚构 Mock（`DB` 对象跨端共享，操作即改内存状态并重渲染）；图表为运行时生成 SVG，图标为内置细线库
+- 设计体系 v4.0「人民币双色系 · 玻璃拟态 · 简约」（2026-10-14 重构，输入=PRD/功能模块；演进：墨蓝契约印章 → v2.0 薄荷绿 → v3.0 纸币绿多页 → v4.0 单文件）：**一元纸币橄榄绿为主色（约 90% 面积）**：底 `#F4F6F1`、主色 `#3E5C3A`、苔绿 `#6B8E5A`/浅灰绿 `#A8B89B`、文字 `#2C3E28`/`#7A8B74`、高光 `#C9D6C0`；**点缀=百元纸币豆沙红 `#C25E5E` 仅极小面积**：单张焦点卡（一组仅 1 张）/ 价格数字 / 主按钮 / 危险超阈状态 / 图表焦点数据条，严禁大面积铺色与红绿五五开；玻璃卡 `rgba(255,255,255,.5)`+blur(20px)+1px 半透明白边+16px 圆角，点缀卡 `rgba(194,94,94,.15)`；背景橄榄绿光晕漂浮 + 角落极少量红晕；系统无衬线字体，全页无深色
+- 禁止外链资源（CDN/字体/图标库/图片）；交互为原生 JS（弹层/Toast/抽屉/底部面板/表单校验均内嵌）
+- 样例数据为虚构且跨端共享（律师张明远/李慧敏/王振宇/陈晓薇，用户周女士）；**多时点叙事**：浏览/配置类视图锚定 10-13，房间直播（u-room/l-room）与后台监控（a-monitor）锚定 10-16 周五 20:32 同刻（S-2041）——改场次状态/时间先读 prototype/README.md「多时点叙事」，避免跨屏矛盾
+- 新增/修改页面后必须跑 `node tools/check.js`；改内嵌 JS 建议提取 `<script>` 后 `node --check` 语法校验
 
 ## 敏感区前置阅读
 
