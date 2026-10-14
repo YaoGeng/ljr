@@ -6,6 +6,9 @@
  *     `::jsonb`、检索=进程内余弦（候选集经 ix_knowledge_docs_pool 收敛到检索池）。
  * 列型分派=运行时内省 information_schema（一次探测缓存；列型只在迁移时变化）。两路径的出参
  * 契约（KnowledgeHit）完全一致；真 pgvector E2E 随 docker 环境补跑 ⚠（Ruling-4）。
+ * ⚠召回差异留痕（评审 Important-1 附属）：ivfflat 是 ANN——小数据集/低 probes 下 top-K 为
+ * 近似召回（可能漏个别近邻，且召回率随 probes 变化）；M2 docker E2E 断言前应先
+ * `SET ivfflat.probes = <n>`（或按召回容差断言），勿以路径②的精确召回口径直接对拍路径①。
  */
 import { AppError, ErrorCode } from '@ljr/shared';
 import type { SqlExecutor } from '../../infrastructure/sql';
@@ -73,6 +76,9 @@ export function cosineSimilarity(a: readonly number[], b: readonly number[]): nu
 /**
  * 路径①检索 SQL（pgvector）：`<=>` 为余弦距离（1-余弦相似度），score=1-distance。
  * 过滤面=检索池定义（R-02/§4/§9）：在册专项 + active + READY + granted。
+ * 排序=distance 升序（=score 降序）+ 显式 tie-break（doc_id, id）——与 jsonb 路径
+ * (score desc, docId, chunkId) 同口径，钉住 KnowledgeHit「同分稳定序」契约
+ * （评审 Important-1：同分序不得依赖索引扫描的任意序）。
  */
 export function buildVectorSearchSql(): string {
   return `SELECT c.id, c.doc_id, c.chunk, c.metadata, d.title, d.source_type,
@@ -81,7 +87,7 @@ export function buildVectorSearchSql(): string {
             JOIN agent_assist.knowledge_docs d ON d.id = c.doc_id
            WHERE d.specialty = $1 AND d.active
              AND d.process_status = 'READY' AND d.license_status = 'granted'
-           ORDER BY c.embedding <=> $2::vector
+           ORDER BY c.embedding <=> $2::vector, c.doc_id, c.id
            LIMIT $3`;
 }
 

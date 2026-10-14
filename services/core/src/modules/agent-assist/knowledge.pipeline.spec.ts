@@ -130,7 +130,7 @@ describe('E3 pgvector 双路径件（R4 裁决：两路径均可用可测；真 
     JSON.parse(embeddingParam('jsonb', [0.5, -0.25]).text);
   });
 
-  it('路径①检索 SQL：pgvector 语法表达（<=> 余弦距离 + 三重过滤 + LIMIT）', () => {
+  it('路径①检索 SQL：pgvector 语法表达（<=> 余弦距离 + 三重过滤 + LIMIT + 显式 tie-break）', () => {
     const sql = buildVectorSearchSql();
     expect(sql).toContain('agent_assist.knowledge_chunks');
     expect(sql).toContain('agent_assist.knowledge_docs');
@@ -142,6 +142,9 @@ describe('E3 pgvector 双路径件（R4 裁决：两路径均可用可测；真 
     expect(sql).toContain("'granted'");
     expect(sql).toContain('ORDER BY');
     expect(sql).toContain('LIMIT');
+    // 路径①守卫（评审 Important-1）：KnowledgeHit 契约承诺「同分按 docId,chunkIndex 稳定序」，
+    // ORDER BY 必须显式 tie-break（doc_id, id），与 jsonb 路径口径一致——同分序不得依赖索引扫描
+    expect(sql).toMatch(/ORDER BY\s+c\.embedding <=> \$2::vector, c\.doc_id, c\.id\b/);
   });
 
   it('路径②检索 SQL：同过滤面、无 pgvector 算子（进程内余弦的候选装载语句）', () => {
