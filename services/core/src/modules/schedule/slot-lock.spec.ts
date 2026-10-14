@@ -561,24 +561,23 @@ describe('B2 时间段占用锁（机制 API，需 PG）', () => {
     });
   });
 
-  it('START_OCCUPY：LOCKED→OCCUPIED 守卫留痕；非 LOCKED 拒绝（StateIllegalTransition+拒绝留痕）；NOT_FOUND', async () => {
+  it('START_OCCUPY：LOCKED→OCCUPIED 守卫留痕；重放幂等短路（transitioned=false 不毒化事务）；非 LOCKED 拒绝；NOT_FOUND', async () => {
     let lockId = 0;
     await poolSvc.withTransaction(async (uow) => {
       const r = await svc.lockSlot(uow, lockInput({ initiatorUserId: 542 }));
       lockId = r.ok ? r.lockId : 0;
       const ok = await svc.startOccupy(uow, lockId);
-      expect(ok).toMatchObject({ ok: true, lockId });
-      // 二次开房：OCCUPIED→OCCUPIED 非法 → 守卫抛 + 拒绝留痕（独立连接）
-      await expect(svc.startOccupy(uow, lockId)).rejects.toMatchObject({
-        code: ErrorCode.StateIllegalTransition,
-      });
+      expect(ok).toMatchObject({ ok: true, lockId, transitioned: true });
+      // 二次开房（W3 开房 job 重试/回调重放）：幂等短路，不抛不留拒绝痕（重放不得毒化调用方事务）
+      const replay = await svc.startOccupy(uow, lockId);
+      expect(replay).toMatchObject({ ok: true, lockId, transitioned: false });
       const unknown = await svc.startOccupy(uow, 987654);
       expect(unknown).toMatchObject({ ok: false, reason: 'NOT_FOUND' });
     });
     expect((await lockRow(lockId))?.status).toBe('OCCUPIED');
     expect(
       (await stlOf(lockId)).map((r) => `${r.from_status}→${r.to_status}:${r.allowed}`),
-    ).toEqual(['LOCKED→OCCUPIED:true', 'OCCUPIED→OCCUPIED:false']);
+    ).toEqual(['LOCKED→OCCUPIED:true']); // 重放无拒绝留痕
 
     // PENDING_PAYMENT 直接开房 → 非法迁移（换段位：上方 OCCUPIED 锁仍活跃占着 (9001, SLOT)）
     await poolSvc.withTransaction(async (uow) => {

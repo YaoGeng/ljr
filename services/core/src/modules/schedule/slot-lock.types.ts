@@ -61,9 +61,14 @@ export type ConfirmPaymentResult =
   | { readonly ok: true; readonly lockId: number; readonly transitioned: boolean }
   | { readonly ok: false; readonly reason: 'NOT_FOUND' };
 
-/** START_OCCUPY（§2/§4）出参；非 LOCKED 状态迁移经守卫拒绝（AppError StateIllegalTransition） */
+/**
+ * START_OCCUPY（§2/§4）出参。transitioned=false = 开房重放幂等短路（锁已 OCCUPIED，W3 开房
+ * job 重试/回调重放不抛不留拒绝痕、不毒化调用方业务事务——对齐 CONFIRM_PAYMENT 口径）。
+ * 非 LOCKED 且非重放（PENDING_PAYMENT 未支付/已 RELEASED）⇒ 守卫拒绝（AppError
+ * StateIllegalTransition，拒绝留痕走独立连接）。
+ */
 export type StartOccupyResult =
-  | { readonly ok: true; readonly lockId: number }
+  | { readonly ok: true; readonly lockId: number; readonly transitioned: boolean }
   | { readonly ok: false; readonly reason: 'NOT_FOUND' };
 
 // ---------- reaper 的关联实体终态判定抽象（R-04；禁跨域 join trade.* 表——边界纪律） ----------
@@ -78,8 +83,19 @@ export interface EntityTerminalInfo {
  * ref_type → 终态判定器：reaper 判定「关联实体已终态」的唯一通道。真实 provider 随 C1（session）、
  * C2（groupbuy）、C5（reschedule）落位注册（各自经接口/事件取业务态，B2 不直连他域表）；
  * W1 以测试 stub 验证机制。
+ *
+ * 缺 provider（ref_type 未注册）=reaper 跳过该类型全部锁（漏放方向，宁漏不误杀），
+ * 跳过行数经 ReaperResult.skippedNoProvider 计数暴露（不静默）。
  */
 export interface TerminalStateProvider {
   /** 实体不存在/无法判定返回 null（reaper 跳过该锁，宁漏不误杀） */
   isTerminal(refId: number): Promise<EntityTerminalInfo | null>;
+  /**
+   * 批量形态（可选；R-04 防逐行 N+1）：reaper 每轮对每 ref_type 至多一次批量调用替代逐行判定。
+   * 返回 Map 按 refId 对齐（缺项视同 null=跳过）；单实体异常宜在实现内部吞为 null（宁漏不误杀），
+   * 整体失败可抛——reaper 按 ref_type 隔离跳过并计 skipped_errored（毒 provider 不炸整轮）。
+   * 未实现时 reaper 回退逐行 isTerminal（量级触发线：活跃锁上万且走回退形态即成 N+1，
+   * provider 落位时应实现本方法）。
+   */
+  isTerminalBatch?(refIds: number[]): Promise<Map<number, EntityTerminalInfo | null>>;
 }

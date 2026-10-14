@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { ErrorCode } from '@ljr/shared';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { Pool } from 'pg';
@@ -19,17 +19,29 @@ import { SlotLockModule } from './slot-lock.module';
  * B2 reaper 兜底 e2e（需 PG，R-04）：活跃锁 + 关联实体已终态超阈（15min）→ 强制释放+告警；
  * PENDING_PAYMENT 走 ttl_at 部分索引兜底；LOCKED/OCCUPIED 全量扫描经 provider 注册表判定
  * （业务实体表 W1 尚不存在——真实 provider 随 C1/C2/C5 落位注册，本套件以 stub 验证机制）；
- * 周期节拍由 I2 SLOT_REAPER job 承载（执行 DONE 后自投下一周期，收敛恰一在册）。
+ * 周期节拍由 I2 SLOT_REAPER job 承载（自投下一周期，收敛恰一在册；自投经独立事务与扫描解耦）。
  */
 
 const SLOT = new Date('2026-11-06T10:00:00.000Z');
 
-/** 可编程终态判定 stub（W1 机制验证；refId→terminal 映射由用例注入） */
+/** 可编程终态判定 stub（W1 机制验证；实现批量形态 isTerminalBatch——生产 provider 落位要求） */
 class StubTerminalProvider implements TerminalStateProvider {
   readonly byRef = new Map<number, EntityTerminalInfo | null>();
+  /** 批量调用次数观测位（用例断言 reaper 走批量路径） */
+  batchCalls = 0;
+  /** 测试注入钩子：批量判定前触发（扫描后并发释放的竞态注入位） */
+  onBatch: (refIds: number[]) => Promise<void> = async () => undefined;
 
   async isTerminal(refId: number): Promise<EntityTerminalInfo | null> {
     return this.byRef.get(refId) ?? null;
+  }
+
+  async isTerminalBatch(refIds: number[]): Promise<Map<number, EntityTerminalInfo | null>> {
+    this.batchCalls += 1;
+    await this.onBatch(refIds);
+    const map = new Map<number, EntityTerminalInfo | null>();
+    for (const refId of refIds) map.set(refId, this.byRef.get(refId) ?? null);
+    return map;
   }
 }
 
@@ -78,6 +90,15 @@ describe('B2 reaper（R-04，需 PG）', () => {
     return res.rows;
   };
 
+  /** 最近一轮 SLOT_REAPER 的执行器返回结果（经 I2 writeLog 序列化进 schedule_job_log.detail） */
+  const lastReaperResult = async (): Promise<Record<string, unknown>> => {
+    const res = await pool.query<{ detail: string | null }>(
+      `SELECT detail FROM schedule.schedule_job_log
+        WHERE job_type = 'SLOT_REAPER' AND result = 'DONE' ORDER BY id DESC LIMIT 1`,
+    );
+    return JSON.parse(res.rows[0]?.detail ?? '{}') as Record<string, unknown>;
+  };
+
   beforeAll(async () => {
     pool = await ensureTestDatabase();
     const moduleRef = await Test.createTestingModule({ imports: [SlotLockModule] }).compile();
@@ -102,11 +123,17 @@ describe('B2 reaper（R-04，需 PG）', () => {
   beforeEach(async () => {
     await truncateAll(pool);
     sessionProvider.byRef.clear();
+    sessionProvider.batchCalls = 0;
+    sessionProvider.onBatch = async () => undefined;
     groupbuyProvider.byRef.clear();
+    groupbuyProvider.batchCalls = 0;
+    groupbuyProvider.onBatch = async () => undefined;
     alerts.alerts.length = 0;
+    vi.restoreAllMocks();
   });
   afterEach(async () => {
     await truncateAll(pool);
+    vi.restoreAllMocks();
   });
 
   it('R-04 关联实体终态超阈（15min）：LOCKED 残留 → 强制释放 + SlotReleased(ENTITY_TERMINATED) + 告警 + 自投下一周期', async () => {
@@ -150,6 +177,14 @@ describe('B2 reaper（R-04，需 PG）', () => {
     const next = await pendingReapers();
     expect(next).toHaveLength(1);
     expect(next[0] ? next[0].due_at.getTime() - Date.now() : -1).toBeGreaterThan(4 * 60_000);
+    // P2 走批量终态判定（防逐行 N+1）；计数经执行器结果落 job log
+    expect(sessionProvider.batchCalls).toBeGreaterThan(0);
+    expect(await lastReaperResult()).toMatchObject({
+      pending_payment_rescued: 0,
+      stale_released: 1,
+      skipped_no_provider: 0,
+      skipped_errored: 0,
+    });
   });
 
   it('R-04 不误杀：未终态 / 终态未超阈 / 无 provider（reschedule）/ provider 判 null → 全部不动', async () => {
@@ -183,6 +218,8 @@ describe('B2 reaper（R-04，需 PG）', () => {
     expect(rows.rows[0]?.n).toBe(4);
     expect(alerts.alerts).toHaveLength(0);
     expect(await outboxOf(SLOT_RELEASED_TOPIC)).toHaveLength(0);
+    // 缺 provider 的跳过计数暴露（漏放方向不静默）：reschedule 一把被跳过
+    expect(await lastReaperResult()).toMatchObject({ skipped_no_provider: 1, stale_released: 0 });
   });
 
   it('R-04 OCCUPIED 终态残留 → 释放（全量扫描覆盖两活跃态）', async () => {
@@ -281,6 +318,118 @@ describe('B2 reaper（R-04，需 PG）', () => {
     expect(kept.rows[0]?.n).toBe(1); // 7801 保留
     const released = await outboxOf(SLOT_RELEASED_TOPIC);
     expect(released[0]?.payload).toMatchObject({ ref: { ref_id: 7802 } });
+  });
+
+  it('P2 竞态注入：扫描后 provider 批量回调内并发释放该锁 → 该行良性 skip，其余锁继续清、整轮不炸', async () => {
+    // 两把 session 锁（都终态超阈）：8101=竞态目标（扫描与迁移之间被业务并发释放）、8102=正常清理
+    const mk = async (refId: number, lawyerId: number): Promise<number> => {
+      let lockId = 0;
+      await poolSvc.withTransaction(async (uow) => {
+        const r = await svc.lockSlot(uow, {
+          lawyerId,
+          slotStart: SLOT,
+          initiatorUserId: 700 + refId,
+          refType: 'session',
+          refId,
+        });
+        lockId = r.ok ? r.lockId : 0;
+        expect(r.ok).toBe(true);
+      });
+      return lockId;
+    };
+    const racedLockId = await mk(8101, 9710);
+    const normalLockId = await mk(8102, 9711);
+    sessionProvider.byRef.set(8101, { terminal: true, since: new Date(Date.now() - 20 * 60_000) });
+    sessionProvider.byRef.set(8102, { terminal: true, since: new Date(Date.now() - 20 * 60_000) });
+    // 竞态注入：reaper 事务暂停于终态判定回调时，独立连接以守卫口径并发释放 8101
+    //（旧实现此处继续按快照状态迁移 → 条件更新 0 行抛 StateStaleEntity → 整轮事务回滚含自投）。
+    // 双路径挂钩：批量形态经 onBatch；逐行回退形态经 isTerminal spy（覆盖旧实现的调用路径）
+    sessionProvider.onBatch = async () => {
+      await poolSvc.withTransaction((uow) =>
+        svc.releaseSlot(uow, { refType: 'session', refId: 8101, reason: 'CONCURRENT_RELEASE' }),
+      );
+    };
+    const origIsTerminal = sessionProvider.isTerminal.bind(sessionProvider);
+    vi.spyOn(sessionProvider, 'isTerminal').mockImplementation(async (refId) => {
+      if (refId === 8101) await sessionProvider.onBatch([refId]);
+      return origIsTerminal(refId);
+    });
+
+    await runReaper(); // 整轮 DONE（不炸轮）
+
+    // 8101 保持并发释放结果（reaper 不二次释放、不报错）；8102 正常兜底清理
+    expect((await lockRow(racedLockId))?.status).toBe('RELEASED');
+    expect((await lockRow(normalLockId))?.status).toBe('RELEASED');
+    const rels = await outboxOf(SLOT_RELEASED_TOPIC);
+    expect(rels.map((r) => r.payload)).toMatchObject([
+      { ref: { ref_id: 8101 }, reason: 'CONCURRENT_RELEASE' }, // 业务并发释放（提交于 reaper 前）
+      { ref: { ref_id: 8102 }, reason: 'ENTITY_TERMINATED' }, // reaper 兜底
+    ]);
+    expect(alerts.alerts).toHaveLength(1); // 仅 8102 告警
+    expect(await lastReaperResult()).toMatchObject({
+      stale_released: 1,
+      skipped_errored: 0, // 良性竞态=skip 不计错误
+      scanned_active: 2,
+    });
+  });
+
+  it('P2 provider 整体抛错：该类型全部跳过+skipped_errored 计数，其余类型继续清（毒 provider 不炸轮）', async () => {
+    const mk = async (refId: number, lawyerId: number, refType: 'session' | 'groupbuy') => {
+      let lockId = 0;
+      await poolSvc.withTransaction(async (uow) => {
+        const r = await svc.lockSlot(uow, {
+          lawyerId,
+          slotStart: SLOT,
+          initiatorUserId: 800 + refId,
+          refType,
+          refId,
+        });
+        lockId = r.ok ? r.lockId : 0;
+        expect(r.ok).toBe(true);
+      });
+      return lockId;
+    };
+    const s1 = await mk(8201, 9720, 'session');
+    const s2 = await mk(8202, 9721, 'session');
+    const gb = await mk(8203, 9722, 'groupbuy');
+    sessionProvider.byRef.set(8201, { terminal: true, since: new Date(Date.now() - 20 * 60_000) });
+    sessionProvider.byRef.set(8202, { terminal: true, since: new Date(Date.now() - 20 * 60_000) });
+    groupbuyProvider.byRef.set(8203, { terminal: true, since: new Date(Date.now() - 16 * 60_000) });
+    // 毒化 session provider（批量调用整体抛错）
+    vi.spyOn(sessionProvider, 'isTerminalBatch').mockRejectedValue(new Error('provider 下游故障'));
+
+    await runReaper(); // 不炸轮
+
+    // session 两把跳过（宁漏不误杀）；groupbuy 继续清
+    expect((await lockRow(s1))?.status).toBe('LOCKED');
+    expect((await lockRow(s2))?.status).toBe('LOCKED');
+    expect((await lockRow(gb))?.status).toBe('RELEASED');
+    expect(alerts.alerts).toHaveLength(1);
+    expect(await lastReaperResult()).toMatchObject({
+      stale_released: 1,
+      skipped_errored: 2, // 毒类型行数计数暴露
+      scanned_active: 3,
+    });
+  });
+
+  it('自投解耦：execute（本轮扫描）抛错时下一轮 SLOT_REAPER 仍已独立落库，兜底线不断链', async () => {
+    await svc.ensureReaperScheduled();
+    await pool.query(
+      `UPDATE schedule.schedule_jobs SET due_at = now() - interval '1 second'
+        WHERE job_type = 'SLOT_REAPER' AND status = 'PENDING'`,
+    );
+    const reapSpy = vi.spyOn(svc, 'reapOnce').mockRejectedValueOnce(new Error('本轮扫描毒化'));
+    let tick: Awaited<ReturnType<SchedulerService['tick']>>;
+    try {
+      tick = await scheduler.tick('normal');
+    } finally {
+      reapSpy.mockRestore();
+    }
+    // 本轮失败 → I2 退避重试接管；但下一周期 job 已在独立事务落库（不随 execute 失败回滚）
+    expect(tick).toMatchObject({ done: 0, retried: 1 });
+    const pending = await pendingReapers();
+    expect(pending).toHaveLength(2); // 失败首轮（待重试）+ 下一轮
+    expect(pending.some((j) => j.due_at.getTime() - Date.now() > 4 * 60_000)).toBe(true);
   });
 });
 

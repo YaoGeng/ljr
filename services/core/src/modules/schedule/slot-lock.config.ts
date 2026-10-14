@@ -4,6 +4,8 @@
  * 读取口径与 scheduler.config.ts 相同：进程 env > 代码默认；键前缀 LJR_SLOT_LOCK_*，
  * 非法/非正值回落默认（配置容错，不抛）。
  */
+import type { InjectionToken } from '@nestjs/common';
+
 export interface SlotLockConfig {
   /** PENDING_PAYMENT 自动释放 TTL 毫秒（§2/R-03：10min）⚠决策位 */
   readonly ttlMs: number;
@@ -12,6 +14,13 @@ export interface SlotLockConfig {
   /** reaper 终态超阈毫秒（R-04：关联实体终态超 15min 强制释放）⚠决策位 */
   readonly staleMs: number;
 }
+
+/**
+ * DI 令牌（CONFIG_PROVIDER 同款 Symbol 口径）：SlotLockConfig 是纯 interface，运行时无类型 token
+ * 可寻址——经此 Symbol 装配（module providers: { provide, useFactory: () => slotLockConfigFromEnv
+ * (process.env) }），service @Inject(SLOT_LOCK_CONFIG) 注入；缺装配即启动期 fail-fast，不静默回落。
+ */
+export const SLOT_LOCK_CONFIG: InjectionToken<SlotLockConfig> = Symbol('SLOT_LOCK_CONFIG');
 
 /** 默认值=B2 §2/§7/§8 文档口径 */
 export const SLOT_LOCK_DEFAULT_CONFIG: SlotLockConfig = {

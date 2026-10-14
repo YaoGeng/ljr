@@ -21,7 +21,8 @@ export class TerminalStateRegistry {
     return this;
   }
 
-  /** 未注册 ref_type 返回 null（reaper 跳过该锁，宁漏不误杀） */
+  /** 未注册 ref_type 返回 null（reaper 跳过该类型全部锁——漏放方向宁漏不误杀；跳过行数经
+   *  ReaperResult.skippedNoProvider 计数暴露，不静默） */
   get(refType: SlotLockRefType): TerminalStateProvider | null {
     return this.providers.get(refType) ?? null;
   }

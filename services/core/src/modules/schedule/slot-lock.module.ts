@@ -9,6 +9,7 @@ import { Module } from '@nestjs/common';
 import { InfrastructureModule } from '../../infrastructure/infrastructure.module';
 import { SchedulerModule } from './scheduler.module';
 import { MockSlotLockAlertSink, SlotLockAlertService } from './slot-lock.alerts';
+import { SLOT_LOCK_CONFIG, slotLockConfigFromEnv } from './slot-lock.config';
 import { SlotLockJobExecutors } from './slot-lock.executors';
 import { SlotLockService } from './slot-lock.service';
 import { TerminalStateRegistry } from './slot-lock.terminal-registry';
@@ -16,6 +17,9 @@ import { TerminalStateRegistry } from './slot-lock.terminal-registry';
 @Module({
   imports: [InfrastructureModule, SchedulerModule],
   providers: [
+    // 配置装配（LJR_SLOT_LOCK_* env > 代码默认）：SlotLockConfig 是纯 interface，经 Symbol token
+    // 工厂注入 service（@Inject(SLOT_LOCK_CONFIG)）——缺此 provider 即启动期 fail-fast，不断链静默
+    { provide: SLOT_LOCK_CONFIG, useFactory: () => slotLockConfigFromEnv(process.env) },
     // 终态判定注册表默认空表：真实 provider（session/groupbuy/reschedule）由 C1/C2/C5 落位时 register()
     TerminalStateRegistry,
     // 告警：mock 适配器（外部对接后置约定，供应商位 M2+）；测试可 override 注桩

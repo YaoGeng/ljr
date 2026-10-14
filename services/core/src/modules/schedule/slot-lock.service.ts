@@ -17,7 +17,7 @@
  * dueAt=ttl_at)；执行器回查（锁仍 PENDING_PAYMENT 且 ttl_at 已过→释放）见 slot-lock.executors。
  * 新锁新键（type+ref 含 lockId），不触 I2 契约注记①的改期刷新问题。
  */
-import { Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { AppError, ErrorCode } from '@ljr/shared';
 import { OutboxService } from '../../infrastructure/outbox/outbox.service';
 import type { SqlExecutor } from '../../infrastructure/sql';
@@ -26,7 +26,7 @@ import { StateTransitionGuardService } from '../../infrastructure/state-machine/
 import { SchedulerService } from './scheduler.service';
 import type { SlotLockAlert, SlotLockAlertReason } from './slot-lock.alerts';
 import { SlotLockAlertService } from './slot-lock.alerts';
-import { SLOT_LOCK_DEFAULT_CONFIG, type SlotLockConfig } from './slot-lock.config';
+import { SLOT_LOCK_CONFIG, type SlotLockConfig } from './slot-lock.config';
 import {
   SLOT_ABUSE_DETECTED_TOPIC,
   SLOT_LOCKED_TOPIC,
@@ -37,6 +37,7 @@ import { SLOT_LOCK_MACHINE } from './slot-lock.machine';
 import { TerminalStateRegistry } from './slot-lock.terminal-registry';
 import type {
   ConfirmPaymentResult,
+  EntityTerminalInfo,
   LockSlotInput,
   LockSlotResult,
   ReleaseSlotInput,
@@ -44,6 +45,7 @@ import type {
   SlotLockRefType,
   SlotLockStatus,
   StartOccupyResult,
+  TerminalStateProvider,
 } from './slot-lock.types';
 import { SLOT_LOCK_REF_TYPES } from './slot-lock.types';
 
@@ -73,6 +75,10 @@ export interface ReaperResult {
   readonly staleReleased: number;
   /** P2 全量扫描的 LOCKED/OCCUPIED 行数（观测位） */
   readonly scannedActive: number;
+  /** P2 缺 provider 注册而跳过的行数（漏放方向——业务方未落位；经执行器结果落 job log，不静默） */
+  readonly skippedNoProvider: number;
+  /** P2 provider 异常/单行毒锁被隔离跳过的行数（跳过不炸轮——宁漏不误杀，warn 级观测位） */
+  readonly skippedErrored: number;
 }
 
 @Injectable()
@@ -86,9 +92,11 @@ export class SlotLockService {
     private readonly scheduler: SchedulerService,
     private readonly terminals: TerminalStateRegistry,
     private readonly alerts: SlotLockAlertService,
-    @Optional() config?: SlotLockConfig,
+    // 纯 interface 无运行时类型 token，须经 SLOT_LOCK_CONFIG Symbol 注入（module useFactory 装配；
+    // 缺 provider 即 DI 报错 fail-fast——不做 Optional 静默回落，避免 env 断链无声失效）
+    @Inject(SLOT_LOCK_CONFIG) config: SlotLockConfig,
   ) {
-    this.config = config ?? SLOT_LOCK_DEFAULT_CONFIG;
+    this.config = config;
   }
 
   // ---------- §5 LOCK_SLOT ----------
@@ -214,6 +222,12 @@ export class SlotLockService {
 
   // ---------- START_OCCUPY（§2/§4：LOCKED→OCCUPIED，开房） ----------
 
+  /**
+   * START_OCCUPY(lock_id)：开房迁移。已 OCCUPIED ⇒ 幂等短路 transitioned=false（W3 开房 job
+   * 重试/回调重放不抛不留痕，对齐 CONFIRM_PAYMENT 口径——重放不得毒化调用方业务事务）；
+   * 非 LOCKED 且非重放（PENDING_PAYMENT 未支付/已 RELEASED）⇒ 守卫拒绝（AppError
+   * StateIllegalTransition，拒绝留痕走独立连接不随业务回滚）；无行 ⇒ NOT_FOUND。
+   */
   async startOccupy(uow: SqlExecutor, lockId: number): Promise<StartOccupyResult> {
     assertPositiveInt(lockId, 'lockId');
     const res = await uow.query<{ status: SlotLockStatus }>(
@@ -222,10 +236,12 @@ export class SlotLockService {
     );
     const row = res.rows[0];
     if (!row) return { ok: false, reason: 'NOT_FOUND' };
-    // 非 LOCKED（含 PENDING_PAYMENT 未支付/已 RELEASED）⇒ 守卫拒绝（AppError StateIllegalTransition，
-    // 拒绝留痕走独立连接不随业务回滚）
+    if (row.status === 'OCCUPIED') {
+      // 开房重放：幂等短路（不抛、无拒绝留痕、调用方事务不受污染）
+      return { ok: true, lockId, transitioned: false };
+    }
     await this.transition(uow, lockId, row.status, 'OCCUPIED', 'start_occupy');
-    return { ok: true, lockId };
+    return { ok: true, lockId, transitioned: true };
   }
 
   // ---------- §5 RELEASE_SLOT ----------
@@ -315,6 +331,13 @@ export class SlotLockService {
    *       释放 + SlotTtlExpired + SlotReleased(TTL_EXPIRED) + 告警；
    *   P2：LOCKED/OCCUPIED 全量扫描（V1 活跃锁 ≤万级预算可接受，量级增长后补 created_at 部分索引）
    *       经 provider 注册表判实体终态，超阈（config.staleMs，默认 15min）→ 强制释放 + 告警。
+   *
+   * P2 韧性（评审修复：单行/单 provider 故障不得炸整轮——整轮回滚会连坐本轮其余释放与自投）：
+   *   - 终态判定每 ref_type 一次批量调用（isTerminalBatch；未实现回退逐行）；
+   *   - provider 整体抛错 → 该类型本轮跳过 + skipped_errored 计数（宁漏不误杀）；
+   *   - 迁移前行锁重读+状态重验（照 releaseExpiredTtl 同款）：扫描与迁移之间被业务并发释放
+   *     → 良性 skip，不再以 StateStaleEntity 炸轮；
+   *   - 单行处置仍包 per-lock try/catch：残余异常跳过该行 + 计数，隔离毒锁。
    * ⚠ 告警在提交前发出（mock 适配器零外部调用）；真实供应商接入时移至提交后（接口留位）。
    */
   async reapOnce(uow: SqlExecutor, now: Date = new Date()): Promise<ReaperResult> {
@@ -334,24 +357,60 @@ export class SlotLockService {
     }
 
     let staleReleased = 0;
+    let skippedNoProvider = 0;
+    let skippedErrored = 0;
     const active = await uow.query<LockRowCore>(
       `SELECT id, lawyer_id, slot_start, ref_type, ref_id, status FROM schedule.slot_locks
         WHERE status IN ('LOCKED', 'OCCUPIED')
         ORDER BY id`,
     );
-    for (const row of active.rows) {
-      const provider = this.terminals.get(row.ref_type as SlotLockRefType);
-      if (!provider) continue; // 无 provider（业务方未落位）：跳过，宁漏不误杀
-      const info = await provider.isTerminal(Number(row.ref_id));
-      if (!info?.terminal || info.since === null) continue;
-      if (now.getTime() - info.since.getTime() <= this.config.staleMs) continue; // 未超阈
-      const lockId = Number(row.id);
-      await this.transition(uow, lockId, row.status, 'RELEASED', 'entity_terminated');
-      await this.emitReleased(uow, row, 'ENTITY_TERMINATED');
-      staleReleased += 1;
-      await this.alertLeak(uow, lockId, 'ENTITY_TERMINATED');
+    // 按 ref_type 分组：每轮对每 provider 至多一次批量终态判定（防逐行 N+1）
+    for (const refType of SLOT_LOCK_REF_TYPES) {
+      const rows = active.rows.filter((r) => r.ref_type === refType);
+      if (rows.length === 0) continue;
+      const provider = this.terminals.get(refType);
+      if (!provider) {
+        // 缺 provider（业务方未落位）：跳过（漏放方向），计数暴露不静默
+        skippedNoProvider += rows.length;
+        continue;
+      }
+      let infos: Map<number, EntityTerminalInfo | null>;
+      try {
+        infos = await this.resolveTerminalInfos(
+          provider,
+          rows.map((r) => Number(r.ref_id)),
+        );
+      } catch {
+        // provider 整体异常（毒 provider）：该类型本轮全跳过，计数隔离，不炸轮
+        skippedErrored += rows.length;
+        continue;
+      }
+      for (const row of rows) {
+        const lockId = Number(row.id);
+        try {
+          const info = infos.get(Number(row.ref_id)) ?? null;
+          if (!info?.terminal || info.since === null) continue;
+          if (now.getTime() - info.since.getTime() <= this.config.staleMs) continue; // 未超阈
+          // 行锁重读+状态重验：扫描后已被业务并发确认/释放 → 良性 skip（不炸轮）
+          const fresh = await this.rereadActiveForUpdate(uow, lockId);
+          if (!fresh || fresh.status !== row.status) continue;
+          await this.transition(uow, lockId, fresh.status, 'RELEASED', 'entity_terminated');
+          await this.emitReleased(uow, fresh, 'ENTITY_TERMINATED');
+          staleReleased += 1;
+          await this.alertLeak(uow, lockId, 'ENTITY_TERMINATED');
+        } catch {
+          // per-lock 毒锁隔离：残余异常（StateStaleEntity/outbox 等）跳过该行+计数，不影响其余行
+          skippedErrored += 1;
+        }
+      }
     }
-    return { pendingPaymentRescued, staleReleased, scannedActive: active.rows.length };
+    return {
+      pendingPaymentRescued,
+      staleReleased,
+      scannedActive: active.rows.length,
+      skippedNoProvider,
+      skippedErrored,
+    };
   }
 
   /**
@@ -359,15 +418,20 @@ export class SlotLockService {
    * 全局 advisory 锁串行化「查在册 PENDING→注册」防多节点分叉（多把在册会逐代翻倍）；已注册则
    * 幂等跳过。键=（SLOT_REAPER,'global',下一周期 dueAt 毫秒）——周期递进键不与在册 RUNNING 的
    * 当前轮冲突（同键会撞 I2 在册部分唯一索引被去重吞掉）。
+   *
+   * excludeJobId：在册检查排除指定 job（执行器经独立事务自投时，当前轮的 RUNNING 推进尚未提交，
+   * 独立连接仍视其为 PENDING——不排除会把当前轮误判为「已注册」而跳过自投，节拍链断链）。
    */
   async ensureReaperJob(
     uow: SqlExecutor,
     dueAt: Date,
+    excludeJobId?: number,
   ): Promise<{ jobId: number | null; registered: boolean }> {
     await uow.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, ['ljr:slot_reaper_sched']);
     const pending = await uow.query<{ id: string }>(
       `SELECT id FROM schedule.schedule_jobs
-        WHERE job_type = 'SLOT_REAPER' AND status = 'PENDING' ORDER BY id LIMIT 1`,
+        WHERE job_type = 'SLOT_REAPER' AND status = 'PENDING' AND id <> $1 ORDER BY id LIMIT 1`,
+      [excludeJobId ?? 0],
     );
     const existing = pending.rows[0];
     if (existing) return { jobId: Number(existing.id), registered: false };
@@ -380,16 +444,56 @@ export class SlotLockService {
     return { jobId: reg.jobId, registered: true };
   }
 
-  /** 进程引导（main.ts 调用；测试/嵌入场景可直接用 ensureReaperJob 注册过去时刻驱动首轮） */
-  async ensureReaperScheduled(
-    now: Date = new Date(),
-  ): Promise<{ jobId: number | null; registered: boolean }> {
+  /**
+   * 独立事务注册下一周期（自投解耦：与扫描/执行成败互不连坐——评审修复②③）。执行器传入
+   * excludeJobId=当前轮 job；main.ts 引导/测试驱动不传（全量检查）。
+   */
+  async ensureReaperScheduled(options?: {
+    now?: Date;
+    excludeJobId?: number;
+  }): Promise<{ jobId: number | null; registered: boolean }> {
+    const now = options?.now ?? new Date();
     return this.pool.withTransaction((uow) =>
-      this.ensureReaperJob(uow, new Date(now.getTime() + this.config.reaperIntervalMs)),
+      this.ensureReaperJob(
+        uow,
+        new Date(now.getTime() + this.config.reaperIntervalMs),
+        options?.excludeJobId,
+      ),
     );
   }
 
   // ---------- 内部件 ----------
+
+  /**
+   * 终态批量判定：provider 实现批量形态则一次调用；否则逐行回退（TerminalStateProvider 契约，
+   * 量级触发线：活跃锁上万且走回退形态即成 N+1，provider 落位时应实现 isTerminalBatch）。
+   */
+  private async resolveTerminalInfos(
+    provider: TerminalStateProvider,
+    refIds: number[],
+  ): Promise<Map<number, EntityTerminalInfo | null>> {
+    if (provider.isTerminalBatch) return provider.isTerminalBatch(refIds);
+    const map = new Map<number, EntityTerminalInfo | null>();
+    for (const refId of refIds) map.set(refId, await provider.isTerminal(refId));
+    return map;
+  }
+
+  /**
+   * P2 迁移前行锁重读（照 releaseExpiredTtl 同款）：FOR UPDATE + 活跃态重验。
+   * 返回 null=行已消失/已被并发释放（良性竞态 → skip，宁漏不误杀）。
+   */
+  private async rereadActiveForUpdate(
+    uow: SqlExecutor,
+    lockId: number,
+  ): Promise<LockRowCore | null> {
+    const res = await uow.query<LockRowCore>(
+      `SELECT id, lawyer_id, slot_start, ref_type, ref_id, status FROM schedule.slot_locks
+        WHERE id = $1 AND status IN (${ACTIVE_STATUSES_SQL})
+        ORDER BY id FOR UPDATE`,
+      [lockId],
+    );
+    return res.rows[0] ?? null;
+  }
 
   /** 守卫状态迁移（状态禁裸写）+ 条件更新兜底乐观并发（0 行=并发竞态） */
   private async transition(
