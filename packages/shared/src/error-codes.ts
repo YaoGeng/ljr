@@ -36,6 +36,12 @@ export const ErrorCode = {
   DuplicateWord: 'E_DUP_WORD',
   /** 规则中心保留前缀：rule_key 命中保留前缀（wordlist.* 为 H5 词库专用通道），通用管理面拒绝（H7 R15） */
   RuleKeyReserved: 'E_RULE_KEY_RESERVED',
+  /** E3 专项不支持：V1 仅 labor_arbitration（R-04），其他专项 key 的管理面写入拒绝（400） */
+  SpecialtyUnsupported: 'E_SPECIALTY_UNSUPPORTED',
+  /** E3 知识库上传格式非法：file_ref 形态/source_type/license_status 枚举等（§5 400 BAD_FORMAT） */
+  KnowledgeBadFormat: 'E_BAD_FORMAT',
+  /** E3 问题树结构校验不通过：root/节点引用/连通性/环检测等（§5 400 INVALID_TREE） */
+  InvalidQuestionTree: 'E_INVALID_TREE',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -89,6 +95,18 @@ const ERROR_CODE_META: Readonly<Record<ErrorCode, ErrorCodeMeta>> = {
   [ErrorCode.RuleKeyReserved]: {
     httpStatus: 400,
     defaultMessage: 'rule_key 使用保留前缀（wordlist.* 为词库专用通道，须经词库管理面写入）',
+  },
+  [ErrorCode.SpecialtyUnsupported]: {
+    httpStatus: 400,
+    defaultMessage: '专项 key 未开放（V1 仅 labor_arbitration，R-04）',
+  },
+  [ErrorCode.KnowledgeBadFormat]: {
+    httpStatus: 400,
+    defaultMessage: '知识库上传请求格式非法（file_ref 形态/source_type/license_status）',
+  },
+  [ErrorCode.InvalidQuestionTree]: {
+    httpStatus: 400,
+    defaultMessage: '问题树结构校验不通过（root/节点引用/连通性/环）',
   },
 };
 

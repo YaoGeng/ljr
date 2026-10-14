@@ -18,6 +18,9 @@
     "trade": "V1__schemas_roles.sql"
   },
   "tables": {
+    "agent_assist.knowledge_chunks": "V9__agent_assist.sql",
+    "agent_assist.knowledge_docs": "V9__agent_assist.sql",
+    "agent_assist.specialty_configs": "V9__agent_assist.sql",
     "demo.consumed_events": "V3__state_transition_log.sql",
     "demo.order_actions": "V3__state_transition_log.sql",
     "demo.orders": "V3__state_transition_log.sql",
