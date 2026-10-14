@@ -221,7 +221,7 @@ describe('H7 规则中心机制（需 PG）', () => {
     expect(await stlOf(draft.id)).toEqual([]);
   });
 
-  it('R-01 生效窗口未到：job 先于 effective_at 到期（双钟漂移防护）→ recheck 判未到期 CANCELLED，不提前生效', async () => {
+  it('R-01/Important-2 生效窗口未到：job 提前到期 → DONE+outcome=window_not_due（不与被取代混同），规则保持 PUBLISHED 不提前生效', async () => {
     await svc.createDraft({ ruleKey: 'credit.rules', version: 1, content: { max: 5 } });
     await svc.submitForPublication('credit.rules', 1, { now: new Date() }); // effective_at = 现在+7d
     const ruleId = Number((await ruleRow('credit.rules', 1))?.id);
@@ -239,8 +239,11 @@ describe('H7 规则中心机制（需 PG）', () => {
         dueAt: new Date(Date.now() - MIN),
       });
     });
+    // Important-2：不再 CANCELLED（与被取代混同）——走执行路径 DONE，痕迹落 job log detail
+    //（schedule_job_log 断言在 rule-effective.joblog.spec——job log 归 schedule 域，跨界直查
+    // 违反 check-schema-refs 规则 A；本侧断言行为面）
     const tick = await scheduler.tick('normal');
-    expect(tick).toMatchObject({ cancelled: 1, done: 0 });
+    expect(tick).toMatchObject({ done: 1, cancelled: 0 });
     expect((await ruleRow('credit.rules', 1))?.publish_status).toBe('PUBLISHED'); // 窗口未到不生效
   });
 

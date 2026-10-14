@@ -6,6 +6,7 @@
  */
 import { Module } from '@nestjs/common';
 import { InfrastructureModule } from '../../infrastructure/infrastructure.module';
+import { ObservabilityModule } from '../../observability/observability.module';
 import { SchedulerModule } from '../schedule/scheduler.module';
 import { InProcessRuleCurrentCache, RULE_CURRENT_CACHE } from './rule-center.cache';
 import { RULE_CENTER_CONFIG, ruleCenterConfigFromEnv } from './rule-center.config';
@@ -16,7 +17,10 @@ import { RoomNoticeController } from './room-notice.controller';
 import { RuleCenterService } from './rule-center.service';
 
 @Module({
-  imports: [InfrastructureModule, SchedulerModule],
+  // ObservabilityModule（@Global）：TRACE_LOGGER 注入源（window_not_due 的 best-effort 告警，
+  // 评审修复 Important-2）——显式 import 使本模块独立装配（模块级测试）也自洽；
+  // AppModule 已 import，进程内 dedupe 为同一实例
+  imports: [InfrastructureModule, ObservabilityModule, SchedulerModule],
   controllers: [RuleAdminController, RuleAppController, RoomNoticeController],
   providers: [
     // 配置装配（LJR_RULE_* env > 代码默认）：RuleCenterConfig 是纯 interface，经 Symbol token

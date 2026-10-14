@@ -1,15 +1,21 @@
 /**
  * H7 规则中心配置（⚠决策位：取文档口径默认值，env 可覆盖；拍板项随批次集中汇报）。
  *
- * 读取口径与 slot-lock.config.ts 相同：进程 env > 代码默认；键前缀 LJR_RULE_*，
+ * 读取口径大体与 slot-lock.config.ts 相同：进程 env > 代码默认；键前缀 LJR_RULE_*，
  * 非法/非负值回落默认（配置容错，不抛）。
+ * **唯一例外=publicationMs（公示期满时长）**：评审修复 Important-1——它是电商法 §34 的
+ * 法律底线参数而非性能参数，容错回落会把「运营显式设置的短公示意图」静默吞成合法假象
+ * （值合法但语义违背合规姿态）。故显式设置但非法（非数值/负值/低于下限）一律启动期
+ * fail-fast E_CONFIG_INVALID；未设置=默认 7d。下限=MIN_PUBLICATION_MS（1h）只挡「击穿量级」
+ * 的误配（0/秒级），不构成对偏短值的合规背书——真正的保证是生产保持默认+变更评审。
  */
+import { AppError, ErrorCode } from '@ljr/shared';
 import type { InjectionToken } from '@nestjs/common';
 
 export interface RuleCenterConfig {
   /**
    * 公示期满时长毫秒（§2/§4/R-01：≥7 日）⚠决策位——电商法 §34 底线为法律约束非业务可调参数，
-   * env 仅测试/演练用途；生产保持默认 7d。
+   * env 仅测试/演练用途；生产保持默认 7d。显式设置但非法（非数值/负值/< 下限）→ fail-fast。
    */
   readonly publicationMs: number;
   /**
@@ -50,14 +56,32 @@ function intFromEnv(env: NodeJS.ProcessEnv, key: string, fallback: number): numb
   return Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : fallback;
 }
 
+/**
+ * publicationMs 下限（法律底线守卫，评审修复 Important-1）：1h——只拦「击穿量级」误配
+ * （0/负值/秒级：publicationMs=0 ⇒ effective_at=published_at，公示期实际缩至 job 缓冲级）；
+ * 下限不是合规背书，生产配置变更仍须评审。
+ */
+export const MIN_PUBLICATION_MS = 3_600_000;
+
+/** publicationMs 专用解析：显式设置但非法（非数值/负值/低于下限）→ E_CONFIG_INVALID fail-fast */
+function publicationMsFromEnv(env: NodeJS.ProcessEnv): number {
+  const raw = env['LJR_RULE_PUBLICATION_MS'];
+  if (raw === undefined || raw === '') return RULE_CENTER_DEFAULT_CONFIG.publicationMs;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < MIN_PUBLICATION_MS) {
+    throw new AppError(
+      ErrorCode.ConfigInvalid,
+      `LJR_RULE_PUBLICATION_MS 非法：${JSON.stringify(raw)}（公示期为电商法 §34 法律底线，` +
+        `须为 ≥${MIN_PUBLICATION_MS}ms 的数值；未设置时使用默认 7 日）`,
+    );
+  }
+  return Math.floor(n);
+}
+
 export function ruleCenterConfigFromEnv(env: NodeJS.ProcessEnv = process.env): RuleCenterConfig {
   const noticeKey = env['LJR_RULE_NOTICE_KEY'];
   return {
-    publicationMs: intFromEnv(
-      env,
-      'LJR_RULE_PUBLICATION_MS',
-      RULE_CENTER_DEFAULT_CONFIG.publicationMs,
-    ),
+    publicationMs: publicationMsFromEnv(env),
     effectiveJobDelayMs: intFromEnv(
       env,
       'LJR_RULE_EFFECTIVE_JOB_DELAY_MS',

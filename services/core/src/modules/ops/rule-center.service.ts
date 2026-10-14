@@ -10,9 +10,11 @@
  * （调用方/H5 业务事务句柄，与 I2 registerJob(uow,…) 同款）。
  *
  * 7 日自动生效（R-01）：提交公示时同事务注册 RULE_EFFECTIVE job（ref=规则行 id，dueAt=
- * effective_at+生效缓冲 ⚠——recheck 以 DB 时钟判窗口而 due_at 由应用时钟写入，缓冲吸收双钟
- * 微漂移，防生效 job 恰在窗口前到期被判过期而丢失）；执行器到期回查（仍 PUBLISHED 且
- * effective_at 已到 → 迁移 EFFECTIVE；已被并发推进/未到窗 → CANCELLED/不操作）。
+ * effective_at+生效缓冲 ⚠——due_at 由应用时钟写入而生效窗口以 DB 时钟判定，缓冲吸收双钟
+ * 微漂移）；执行器回查=仍 PUBLISHED（recheck false=CANCELLED，仅「被取代/已生效/废弃」语义）；
+ * 生效窗口在 markEffective 以 DB 时钟判定：已到 → 迁移 EFFECTIVE；未到（提前到期的漂移/
+ * 伪造 job）→ 不迁移，DONE+outcome:'window_not_due' 落 schedule_job_log.detail + logger.warn
+ * （评审修复 Important-2：窗口未到不再与误杀混同，留可查询痕迹；W2+ 周期兜底=控制者 R12 记账）。
  *
  * ⚠后置位：§4「重大规则公开征求意见（公示期内反馈入口）」M3 后台页面批次承载（控制者裁决，
  * W1 不建反馈表）。
@@ -24,6 +26,8 @@ import type { SqlExecutor } from '../../infrastructure/sql';
 import { PgPoolService } from '../../infrastructure/sql';
 import { StateTransitionGuardService } from '../../infrastructure/state-machine/state-transition-guard.service';
 import { StateTransitionLogService } from '../../infrastructure/state-machine/state-transition-log.service';
+import { TRACE_LOGGER } from '../../observability/observability.module';
+import type { TraceLogger } from '../../observability/trace-logger';
 import { SchedulerService } from '../schedule/scheduler.service';
 import { RULE_CURRENT_CACHE, type RuleCurrentCachePort } from './rule-center.cache';
 import { RULE_CENTER_CONFIG, type RuleCenterConfig } from './rule-center.config';
@@ -97,6 +101,10 @@ export class RuleCenterService {
     // 纯 interface 无运行时类型 token，须经 RULE_CENTER_CONFIG Symbol 注入（module useFactory 装配；
     // 缺 provider 即 DI 报错 fail-fast——slot-lock.config 评审修复①同口径）
     @Inject(RULE_CENTER_CONFIG) config: RuleCenterConfig,
+    // window_not_due 的告警位（评审修复 Important-2）：TRACE_LOGGER 由 ObservabilityModule 提供
+    //（RuleCenterModule 显式 import，独立装配/测试均可解析；测试经 overrideProvider 注桩断言）。
+    // 必需痕迹在 schedule_job_log.detail（执行器回传 outcome），logger 为运维侧 warn 增益。
+    @Inject(TRACE_LOGGER) private readonly logger: TraceLogger,
   ) {
     this.config = config;
   }
@@ -396,34 +404,61 @@ export class RuleCenterService {
 
   /**
    * 回查（I2 R-02 幂等回查；catalog 锚点=rule_definitions.publish_status）：规则仍 PUBLISHED
-   * 且生效窗口已到（DB 时钟）⇒ true 需执行；已被并发推进（EFFECTIVE/ABANDONED）/行消失/
-   * 窗口未到（双钟漂移防护，见 config.effectiveJobDelayMs）⇒ false → job CANCELLED 无操作。
+   * ⇒ true 需执行（**不看生效窗口**——评审修复 Important-2：窗口判定移入 markEffective，
+   * 把「被取代/废弃」（recheck=false → CANCELLED，语义正确）与「窗口未到」（提前到期的
+   * 双钟漂移/伪造 job）分开——后者走执行路径留 DONE+outcome 痕迹，不再与误杀混同且永久
+   * 不可观测）；EFFECTIVE/ABANDONED/行消失 ⇒ false → job CANCELLED 无操作。
    */
-  async isEffectiveDue(uow: SqlExecutor, ruleId: number): Promise<boolean> {
+  async isPublicationPending(uow: SqlExecutor, ruleId: number): Promise<boolean> {
     if (!Number.isInteger(ruleId) || ruleId <= 0) return false;
     const res = await uow.query<{ id: string }>(
       `SELECT id FROM ops.rule_definitions
-        WHERE id = $1 AND publish_status = 'PUBLISHED'
-          AND effective_at IS NOT NULL AND effective_at <= now()`,
+        WHERE id = $1 AND publish_status = 'PUBLISHED'`,
       [ruleId],
     );
     return (res.rowCount ?? 0) > 0;
   }
 
-  /** 生效迁移（PUBLISHED→EFFECTIVE，守卫留痕）：FOR UPDATE 重验后迁移；非 PUBLISHED 良性 skip */
+  /**
+   * 生效迁移（PUBLISHED→EFFECTIVE，守卫留痕）：FOR UPDATE 重验后迁移。
+   * 生效窗口（effective_at<=now()，DB 时钟）在本方法判定（评审修复 Important-2）：
+   *   - 窗口已到 → 守卫迁移 EFFECTIVE（transitioned:true）；
+   *   - PUBLISHED 但窗口未到（双钟漂移/伪造提前到期）→ 不迁移、**不与被取代混同**：
+     outcome:'window_not_due'（执行器经 I2 writeLog 序列化进 schedule_job_log.detail，
+     H4/运维可查询）+ logger.warn（TRACE_LOGGER 注入，测试经 overrideProvider 注桩）；job 以
+     DONE 收束，规则保持 PUBLISHED 等待 W2+ 周期兜底（控制者 R12 记账）。
+   */
   async markEffective(
     uow: SqlExecutor,
     ruleId: number,
-  ): Promise<{ ruleId: number; transitioned: boolean }> {
+  ): Promise<{ ruleId: number; transitioned: boolean; outcome?: 'window_not_due' }> {
     if (!Number.isInteger(ruleId) || ruleId <= 0) return { ruleId, transitioned: false };
-    const res = await uow.query<{ id: string; rule_key: string; publish_status: string }>(
-      `SELECT id, rule_key, publish_status FROM ops.rule_definitions WHERE id = $1 FOR UPDATE`,
+    const res = await uow.query<{
+      id: string;
+      rule_key: string;
+      publish_status: string;
+      window_due: boolean;
+    }>(
+      // 窗口判定用 DB 时钟（now()）：多节点共享钟参照；due_at 由应用时钟写入，
+      // 双钟漂移恰在此处显形为 window_not_due（而非误迁移）
+      `SELECT id, rule_key, publish_status,
+              (effective_at IS NOT NULL AND effective_at <= now()) AS window_due
+         FROM ops.rule_definitions WHERE id = $1 FOR UPDATE`,
       [ruleId],
     );
     const row = res.rows[0];
     if (!row || row.publish_status !== 'PUBLISHED') {
       // 回查与执行间被并发推进（同事务+行锁下不应发生；防御性良性 skip）
       return { ruleId, transitioned: false };
+    }
+    if (!row.window_due) {
+      // 窗口未到：双钟漂移/伪造提前到期——留可查询痕迹，不生效（job DONE 收束，W2+ 周期兜底接管）
+      this.logger?.warn('RULE_EFFECTIVE 提前到期：生效窗口未到，不迁移（window_not_due）', {
+        rule_id: ruleId,
+        rule_key: row.rule_key,
+        outcome: 'window_not_due',
+      });
+      return { ruleId, transitioned: false, outcome: 'window_not_due' };
     }
     await this.transition(uow, ruleId, 'PUBLISHED', 'EFFECTIVE', 'rule_effective_due');
     // 进程内即时失效（先于调度方 commit——最迟 TTL 后一致，见 config 注释与报告 ⚠）
