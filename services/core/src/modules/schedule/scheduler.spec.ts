@@ -66,6 +66,42 @@ class StubExecutor implements JobExecutor {
   }
 }
 
+/**
+ * 可控阻塞失败执行器（仅竞态测试用）：execute 挂起直至 fail() 再抛错——
+ * 用于确定性复现「抢占事务回滚后、善后事务执行前，job 已被另一节点推进」的竞态窗口
+ * （行锁队列保序：并发方的 FOR UPDATE 请求先于善后事务排队，回滚后必先获锁）。
+ */
+class BlockedFailExecutor implements JobExecutor {
+  readonly jobType: ScheduleJobType;
+  executeCalls = 0;
+  private resolveStarted!: () => void;
+  private releaseFn!: () => void;
+  readonly started = new Promise<void>((resolve) => {
+    this.resolveStarted = resolve;
+  });
+
+  constructor(jobType: ScheduleJobType) {
+    this.jobType = jobType;
+  }
+
+  async recheck(): Promise<boolean> {
+    return true;
+  }
+
+  async execute(): Promise<Record<string, unknown>> {
+    this.executeCalls += 1;
+    this.resolveStarted();
+    await new Promise<void>((resolve) => {
+      this.releaseFn = resolve;
+    });
+    throw new Error('竞态复现：善后前已被并发推进');
+  }
+
+  fail(): void {
+    this.releaseFn();
+  }
+}
+
 describe('I2 调度机制核心（默认装配，需 PG）', () => {
   let pool: Pool;
   let app: INestApplication;
@@ -496,6 +532,27 @@ describe('I2 调度机制核心（默认装配，需 PG）', () => {
 describe('I2 重试退避与 FAILED 处置（独立装配 backoff=0，需 PG）', () => {
   let pool: Pool;
   let sink: MockPhoneAlertSink;
+  // 模拟并发节点（空执行器注册表即可：仅用其 cancelJob 制造竞态窗口；stealPoolSvc 提供事务化持锁）
+  let stealSvc: SchedulerService;
+  let stealPoolSvc: PgPoolService;
+
+  const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+  /**
+   * 正向探测：并发方的行锁请求已入队未授予（pg_locks 出现未授予的 transactionid/tuple 锁）——
+   * 保证抢占事务回滚后「并发方先于善后事务」这一竞态前提确定性成立，不靠盲等。
+   */
+  const waitForLockQueued = async (): Promise<void> => {
+    for (let i = 0; i < 100; i += 1) {
+      const res = await pool.query<{ n: string }>(
+        `SELECT count(*)::text AS n FROM pg_locks
+          WHERE NOT granted AND locktype IN ('transactionid', 'tuple')`,
+      );
+      if (Number(res.rows[0]?.n ?? 0) > 0) return;
+      await delay(20);
+    }
+    throw new Error('并发方未按预期阻塞在行锁上（竞态前提不成立）');
+  };
 
   interface Harness {
     svc: SchedulerService;
@@ -503,11 +560,12 @@ describe('I2 重试退避与 FAILED 处置（独立装配 backoff=0，需 PG）'
     registry: ScheduleExecutorRegistry;
   }
 
-  const buildHarness = (): Harness => {
+  const buildHarness = (
+    executors: JobExecutor[] = [new StubExecutor('POINTS_EXPIRE')],
+  ): Harness => {
     const poolSvc = new PgPoolService(pool);
     const registry = new ScheduleExecutorRegistry();
-    const stub = new StubExecutor('POINTS_EXPIRE');
-    registry.register(stub);
+    for (const executor of executors) registry.register(executor);
     const alerts = new SchedulerAlertService(sink);
     const svc = new SchedulerService(
       poolSvc,
@@ -517,7 +575,7 @@ describe('I2 重试退避与 FAILED 处置（独立装配 backoff=0，需 PG）'
       alerts,
       { backoffMs: () => 0 }, // 失败后立即可重拾取，退避语义本身由退避曲线单测覆盖
     );
-    return { svc, stub, registry };
+    return { svc, stub: executors[0] as StubExecutor, registry };
   };
 
   const registerFailingJob = (svc: SchedulerService, refId: number) =>
@@ -530,6 +588,16 @@ describe('I2 重试退避与 FAILED 处置（独立装配 backoff=0，需 PG）'
 
   beforeAll(async () => {
     pool = await ensureTestDatabase();
+    // 模拟并发节点（空执行器注册表即可：仅用其 cancelJob 制造竞态窗口）
+    stealPoolSvc = new PgPoolService(pool);
+    stealSvc = new SchedulerService(
+      stealPoolSvc,
+      new OutboxService(),
+      new StateTransitionGuardService(new StateTransitionLogService(), new PgPoolService(pool)),
+      new ScheduleExecutorRegistry(),
+      new SchedulerAlertService(new MockPhoneAlertSink()),
+    );
+    await stealSvc.listJobs({ limit: 1 }); // 预热并发节点连接池（竞态窗口内只余查询派发延迟）
   });
   afterAll(async () => {
     await pool.end();
@@ -653,6 +721,78 @@ describe('I2 重试退避与 FAILED 处置（独立装配 backoff=0，需 PG）'
     // 非 FAILED job 不可重放；未知 id 同样拒绝
     expect(await svc.replayJob(reg.jobId)).toMatchObject({ replayed: false });
     expect(await svc.replayJob(987_654_321)).toMatchObject({ replayed: false });
+  });
+
+  it('竞态（Important-1）：善后前 job 已被并发作废 → 不写 RETRY log、不计数、无告警', async () => {
+    const blocker = new BlockedFailExecutor('POINTS_EXPIRE');
+    const { svc } = buildHarness([blocker]);
+    const reg = await registerFailingJob(svc, 631);
+
+    const tickPromise = svc.tick('normal');
+    await blocker.started; // 抢占事务持锁中，执行器挂起
+    // 并发节点在善后前推进该 job：cancelJob 的 SELECT … FOR UPDATE 排队于抢占事务之后（同事务持锁
+    // 到 COMMIT），抢占事务回滚后必先于善后事务生效（pg_locks 正向等待探测保证排队到位）
+    const steal = stealPoolSvc.withTransaction((uow) =>
+      stealSvc.cancelJob(uow, { jobType: 'POINTS_EXPIRE', refType: 'points', refId: 631 }),
+    );
+    await waitForLockQueued();
+    blocker.fail(); // 执行器抛错 → 抢占事务回滚 → steal 获锁生效（CANCELLED）
+    const [tick] = await Promise.all([tickPromise, steal]);
+
+    // 善后放弃：不计数（旧实现 retried=1）
+    expect(tick).toMatchObject({ done: 0, cancelled: 0, retried: 0, failed: 0 });
+    // 不写虚构 RETRY 行（R-04 log 是法证事实源，只记真实发生的重试；旧实现会塞 1 条）
+    const logs = await pool.query<{ result: string }>(
+      `SELECT result FROM schedule.schedule_job_log WHERE job_id = $1`,
+      [reg.jobId],
+    );
+    expect(logs.rows.map((r) => r.result)).toEqual([]);
+    expect(await jobRowStatus(pool, reg.jobId)).toBe('CANCELLED');
+    expect(sink.alerts).toHaveLength(0);
+  });
+
+  it('竞态（Important-1）：善后前已被并发推进且重试耗尽 → FAILED 迁移不打 StateStale、同轮告警不丢', async () => {
+    const blocker = new BlockedFailExecutor('POINTS_EXPIRE');
+    const prior = new StubExecutor('REMIND_1H');
+    prior.failTimesRemaining = 99;
+    const { svc } = buildHarness([prior, blocker]);
+    // 同轮两笔均已到耗尽线（retry_count=3 fixture，不同类型各配执行器）：先到期的 prior 常规失败
+    // → FAILED+告警入队；后到期的 poisoned 走阻塞失败制造善后竞态窗口
+    const priorJob = await svc.registerJob(pool, {
+      jobType: 'REMIND_1H',
+      refType: 'session',
+      refId: 642,
+      dueAt: new Date(Date.now() - 2_000),
+    });
+    const poisoned = await registerFailingJob(svc, 643);
+    await pool.query(
+      `UPDATE schedule.schedule_jobs SET retry_count = 3 WHERE id = ANY($1::bigint[])`,
+      [[priorJob.jobId, poisoned.jobId]],
+    );
+
+    const tickPromise = svc.tick('normal');
+    await blocker.started; // 第二轮抢占 poisoned 持锁中，执行器挂起
+    const steal = stealPoolSvc.withTransaction((uow) =>
+      stealSvc.cancelJob(uow, { jobType: 'POINTS_EXPIRE', refType: 'points', refId: 643 }),
+    );
+    await waitForLockQueued();
+    blocker.fail();
+    const [tick] = await Promise.all([tickPromise, steal]);
+
+    // prior 正常 FAILED 计数；poisoned 善后放弃不计数（旧实现：StateStaleEntity 炸出整轮 tick，本断言前已 reject）
+    expect(tick).toMatchObject({ done: 0, cancelled: 0, retried: 0, failed: 1 });
+    // 同轮更早积攒的 prior FAILED 告警不因善后异常丢失
+    expect(sink.alerts.some((a) => a.kind === 'JOB_FAILED' && a.jobId === priorJob.jobId)).toBe(
+      true,
+    );
+    // 无虚构 FAILED log、无重复告警，poisoned 保持并发方写入的 CANCELLED
+    const logs = await pool.query<{ result: string }>(
+      `SELECT result FROM schedule.schedule_job_log WHERE job_id = $1 ORDER BY id`,
+      [poisoned.jobId],
+    );
+    expect(logs.rows.map((r) => r.result)).toEqual([]);
+    expect(await jobRowStatus(pool, poisoned.jobId)).toBe('CANCELLED');
+    expect(sink.alerts).toHaveLength(1);
   });
 });
 

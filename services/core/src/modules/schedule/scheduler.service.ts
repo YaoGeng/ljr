@@ -241,7 +241,9 @@ export class SchedulerService {
     } catch (e) {
       const job = holder.job;
       if (!job) throw e; // 非执行器异常（连接级等）原样上抛，由调用方决定终止或忽略
-      // 执行器/回查异常：抢占事务已回滚（效果与 RUNNING 标记一并消失）→ 独立事务排定重试或 FAILED
+      // 执行器/回查异常：抢占事务已回滚（效果与 RUNNING 标记一并消失）→ 独立事务排定重试或 FAILED。
+      // 竞态窗口：回滚释放行锁后，另一节点可能已再抢占/推进该 job——scheduleRetryOrFail 行锁重读，
+      // 非 PENDING 即放弃善后（不写 log、不计数、不迁移；null 不打断本轮其余 job 的计数与告警）
       const message = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
       const outcome = await this.scheduleRetryOrFail(job, message);
       if (outcome === 'failed') {
@@ -302,12 +304,23 @@ export class SchedulerService {
     return 'done';
   }
 
-  /** 执行失败的善后（独立事务）：退避重试排程，或 3 次耗尽 → FAILED 终态 */
-  private async scheduleRetryOrFail(job: ClaimedJob, message: string): Promise<TickOutcome> {
+  /**
+   * 执行失败的善后（独立事务）：先 FOR UPDATE 行锁重读行态——抢占事务回滚到本事务之间，
+   * 另一节点可能已再抢占/推进该 job；非 PENDING 即放弃善后返回 null（R-04 log 只记真实发生的
+   * 重试，且 FAILED 迁移不得以 StateStaleEntity 打断整轮 tick）；仍 PENDING 才排定退避重试
+   * （retry_count+1、next_retry_at=now()+backoff）或重试耗尽 → FAILED 终态。
+   */
+  private async scheduleRetryOrFail(job: ClaimedJob, message: string): Promise<TickOutcome | null> {
     const startedAt = Date.now();
     const newRetry = job.retryCount + 1;
     const exhausted = newRetry > this.config.maxRetries;
-    await this.pool.withTransaction(async (uow) => {
+    return this.pool.withTransaction(async (uow) => {
+      const current = await uow.query<{ status: ScheduleJobStatus }>(
+        `SELECT status FROM schedule.schedule_jobs WHERE id = $1 FOR UPDATE`,
+        [job.id],
+      );
+      const rowStatus = current.rows[0]?.status;
+      if (rowStatus !== 'PENDING') return null; // 已被并发推进（RUNNING/DONE/CANCELLED/FAILED）或行不存在
       if (exhausted) {
         await this.transition(uow, job.id, 'PENDING', 'FAILED', 'retries_exhausted');
         await uow.query(
@@ -334,8 +347,8 @@ export class SchedulerService {
         message,
         Date.now() - startedAt,
       );
+      return exhausted ? 'failed' : 'retried';
     });
-    return exhausted ? 'failed' : 'retried';
   }
 
   // ---------- 运维视图与监控（§5） ----------
