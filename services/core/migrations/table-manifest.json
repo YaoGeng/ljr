@@ -25,6 +25,7 @@
     "notify.notification_templates": "V4__notify.sql",
     "notify.notifications": "V4__notify.sql",
     "notify.verify_code_sends": "V4__notify.sql",
+    "ops.risk_records": "V8__ops.sql",
     "ops.rule_definitions": "V7__ops.sql",
     "platform.outbox": "V2__outbox.sql",
     "platform.outbox_dead_letter": "V2__outbox.sql",

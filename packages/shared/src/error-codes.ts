@@ -32,6 +32,8 @@ export const ErrorCode = {
   ConfigInvalid: 'E_CONFIG_INVALID',
   /** 规则中心提交冲突：同 key+version 已存在（内容不等）或当前状态不允许提交（H7 §5 409 PUBLISHING） */
   RulePublishConflict: 'E_RULE_PUBLISHING',
+  /** 词库内重复词：同一次词库提交中存在规范化后重复的词（H5 §5 400 DUP_WORD；H5 W1） */
+  DuplicateWord: 'E_DUP_WORD',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -77,6 +79,10 @@ const ERROR_CODE_META: Readonly<Record<ErrorCode, ErrorCodeMeta>> = {
   [ErrorCode.RulePublishConflict]: {
     httpStatus: 409,
     defaultMessage: '规则版本冲突：同 key+version 已存在或当前状态不允许提交',
+  },
+  [ErrorCode.DuplicateWord]: {
+    httpStatus: 400,
+    defaultMessage: '词库中存在重复词（大小写不敏感判定）',
   },
 };
 
