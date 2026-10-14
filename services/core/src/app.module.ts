@@ -5,6 +5,7 @@ import { InfrastructureModule } from './infrastructure/infrastructure.module';
 import { DemoModule } from './modules/demo/demo.module';
 import { NotifyModule } from './modules/notify/notify.module';
 import { SchedulerModule } from './modules/schedule/scheduler.module';
+import { SlotLockModule } from './modules/schedule/slot-lock.module';
 import { HealthController } from './health.controller';
 
 // ObservabilityModule 紧随配置之后：http/pg 插桩先于 Infrastructure/Demo 建池注册
@@ -17,6 +18,7 @@ import { HealthController } from './health.controller';
     DemoModule,
     NotifyModule,
     SchedulerModule,
+    SlotLockModule, // B2 时间段占用锁（与 I2 同 schedule schema owner，M1-W1 Task 3）
   ],
   controllers: [HealthController],
 })
