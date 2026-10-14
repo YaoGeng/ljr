@@ -30,6 +30,8 @@ export const ErrorCode = {
   ConfigMissing: 'E_CONFIG_MISSING',
   /** 配置值非法（端口非 1-65535 整数等）或密钥被写入配置文件（M0-8 配置基座） */
   ConfigInvalid: 'E_CONFIG_INVALID',
+  /** 规则中心提交冲突：同 key+version 已存在（内容不等）或当前状态不允许提交（H7 §5 409 PUBLISHING） */
+  RulePublishConflict: 'E_RULE_PUBLISHING',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -71,6 +73,10 @@ const ERROR_CODE_META: Readonly<Record<ErrorCode, ErrorCodeMeta>> = {
   [ErrorCode.ConfigInvalid]: {
     httpStatus: 500,
     defaultMessage: '配置值非法或密钥被写入配置文件',
+  },
+  [ErrorCode.RulePublishConflict]: {
+    httpStatus: 409,
+    defaultMessage: '规则版本冲突：同 key+version 已存在或当前状态不允许提交',
   },
 };
 
