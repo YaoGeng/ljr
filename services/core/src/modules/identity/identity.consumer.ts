@@ -32,10 +32,16 @@ export function createIdentityUserHandler(guard: StateTransitionGuardService): O
   return async (event: RelayEvent, uow: SqlExecutor): Promise<void> => {
     if (event.topic === LAWYER_AUDIT_PASSED_TOPIC) {
       const payload = (event.payload ?? {}) as Partial<LawyerAuditPassedPayload>;
-      if (!isPositiveInt(payload.lawyer_user_id) || !isPositiveInt(payload.firm_id)) {
+      // firm_id 可空（M1-W2 T3 简报裁决：A3b 进件前为 null，契约 number|null）——非空时须为正整数
+      if (
+        !isPositiveInt(payload.lawyer_user_id) ||
+        (payload.firm_id !== null &&
+          payload.firm_id !== undefined &&
+          !isPositiveInt(payload.firm_id))
+      ) {
         throw new AppError(
           ErrorCode.InvalidArgument,
-          `事件 ${event.topic} 载荷缺 lawyer_user_id/firm_id（进重试轨道，不静默丢弃）`,
+          `事件 ${event.topic} 载荷缺 lawyer_user_id 或 firm_id 非法（进重试轨道，不静默丢弃）`,
         );
       }
       // 幂等授予：PK(user_id, role) 兜底，重投插 0 行即短路

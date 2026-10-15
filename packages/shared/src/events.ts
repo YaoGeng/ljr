@@ -30,8 +30,22 @@ export const LAWYER_AUDIT_PASSED_TOPIC = 'identity.lawyer.audit.passed';
 export interface LawyerAuditPassedPayload {
   /** 获授律师角色的账号（identity.users.id） */
   readonly lawyer_user_id: number;
-  /** 所属律所（trade/pricing 域引用；A1 消费侧不使用，随契约定型防 A3a 载荷漂移） */
-  readonly firm_id: number;
+  /**
+   * 所属律所（trade/pricing 域引用；A1 消费侧不使用，随契约定型防 A3a 载荷漂移）。
+   * null=律所未定：A3b 进件（W3）前提交的资质不产生 firm_id（A3a §3 firm_id 可空；
+   * M1-W2 T3 简报裁决「载荷 firm_id=null 合法」，A1 消费端同批放宽为可空）。
+   */
+  readonly firm_id: number | null;
+}
+
+/** 律师资质停用（A3a §6 生产 → 预留 C3/H1 订阅位：下架接单资格与可见性）。 */
+export const LAWYER_SUSPENDED_TOPIC = 'identity.lawyer.suspended';
+
+export interface LawyerSuspendedPayload {
+  /** 被停用律师的账号（identity.users.id） */
+  readonly lawyer_user_id: number;
+  /** 停用事由（H1 审核操作入参；审计口径，非 PII） */
+  readonly reason: string;
 }
 
 /** 账号注销执行完成（A4 §6 生产 → A1 消费置 DELETING，经状态机守卫）。 */

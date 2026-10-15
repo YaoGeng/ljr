@@ -64,6 +64,10 @@ export const ErrorCode = {
   VersionMismatch: 'E_VERSION_MISMATCH',
   /** A2 受控解密无完整审批：approval_id 缺失/未双签/指向不符（A2 §5 403 NOT_APPROVED；裁决 R-W2-5） */
   NotApproved: 'E_NOT_APPROVED',
+  /** A3a 同人重复提交：资质已在审核流程中（SUBMITTED/IN_REVIEW）再提交（A3a §5 409 ALREADY_SUBMITTED；幂等键=user） */
+  AlreadySubmitted: 'E_ALREADY_SUBMITTED',
+  /** A3a R-03 执业证号已被其他账号占用：盲索引等值命中他人档案（A3a §5 409，最小自定命名） */
+  LicenseNoTaken: 'E_LICENSE_NO_TAKEN',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -173,6 +177,14 @@ const ERROR_CODE_META: Readonly<Record<ErrorCode, ErrorCodeMeta>> = {
   [ErrorCode.NotApproved]: {
     httpStatus: 403,
     defaultMessage: '受控解密未获完整审批（须审批人签发且复核人双签，两人不得相同）',
+  },
+  [ErrorCode.AlreadySubmitted]: {
+    httpStatus: 409,
+    defaultMessage: '资质已在审核流程中，请勿重复提交',
+  },
+  [ErrorCode.LicenseNoTaken]: {
+    httpStatus: 409,
+    defaultMessage: '执业证号已被其他账号使用（R-03 防一人多号重复入驻）',
   },
 };
 
