@@ -57,6 +57,15 @@ describe('错误码契约（ErrorCode 常量表 + AppError{code,httpStatus}）',
     expect(new AppError(ErrorCode.Unauthorized).httpStatus).toBe(401);
   });
 
+  it('A2 实名与同意错误码（M1-W2 §5）：证件形态 400 / 版本不一致 409 / 解密未审批 403', () => {
+    expect(ErrorCode.InvalidId).toBe('E_INVALID_ID');
+    expect(new AppError(ErrorCode.InvalidId).httpStatus).toBe(400);
+    expect(ErrorCode.VersionMismatch).toBe('E_VERSION_MISMATCH');
+    expect(new AppError(ErrorCode.VersionMismatch).httpStatus).toBe(409);
+    expect(ErrorCode.NotApproved).toBe('E_NOT_APPROVED');
+    expect(new AppError(ErrorCode.NotApproved).httpStatus).toBe(403);
+  });
+
   it('isAppError 类型收窄', () => {
     expect(isAppError(new AppError(ErrorCode.Conflict))).toBe(true);
     expect(isAppError(new Error('plain'))).toBe(false);

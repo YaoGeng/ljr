@@ -40,3 +40,34 @@ export const ACCOUNT_DELETION_EXECUTED_TOPIC = 'identity.account.deletion.execut
 export interface AccountDeletionExecutedPayload {
   readonly user_id: number;
 }
+
+// ---------------------------------------------------------------------------
+// A2 实名认证与同意管理（M1-W2）：3 生产契约（消费：无——发起方；D5 语料删除=M2 接，
+// C3/F1 实名闸口走内部查询面不走事件，A2 §6）
+// ---------------------------------------------------------------------------
+
+/** 实名核验通过（A2 §6 生产 → 预留 C3/F1/信用域订阅位；载荷最小化，PII 禁入）。 */
+export const REAL_NAME_VERIFIED_TOPIC = 'identity.realname.verified';
+
+export interface RealNameVerifiedPayload {
+  readonly user_id: number;
+}
+
+/** 训练数据授权授予（A2 §6 生产 → D5 据此落 consent_records，M2；本批无消费者，只定型契约）。 */
+export const TRAINING_CONSENT_GRANTED_TOPIC = 'identity.consent.training.granted';
+
+export interface TrainingConsentGrantedPayload {
+  readonly user_id: number;
+  readonly policy_version: string;
+  /** 房间级授权上下文（成团/支付流程内授权页携带；用户主动全局授权时缺省——A2 §3 注） */
+  readonly room_ids?: number[];
+}
+
+/** 训练数据授权撤回（A2 §6 生产 → D5/I3 按 source_msg_id 反查物理删除未训练样本，R-03，M2）。 */
+export const TRAINING_CONSENT_REVOKED_TOPIC = 'identity.consent.training.revoked';
+
+export interface TrainingConsentRevokedPayload {
+  readonly user_id: number;
+  /** 撤回时刻（ISO 8601 UTC 即时；D5 删除执行的时间锚点） */
+  readonly revoked_at: string;
+}

@@ -58,6 +58,12 @@ export const ErrorCode = {
   RoleForbidden: 'E_ROLE_FORBIDDEN',
   /** A1 未认证：缺 Bearer / JWT 无效或过期（A1 §5 GET /me 401 未具名，最小自定） */
   Unauthorized: 'E_UNAUTHORIZED',
+  /** A2 实名证件形态非法：姓名为空 / id_no 非 18 位形态（A2 §5 400 INVALID_ID；校验位错≠形态错，走核验 FAILED） */
+  InvalidId: 'E_INVALID_ID',
+  /** A2 训练授权 policy_version 与当前有效版本不一致（A2 §5 409 VERSION_MISMATCH；当前值=config，裁决 R-W2-6） */
+  VersionMismatch: 'E_VERSION_MISMATCH',
+  /** A2 受控解密无完整审批：approval_id 缺失/未双签/指向不符（A2 §5 403 NOT_APPROVED；裁决 R-W2-5） */
+  NotApproved: 'E_NOT_APPROVED',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -155,6 +161,18 @@ const ERROR_CODE_META: Readonly<Record<ErrorCode, ErrorCodeMeta>> = {
   [ErrorCode.Unauthorized]: {
     httpStatus: 401,
     defaultMessage: '未认证或凭证无效',
+  },
+  [ErrorCode.InvalidId]: {
+    httpStatus: 400,
+    defaultMessage: '实名信息形态非法：姓名不得为空，身份证号须为 18 位（末位可为 X）',
+  },
+  [ErrorCode.VersionMismatch]: {
+    httpStatus: 409,
+    defaultMessage: 'policy_version 与当前有效版本不一致，请刷新授权页后重试',
+  },
+  [ErrorCode.NotApproved]: {
+    httpStatus: 403,
+    defaultMessage: '受控解密未获完整审批（须审批人签发且复核人双签，两人不得相同）',
   },
 };
 
