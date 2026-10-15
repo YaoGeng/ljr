@@ -101,3 +101,99 @@ export interface PriceVersionCreatedPayload {
   /** 新版本号（= 该律师 price_versions 当前最大 version + 1，从 1 起） */
   readonly version: number;
 }
+
+// ---------------------------------------------------------------------------
+// G1 信用体系（M1-W2）：2 生产契约（消费：C1/C3/A3a 入口校验、H4）+ 5 消费契约
+// （生产者 C2/C4/C6/D3/D4 在 W3、G2 在 M2——G1 消费端先行钉契约（R-W2-A 口径：
+// 契约由消费方定型，生产方 import 同一契约，避免两任务各自发明），生产方落位后联调对齐）。
+// ---------------------------------------------------------------------------
+
+/** 信用事件入账（G1 §6 生产 → C1/C3/A3a、H4）。 */
+export const CREDIT_EVENT_EMITTED_TOPIC = 'credit.event.emitted';
+
+export interface CreditEventEmittedPayload {
+  readonly owner_type: 'user' | 'lawyer';
+  readonly owner_id: number;
+  /** 行为动作（G1 行为词汇表，PRD §8.8 全表 + 机制扩展；语义见 G1 模块文档 §7） */
+  readonly action: string;
+  /** 本事件分值增量（正加负减；账户侧 R-01 下限 0 钳制不影响流水记录值） */
+  readonly delta: number;
+  /** 入账后账户分（快照） */
+  readonly score_after: number;
+  /** 行为时快照命中的 credit.rules 版本号（R-02 审计位） */
+  readonly rule_version: number;
+  /** 幂等引用（ref+action=G1 幂等键；载荷多态：session/price_change/attendance/review/group/outbox_event） */
+  readonly ref_type: string;
+  readonly ref_id: number;
+}
+
+/** 限制令发放（G1 §6 生产 → C1/C3/A3a 入口拦截、H4）。 */
+export const RESTRICTION_ISSUED_TOPIC = 'credit.restriction.issued';
+
+export interface RestrictionIssuedPayload {
+  readonly owner_type: 'user' | 'lawyer';
+  readonly owner_id: number;
+  /** BAN_JOIN|BAN_PUBLISH|SUSPEND_TAKE_3D|SUSPEND_TAKE_7D（G1 §3 值域） */
+  readonly kind: string;
+  /** 失效时刻（ISO 8601；惰性失效——查询面按 until<=now 过滤，无 I2 到期 job） */
+  readonly until: string;
+}
+
+/** C2B 律师拒绝/超时（C2/C4 §6 生产 → G1 消费扣分 -5 档；docs/04 §6 LawyerRejected(Timeout)）。 */
+export const LAWYER_REJECTED_TOPIC = 'trade.group_buy.lawyer_rejected';
+
+export interface LawyerRejectedPayload {
+  readonly group_id: number;
+  readonly lawyer_id: number;
+}
+
+/** 改价审批通过（C6 §6 生产 → G1 消费按档扣分/停接）。kind 由 C6 按 §8.8 档位归类（G1 只承载机制）。 */
+export const PRICE_CHANGE_APPROVED_TOPIC = 'pricing.price_change.approved';
+
+export type PriceChangeKind = 'PRICE_UP' | 'PRICE_DOWN_LE10' | 'PRICE_DOWN_GT10';
+
+export interface PriceChangeApprovedPayload {
+  readonly price_change_id: number;
+  readonly lawyer_id: number;
+  readonly kind: PriceChangeKind;
+}
+
+/** 到场判定（D3 §6 生产 → G1 消费；normal/absent 入信用，late 无 §8.8 分值行不产生信用事件）。 */
+export const ATTENDANCE_ADJUDICATED_TOPIC = 'fulfillment.attendance.adjudicated';
+
+export type AttendanceResult = 'normal' | 'late' | 'absent';
+
+export interface AttendanceAdjudicatedPayload {
+  readonly adjudication_id: number;
+  readonly session_id: number;
+  readonly owner_type: 'user' | 'lawyer';
+  readonly owner_id: number;
+  readonly result: AttendanceResult;
+}
+
+/** 场次取消（D4 §6 生产 → G1/F2/F3/I1 消费；platform 取消无信用影响（PRD §8.7），G1 跳过）。
+ *  取消档位（用户 2h/律师 24h，PRD §8.7/§8.8）由 G1 按 cancelled_at 与 session_start_at 差值归类。 */
+export const SESSION_CANCELLED_TOPIC = 'fulfillment.session.cancelled';
+
+export interface SessionCancelledPayload {
+  readonly session_id: number;
+  readonly cancelled_by: 'user' | 'lawyer' | 'platform';
+  /** 取消时刻（ISO 8601） */
+  readonly cancelled_at: string;
+  /** 约定开始时刻（ISO 8601；§8.7 档位判定锚点） */
+  readonly session_start_at: string;
+}
+
+/** 评价提交（G2 §6 生产 → G1/C1/H4 消费；G2 §4「G1 联动（正向加分）」——分值由 credit.rules 配置）。
+ *  reviewee_user_id 为被评方账号（G2 §3 reviews 无 from 字段匿名拆分，事件载荷显式携带供 G1 定位 owner）。 */
+export const REVIEW_SUBMITTED_TOPIC = 'review.review.submitted';
+
+export type ReviewDirection = 'user_to_lawyer' | 'lawyer_to_user';
+
+export interface ReviewSubmittedPayload {
+  readonly session_id: number;
+  readonly direction: ReviewDirection;
+  /** 四维分 {professional, response, attitude, overall}（1-5；G1 机制侧不解释，透传审计） */
+  readonly dims: Record<string, number>;
+  readonly reviewee_user_id: number;
+}
