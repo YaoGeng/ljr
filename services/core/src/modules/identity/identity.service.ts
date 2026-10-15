@@ -221,9 +221,21 @@ export class IdentityService {
     return { ok: true, revoked: await this.tokens.revokeRefreshToken(token) };
   }
 
-  /** POST /auth/switch-role：user_roles 含目标角色 → 重签 access（claims.role=目标） */
+  /**
+   * POST /auth/switch-role：账号状态闸（终审 I-1，与 verify/refresh 同款）→ user_roles 含目标
+   * 角色 → 重签 access（claims.role=目标）。状态闸前置：BANNED/DELETING 不得凭未过期 token
+   * 反复换签续期（铸 token 三入口统一过状态闸，guards 头注不变量）。
+   */
   async switchRole(userId: number, rawTarget: unknown): Promise<{ accessToken: string }> {
     const target = assertUserRole(rawTarget);
+    const row = await this.pool.query<{ status: UserStatus }>(
+      'SELECT status FROM identity.users WHERE id = $1',
+      [userId],
+    );
+    const status = row.rows[0]?.status;
+    if (status !== 'ACTIVE') {
+      throw new AppError(ErrorCode.AccountBanned, `账号当前不可登录（${status ?? '不存在'}）`);
+    }
     const roles = await this.rolesOf(userId, this.pool);
     if (!roles.includes(target)) {
       throw new AppError(ErrorCode.RoleNotHeld, `目标角色未授予：${target}`);

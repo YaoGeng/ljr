@@ -368,9 +368,18 @@ describe('A1 领域层（注册/登录/双 token/事件消费/PII 红线，需 P
     ).toMatchObject({ rows: [{ n: 1 }] });
   });
 
-  it('BANNED 登录拒绝：守卫迁移 BANNED 后 verify → 403 E_ACCOUNT_BANNED（refresh 同拒）', async () => {
+  it('BANNED 登录拒绝：守卫迁移 BANNED 后 verify → 403 E_ACCOUNT_BANNED（refresh/switch-role 同拒，终审 I-1）', async () => {
     const phone = '13800002013';
     const done = await registerOrLogin(phone, true);
+
+    // 封禁前角色链路可用：合成事件授予 lawyer → switch-role 换签成功（持未过期 token 的一环）
+    await insertSyntheticEvent('identity.lawyer.audit.passed', {
+      lawyer_user_id: done.userId,
+      firm_id: 904,
+    });
+    expect((await relay.tick()).dispatched).toBe(1);
+    await expect(service.switchRole(done.userId, 'lawyer')).resolves.toHaveProperty('accessToken');
+
     // 封禁（A4/H 侧动作，本批无 API）——经守卫留痕 + 条件更新，禁裸写
     await guard.assertTransition(USER_MACHINE, {
       entityId: done.userId,
@@ -390,6 +399,11 @@ describe('A1 领域层（注册/登录/双 token/事件消费/PII 红线，需 P
     });
     await expect(service.refresh(done.refreshToken)).rejects.toMatchObject({
       code: ErrorCode.AccountBanned,
+    });
+    // 终审 I-1：封禁后凭未过期 access 不可再换签续期（铸 token 三入口统一过状态闸）
+    await expect(service.switchRole(done.userId, 'lawyer')).rejects.toMatchObject({
+      code: ErrorCode.AccountBanned,
+      httpStatus: 403,
     });
   });
 

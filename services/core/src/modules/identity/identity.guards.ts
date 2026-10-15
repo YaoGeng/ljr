@@ -2,7 +2,8 @@
  * A1 认证守卫（R-03 接口级 claims.role 校验的执行件；W2 交接 4-B：I1 用户面 REST 接线）。
  *
  * - IdentityAuthGuard：校验 Bearer JWT（签名/过期/claims 结构）→ 挂 req.identity；
- *   只做凭证校验不查库（角色/状态以签发时 claims 为准；封禁在登录/刷新入口拦截）。
+ *   只做凭证校验不查库（角色/状态以签发时 claims 为准；封禁在铸 token 三入口拦截：
+ *   verify 登录 / refresh 续签 / switch-role 换签——终审 I-1）。
  * - IdentityRoleGuard：配合 @RequireRole('user'|'lawyer')——claims.role ≠ 要求角色 →
  *   403 E_ROLE_FORBIDDEN（R-03：界面数据隔离=角色路由 + 接口级 claims 校验）。
  */
