@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Logger, type INestApplication, type LoggerService } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -19,7 +19,7 @@ import { IdentityCryptoService } from './identity.crypto';
 import { IdentityUserConsumer } from './identity.consumer';
 import { LAWYER_AUDIT_MACHINE } from './lawyer.machine';
 import { LawyerQualificationModule } from './lawyer-qualification.module';
-import { LawyerQualificationService } from './lawyer.service';
+import { LawyerQualificationService, materialFingerprintOf } from './lawyer.service';
 
 /**
  * A3a 律师资质审核领域层 e2e（需 PG）：状态机全迁移矩阵（§4，经守卫+STL 禁裸写）、
@@ -234,6 +234,28 @@ describe('A3a 领域层（状态机/盲索引唯一/重提版本/事件生产/A1
     // 提交不产生领域事件（§6 只有 PASSED/SUSPENDED 两个生产事件）
     expect(await outboxPayloads(LAWYER_AUDIT_PASSED_TOPIC)).toEqual([]);
     expect(await outboxPayloads(LAWYER_SUSPENDED_TOPIC)).toEqual([]);
+
+    // 指纹离线猜测预言机防线（T3 评审 Important-1）：
+    // ①白盒正向——license 组件以盲索引（HMAC+pepper）参与时可精确重算（确定性判定依据）
+    expect(
+      materialFingerprintOf(
+        crypto.blindIndex(LICENSE_A),
+        '北京测试律师事务所',
+        licenseFilesV1('a'),
+      ),
+    ).toBe(row!.material_fingerprint);
+    // ②否定向——明文 license_no 参与的无钥 canonical（评审点名的泄露后离线验证形态）
+    //   哈希 ≠ 库内指纹：DB 泄露 + 同行明文字段不可穷举强格式证号
+    const offlinePlaintextCanonical = JSON.stringify({
+      license_no: LICENSE_A,
+      firm_name: '北京测试律师事务所',
+      files: licenseFilesV1('a'),
+    });
+    expect(createHash('sha256').update(offlinePlaintextCanonical, 'utf8').digest('hex')).not.toBe(
+      row!.material_fingerprint,
+    );
+    // ③指纹不含明文证号字面（与盲索引同性质的派生值）
+    expect(row!.material_fingerprint).not.toContain(LICENSE_A);
   });
 
   it('幂等键=user（§5 409 ALREADY_SUBMITTED）：SUBMITTED/IN_REVIEW 中再提交一律 409，无新留痕/文件/事件', async () => {

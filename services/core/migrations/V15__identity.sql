@@ -12,8 +12,10 @@
 --                                   体系，R-03 唯一性检索唯一入口）；material_version/material_
 --                                   fingerprint=重提守卫载体（§4「REJECTED 重提需新材料版本号」，
 --                                   简报：版本号字段自定）——前者为服务端单调版本（每次提交 +1，
---                                   材料版本事实源），后者为材料集内容指纹（sha256，同材料重提
---                                   不构成新版本 → 409）。firm_id 保持 NULL 至 A3b 进件（W3）；
+--                                   材料版本事实源），后者为材料集内容指纹（canonical sha256，
+--                                   license 组件以盲索引 HMAC 派生值参与——Important-1：无钥
+--                                   哈希嵌明文证号=离线猜测预言机；同材料重提不构成新版本 → 409）。
+--                                   firm_id 保持 NULL 至 A3b 进件（W3）；
 --                                   auditor_id 占位 NULL（admin 鉴权=R-W2-F park 先例，H1 接线
 --                                   后取 admin claims 回填）。
 --   identity.qualification_files    §3 原文列 + material_version：材料按版本留痕（审核追溯），
@@ -66,7 +68,7 @@ COMMENT ON TABLE identity.lawyer_profiles IS 'A3a 律师资质档案：license_n
 COMMENT ON COLUMN identity.lawyer_profiles.license_no_enc IS 'AES-256-GCM 信封密文（A1 同密钥体系）；明文禁落库/落日志/落事件载荷（lj-data-security）';
 COMMENT ON COLUMN identity.lawyer_profiles.license_no_blind_idx IS 'HMAC-SHA256(license_no, pepper) hex64 盲索引，唯一（ux_lawyer_profiles_license）；明文执业证号禁落库';
 COMMENT ON COLUMN identity.lawyer_profiles.material_version IS '服务端单调材料版本：每次提交 +1；qualification_files 按版本留痕';
-COMMENT ON COLUMN identity.lawyer_profiles.material_fingerprint IS '材料集 sha256 指纹：REJECTED 重提/PASSED 修改须与现行指纹不同（§4 新材料版本守卫）';
+COMMENT ON COLUMN identity.lawyer_profiles.material_fingerprint IS '材料集 canonical sha256 指纹（license 组件以盲索引 HMAC 派生，不嵌明文）：REJECTED 重提/PASSED 修改须与现行指纹不同（§4 新材料版本守卫）';
 COMMENT ON COLUMN identity.lawyer_profiles.auditor_id IS '审核人 admin 账号；R-W2-F admin 鉴权占位期间 NULL，H1（W3）接线后回填';
 
 -- ---------- identity.qualification_files：资质材料版本（§3；R-W2-7 仅存引用文本） ----------

@@ -83,22 +83,22 @@ function isUniqueViolation(e: unknown): boolean {
   return typeof e === 'object' && e !== null && (e as { code?: string }).code === '23505';
 }
 
-/** 材料集内容指纹（§4 新材料版本守卫）：规范化后 sha256 hex64——同材料重提不构成新版本 */
-function materialFingerprintOf(
-  licenseNo: string,
+/**
+ * 材料集内容指纹（§4 新材料版本守卫）：规范化后 sha256 hex64——同材料重提不构成新版本。
+ * Important-1（T3 评审）：license 组件只以盲索引（HMAC-SHA256+pepper，复用 T1 体系）参与
+ * ——无钥 sha256 的 canonical 一旦嵌入明文 license_no，DB 泄露后同行明文 firm_name/files
+ * 即构成强格式证号的离线猜测预言机。licenseBlind 入参=盲索引派生值，禁传明文。
+ */
+export function materialFingerprintOf(
+  licenseBlind: string,
   firmName: string | undefined,
   files: readonly QualificationFileInput[],
 ): string {
   const canonical = JSON.stringify({
-    license_no: licenseNo,
+    license_blind: licenseBlind,
     firm_name: firmName ?? null,
-    files: files
-      .map((f) => `${f.kind}|${f.ref}`)
-      .sort()
-      .map((s) => {
-        const [kind, ...rest] = s.split('|');
-        return { kind, ref: rest.join('|') };
-      }),
+    // 对象逐个序列化后排序：有序且无分隔符歧义（kind/ref 含 `|` 不致错位）
+    files: files.map((f) => JSON.stringify({ kind: f.kind, ref: f.ref })).sort(),
   });
   return createHash('sha256').update(canonical, 'utf8').digest('hex');
 }
@@ -126,7 +126,9 @@ export class LawyerQualificationService {
     const licenseNo = assertLicenseNo(input.licenseNo);
     const firmName = parseFirmName(input.firmName);
     const files = parseQualificationFiles(input.files);
-    const fingerprint = materialFingerprintOf(licenseNo, firmName, files);
+    // 盲索引先行（Important-1）：指纹的 license 组件=盲索引派生值，明文不出本函数入参生命周期
+    const licenseBlind = this.crypto.blindIndex(licenseNo);
+    const fingerprint = materialFingerprintOf(licenseBlind, firmName, files);
 
     return this.pool.withTransaction(async (uow) => {
       const current = await this.profileOfUserForUpdate(uow, userId);
@@ -150,7 +152,6 @@ export class LawyerQualificationService {
       }
 
       // R-03 盲索引预检：他人已占用 → 409（明文不落库，等值检索只走 HMAC）
-      const licenseBlind = this.crypto.blindIndex(licenseNo);
       const holder = await this.profileIdByLicense(uow, licenseBlind);
       if (holder !== undefined && Number(holder) !== Number(current?.id ?? -1)) {
         throw new AppError(ErrorCode.LicenseNoTaken, '执业证号已被其他账号使用（R-03）');

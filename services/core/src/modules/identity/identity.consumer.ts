@@ -32,12 +32,11 @@ export function createIdentityUserHandler(guard: StateTransitionGuardService): O
   return async (event: RelayEvent, uow: SqlExecutor): Promise<void> => {
     if (event.topic === LAWYER_AUDIT_PASSED_TOPIC) {
       const payload = (event.payload ?? {}) as Partial<LawyerAuditPassedPayload>;
-      // firm_id 可空（M1-W2 T3 简报裁决：A3b 进件前为 null，契约 number|null）——非空时须为正整数
+      // firm_id 可空（M1-W2 T3 简报裁决：A3b 进件前为 null，契约 number|null）：显式 null 放行，
+      // 缺键/非正整数均非法进重试轨道（缺键豁免会静默放过载荷漂移——T3 评审 minor 口径收紧）
       if (
         !isPositiveInt(payload.lawyer_user_id) ||
-        (payload.firm_id !== null &&
-          payload.firm_id !== undefined &&
-          !isPositiveInt(payload.firm_id))
+        (payload.firm_id !== null && !isPositiveInt(payload.firm_id))
       ) {
         throw new AppError(
           ErrorCode.InvalidArgument,
