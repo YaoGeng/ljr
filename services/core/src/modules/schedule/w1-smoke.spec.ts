@@ -98,6 +98,7 @@ describe('M1-W1 事件链烟测（I2 job → I1 通知 → relay 幂等消费，
     executor = new SmokeReminderExecutor(dispatcher);
     app.get(ScheduleExecutorRegistry).register(executor);
     // 执行模块消费形态：fired 事件由执行方承接——烟测执行器已同步内联执行，noop 承接保持 relay 全绿
+    // TODO(D2): D2 提醒服务落位注册同 topic 消费者时，移除本 noop 承接（终审 Important-2）
     relay.registerHandler(SCHEDULE_JOB_FIRED_TOPIC, async () => undefined);
     // 测试消费者：消费 NotificationDispatched，效果=经 I1 公共 API 幂等登记一条回执通知（echo）。
     // 消费幂等：idempotency_key=receipt-ev-<outbox行id>（同一事件重投递必同键），UNIQUE(idempotency_key)
