@@ -56,7 +56,7 @@ describe('E3 专项配置包机制（需 PG）', () => {
     pool = await ensureTestDatabase();
     const moduleRef = await Test.createTestingModule({ imports: [SpecialtyKnowledgeModule] })
       .overrideProvider(KNOWLEDGE_CONFIG)
-      .useValue({ ...KNOWLEDGE_DEFAULT_CONFIG, embeddingDim: 16 })
+      .useValue(KNOWLEDGE_DEFAULT_CONFIG)
       .compile();
     app = moduleRef.createNestApplication();
     await app.init();
@@ -313,7 +313,7 @@ describe('E3 专项配置 REST 契约（§5，需 PG）', () => {
     pool = await ensureTestDatabase();
     const moduleRef = await Test.createTestingModule({ imports: [SpecialtyKnowledgeModule] })
       .overrideProvider(KNOWLEDGE_CONFIG)
-      .useValue({ ...KNOWLEDGE_DEFAULT_CONFIG, embeddingDim: 16 })
+      .useValue(KNOWLEDGE_DEFAULT_CONFIG)
       .compile();
     app = moduleRef.createNestApplication();
     await app.init();

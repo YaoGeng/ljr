@@ -24,8 +24,9 @@ import { KnowledgeService } from './knowledge.service';
  */
 
 const SPEC_OPTS = {
+  // embeddingDim 不覆写：继承默认 1024，与 V9 列型 vector(1024) 对齐——路径①（真 pgvector）
+  // 列强校验维度，测试注入小维度会在 CI 挂（路径② jsonb 不校验维度，本地测不出）
   ...KNOWLEDGE_DEFAULT_CONFIG,
-  embeddingDim: 16,
   chunkTokenSize: 64,
   chunkOverlapTokens: 16,
   maxInlineChars: 20_000,
@@ -216,8 +217,10 @@ describe('E3 知识库机制（需 PG）', () => {
     expect(chunks[1]!.metadata).toEqual({ chunk_index: 1, char_start: 48, char_end: DOC_A.length });
     expect(chunks[0]!.chunk).toBe(DOC_A.slice(0, 64));
     expect(chunks[1]!.chunk).toBe(DOC_A.slice(48));
-    // 向量按 jsonb 兜底承载（R4 路径②）：float 数组、维度=config.embeddingDim
-    const embedding = chunks[0]!.embedding as number[];
+    // 向量落库双路径（R4）：jsonb=路径②读回数组；vector=路径①读回 '[..]' 文本（pgvector 文本
+    // 形态即合法 JSON 数组）——统一解析后断言维度=config.embeddingDim
+    const raw = chunks[0]!.embedding as number[] | string;
+    const embedding: number[] = typeof raw === 'string' ? JSON.parse(raw) : raw;
     expect(Array.isArray(embedding)).toBe(true);
     expect(embedding).toHaveLength(SPEC_OPTS.embeddingDim);
     // §6：KnowledgeUpdated 与 READY 同事务出箱（载荷 specialty 逐字 + additive 定位字段）
