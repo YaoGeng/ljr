@@ -27,6 +27,8 @@
     "demo.orders": "V3__state_transition_log.sql",
     "identity.consents": "V14__identity.sql",
     "identity.decrypt_approvals": "V14__identity.sql",
+    "identity.lawyer_profiles": "V15__identity.sql",
+    "identity.qualification_files": "V15__identity.sql",
     "identity.real_name_infos": "V14__identity.sql",
     "identity.refresh_tokens": "V13__identity.sql",
     "identity.user_roles": "V13__identity.sql",
