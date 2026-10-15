@@ -326,8 +326,12 @@ describe('A2 实名领域层（状态机/幂等/受控解密/PII 红线，需 PG
       approvalId: await seedApproval(509, {}),
     });
 
-    // 日志：全程产出非空（防假绿前置），且不含姓名/证件号明文
-    const logged = logCalls.mock.calls.map((args) => args.map(String).join(' ')).join('\n');
+    // 日志：全程产出非空（防假绿前置），且不含姓名/证件号明文。
+    // 序列化用 JSON.stringify（T1 评审 minor-3 加固口径）：对象参数若藏 PII，
+    // String(obj) 会塌缩成 [object Object] 掩盖泄漏致假绿——JSON 形态无死角
+    const logged = logCalls.mock.calls
+      .map((args) => JSON.stringify(args.map((a) => (a instanceof Error ? a.message : a))))
+      .join('\n');
     expect(logged).not.toBe('');
     expect(logged).not.toContain('张小明');
     expect(logged).not.toContain(VALID_ID_NO);
