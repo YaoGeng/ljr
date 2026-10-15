@@ -39,9 +39,10 @@ export interface ReplaceScheduleInput {
 
 export interface TemplateWrite {
   readonly weekday: number;
-  /** 'HH:MM' 或 'HH:MM:SS'（入站宽容、落库/出站归一 'HH:MM:SS'） */
-  readonly startTime: string;
-  readonly durationSmall: number;
+  /** 'HH:MM' 或 'HH:MM:SS'（入站宽容、落库/出站归一 'HH:MM:SS'；§5 契约词汇=snake_case） */
+  readonly start_time: string;
+  /** 60/90/120 三档（R-03；§5 契约词汇=snake_case） */
+  readonly duration_small: number;
   readonly enabled?: boolean;
 }
 
