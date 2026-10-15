@@ -21,11 +21,13 @@ import { Inject, Injectable, type OnApplicationShutdown } from '@nestjs/common';
 import { AppError, ErrorCode } from '@ljr/shared';
 import { OutboxService } from '../../infrastructure/outbox/outbox.service';
 import { PgPoolService } from '../../infrastructure/sql';
+import { StateTransitionGuardService } from '../../infrastructure/state-machine/state-transition-guard.service';
 import { TRACE_LOGGER } from '../../observability/observability.module';
 import type { TraceLogger } from '../../observability/trace-logger';
 import { KNOWLEDGE_CONFIG, type KnowledgeConfig } from './knowledge.config';
 import { chunkText } from './knowledge.chunker';
 import { EMBEDDING_PROVIDER, type EmbeddingProvider } from './knowledge.embedding';
+import { KNOWLEDGE_DOC_MACHINE } from './knowledge.machine';
 import {
   KNOWLEDGE_UPDATED_TOPIC,
   type KnowledgeChangeReason,
@@ -106,6 +108,7 @@ export class KnowledgeService implements OnApplicationShutdown {
   constructor(
     private readonly pool: PgPoolService,
     private readonly outbox: OutboxService,
+    private readonly guard: StateTransitionGuardService,
     @Inject(KNOWLEDGE_CONFIG) private readonly config: KnowledgeConfig,
     @Inject(EMBEDDING_PROVIDER) private readonly provider: EmbeddingProvider,
     // FAILED 的运维侧 warn（状态位是事实源；logger 为增益，测试注桩/可缺省）
@@ -289,8 +292,10 @@ export class KnowledgeService implements OnApplicationShutdown {
 
   /**
    * 单文档处理（PENDING→READY，终态幂等）：行锁下重验状态 → 解析 inline 正文 → 分块 →
-   * 向量 → 分块行+READY+KnowledgeUpdated 同事务（业务失败则全回滚，状态位保持 PENDING 由
-   * catch 置 FAILED）；FAILED 不出事件（检索池未变化）。
+   * 向量 → 守卫迁移+分块行+READY+KnowledgeUpdated 同事务（业务失败则全回滚，状态位保持
+   * PENDING 由 catch 经守卫置 FAILED）；FAILED 不出事件（检索池未变化）。
+   * 状态禁裸写（终审 Important-1）：READY/FAILED 两处迁移均经 KNOWLEDGE_DOC_MACHINE 守卫
+   * 并落 state_transition_log——READY 与业务同事务留痕，FAILED 走独立连接（markFailed）。
    */
   private async processDocument(docId: number): Promise<void> {
     try {
@@ -335,6 +340,14 @@ export class KnowledgeService implements OnApplicationShutdown {
             ],
           );
         }
+        // 守卫迁移留痕与业务写同事务（业务回滚则留痕一并消失）；条件 UPDATE 兜底乐观并发
+        await this.guard.assertTransition(KNOWLEDGE_DOC_MACHINE, {
+          entityId: docId,
+          from: 'PENDING',
+          to: 'READY',
+          reason: 'ingest_ready',
+          uow,
+        });
         await uow.query(
           `UPDATE agent_assist.knowledge_docs SET process_status = 'READY'
            WHERE id = $1 AND process_status = 'PENDING'`,
@@ -350,19 +363,33 @@ export class KnowledgeService implements OnApplicationShutdown {
         });
       });
     } catch (e) {
-      // 独立事务落 FAILED（业务事务已回滚）；失败不留痕即 PENDING 悬挂，运维不可见
-      await this.pool
-        .query(
-          `UPDATE agent_assist.knowledge_docs SET process_status = 'FAILED'
-           WHERE id = $1 AND process_status = 'PENDING'`,
-          [docId],
-        )
-        .catch(() => undefined);
+      // 独立连接落 FAILED（业务事务已回滚）：守卫留痕 + 状态位同连接（拒绝/独立留痕走独立
+      // 连接先例）；留痕/置态失败不上抛（ingest 兜底，PENDING 悬挂由 logger warn 运维侧可见）
+      await this.markFailed(docId).catch(() => undefined);
       this.logger?.warn('知识库向量化失败（文档置 FAILED，不入检索池）', {
         doc_id: docId,
         error: String(e),
       });
     }
+  }
+
+  /**
+   * FAILED 终态（终审 Important-1）：不传 uow → 守卫以独立连接写 state_transition_log
+   * （allowed=true 的 FAILED 审计不随已回滚的业务事务丢失，也不因连接差异缺审计），随后
+   * 条件 UPDATE 置状态（保持原 WHERE from-status 兜底乐观并发；非法迁移被守卫拒绝）。
+   */
+  private async markFailed(docId: number): Promise<void> {
+    await this.guard.assertTransition(KNOWLEDGE_DOC_MACHINE, {
+      entityId: docId,
+      from: 'PENDING',
+      to: 'FAILED',
+      reason: 'ingest_failed',
+    });
+    await this.pool.query(
+      `UPDATE agent_assist.knowledge_docs SET process_status = 'FAILED'
+       WHERE id = $1 AND process_status = 'PENDING'`,
+      [docId],
+    );
   }
 
   /** 批量向量化 + 维度守卫（供应商维度漂移=InternalError 显性化，不静默入库失配向量） */

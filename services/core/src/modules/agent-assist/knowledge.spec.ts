@@ -227,6 +227,24 @@ describe('E3 知识库机制（需 PG）', () => {
       doc_id: up.doc_id,
       reason: 'ready',
     });
+    // 终审 Important-1：READY 迁移经状态机守卫与业务同事务留 STL（状态禁裸写）
+    const readyLog = await pool.query<{
+      allowed: boolean;
+      from_status: string;
+      to_status: string;
+      reason: string;
+    }>(
+      `SELECT allowed, from_status, to_status, reason FROM platform.state_transition_log
+        WHERE entity_type = 'knowledge_doc' AND entity_id = $1 ORDER BY id`,
+      [up.doc_id],
+    );
+    expect(readyLog.rows).toHaveLength(1);
+    expect(readyLog.rows[0]).toMatchObject({
+      allowed: true,
+      from_status: 'PENDING',
+      to_status: 'READY',
+      reason: 'ingest_ready',
+    });
   });
 
   it('§9 分块确定性（e2e 层）：落库分块行与纯函数 chunkText 输出全等（同文件同分块）', async () => {
@@ -423,6 +441,24 @@ describe('E3 知识库 FAILED 路径（embedding 供应商故障注入，需 PG�
       svc.retrieve({ specialty: 'labor_arbitration', query: DOC_A.slice(48) }),
     ).rejects.toThrow();
     expect(await outboxOf(pool, KNOWLEDGE_UPDATED_TOPIC)).toHaveLength(0); // 无 READY 即无事件
+    // 终审 Important-1：FAILED 亦经守卫留痕（独立连接写 STL——业务事务已回滚，审计不得随之丢失）
+    const failedLog = await pool.query<{
+      allowed: boolean;
+      from_status: string;
+      to_status: string;
+      reason: string;
+    }>(
+      `SELECT allowed, from_status, to_status, reason FROM platform.state_transition_log
+        WHERE entity_type = 'knowledge_doc' AND entity_id = $1 ORDER BY id`,
+      [up.doc_id],
+    );
+    expect(failedLog.rows).toHaveLength(1);
+    expect(failedLog.rows[0]).toMatchObject({
+      allowed: true,
+      from_status: 'PENDING',
+      to_status: 'FAILED',
+      reason: 'ingest_failed',
+    });
   });
 });
 
