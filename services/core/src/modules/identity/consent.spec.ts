@@ -12,6 +12,8 @@ import {
   type TrainingConsentRevokedPayload,
 } from '@ljr/shared';
 import { StateTransitionGuardService } from '../../infrastructure/state-machine/state-transition-guard.service';
+import { OutboxService } from '../../infrastructure/outbox/outbox.service';
+import { PgPoolService } from '../../infrastructure/sql';
 import { ensureTestDatabase, truncateAll } from '../../infrastructure/testing/db';
 import { IDENTITY_CONFIG, type IdentityConfig } from './identity.config';
 import { CONSENT_CONFIG, type ConsentConfig } from './consent.config';
@@ -22,10 +24,13 @@ import { ConsentService } from './consent.service';
 /**
  * A2 同意领域层 e2e（需 PG）：授权状态机（ABSENT→GRANTED→REVOKED，可再 GRANTED=新行，
  * 经守卫+STL）、R-W2-6 版本闸（409 VERSION_MISMATCH）、R-02 拒绝路径（不写行不留痕）、
- * 幂等（同版本重复授权返回现值；重复撤回短路；撤回后同版本可重新授权——§10-5 活跃态唯一）。
+ * 幂等（同版本重复授权返回现值；重复撤回短路；撤回后同版本可重新授权——§10-5 活跃态唯一；
+ * 跨版本授权各版本独立幂等=评审 Important-2）、并发败退幂等读回（SAVEPOINT=评审 Important-1）。
  */
 
 const CURRENT_POLICY = 'v1.0.0';
+/** 运营升版后的新有效版本（跨版本用例以独立 service handle 模拟配置切换=重新部署） */
+const NEXT_POLICY = 'v2.0.0';
 
 const testIdentityConfig = (): IdentityConfig => ({
   phoneDataKey: randomBytes(32),
@@ -282,4 +287,109 @@ describe('A2 同意领域层（训练授权/撤回/幂等/版本闸，需 PG）'
     );
     expect(denied.rows).toEqual([{ allowed: false }]);
   });
+
+  it('跨版本授权（评审 Important-2）：GRANTED(v1)→accept(v2) 新行+事件+返回 v2、旧行不动；再 accept(v1) 幂等返回 v1 现值', async () => {
+    // 升版=配置切换（重新部署）：以独立 service handle 携带 v2 有效版本，版本闸语义不变
+    const upgraded = new ConsentService(app.get(PgPoolService), app.get(OutboxService), guard, {
+      trainingPolicyVersion: NEXT_POLICY,
+    } satisfies ConsentConfig);
+
+    const v1 = await service.grantTraining(702, { policyVersion: CURRENT_POLICY, accept: true });
+    const v2 = await upgraded.grantTraining(702, { policyVersion: NEXT_POLICY, accept: true });
+    expect(v2.status).toBe('GRANTED');
+    expect(v2.policyVersion).toBe(NEXT_POLICY); // 返回新版本（修复前被旧版幂等短路吞掉返回 v1）
+
+    const rows = await consentRows(702);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ status: 'GRANTED', policy_version: CURRENT_POLICY }); // 旧行不动
+    expect(rows[1]).toMatchObject({ status: 'GRANTED', policy_version: NEXT_POLICY });
+
+    // 每个版本独立事件（R-03/D5 按版本链路不因升版断裂）
+    const events = await pool.query<{ payload: TrainingConsentGrantedPayload }>(
+      'SELECT payload FROM platform.outbox WHERE topic = $1 ORDER BY id',
+      [TRAINING_CONSENT_GRANTED_TOPIC],
+    );
+    expect(events.rows.map((r) => r.payload.policy_version)).toEqual([CURRENT_POLICY, NEXT_POLICY]);
+    // v2 为版本实体首授：from=ABSENT（reason 携带 policy 消歧），两笔均守卫留痕
+    expect(await stlRows(702)).toEqual([
+      { from_status: 'ABSENT', to_status: 'GRANTED', allowed: true },
+      { from_status: 'ABSENT', to_status: 'GRANTED', allowed: true },
+    ]);
+
+    // 再 accept(v1)：v1 版本域活跃行仍在 → 幂等返回 v1 现值（修复前按最新行短路会错回 v2）
+    const againV1 = await service.grantTraining(702, {
+      policyVersion: CURRENT_POLICY,
+      accept: true,
+    });
+    expect(againV1.policyVersion).toBe(CURRENT_POLICY);
+    expect(againV1.grantedAt).toEqual(v1.grantedAt);
+    expect(await consentRows(702)).toHaveLength(2);
+    expect(await outboxCount(TRAINING_CONSENT_GRANTED_TOPIC)).toBe(2);
+  });
+
+  it('跨版本后「当前同意」取最新 GRANTED 行（评审 Important-2）：状态查询返回 v2；撤回 v2 后回退展示 v1 活跃授权', async () => {
+    const v1 = await service.grantTraining(703, { policyVersion: CURRENT_POLICY, accept: true });
+    const upgraded = new ConsentService(app.get(PgPoolService), app.get(OutboxService), guard, {
+      trainingPolicyVersion: NEXT_POLICY,
+    } satisfies ConsentConfig);
+    await upgraded.grantTraining(703, { policyVersion: NEXT_POLICY, accept: true });
+    expect(await service.trainingConsentStatus(703)).toMatchObject({
+      status: 'GRANTED',
+      policyVersion: NEXT_POLICY,
+    });
+
+    // 撤回只动最新行（旧行不动=文档未定义跨版本撤销语义，不发明）：v1 仍活跃 → 视图回退展示 v1
+    await upgraded.revokeTraining(703);
+    expect(await service.trainingConsentStatus(703)).toMatchObject({
+      status: 'GRANTED',
+      policyVersion: CURRENT_POLICY,
+      grantedAt: v1.grantedAt,
+    });
+  });
+
+  it('并发败退幂等读回（评审 Important-1）：受控交错迫使 INSERT 命中 ux_consent_active 23505，SAVEPOINT 回退后同事务读回现值（25P02 不再冒出）', async () => {
+    const client = await pool.connect();
+    try {
+      // 竞争者：未提交的活跃授权——对 service 事务不可见（预检必放行），但独占唯一索引等待位
+      await client.query('BEGIN');
+      const competitorAt = new Date();
+      await client.query(
+        `INSERT INTO identity.consents (user_id, scope, status, policy_version, granted_at)
+         VALUES (704, 'training', 'GRANTED', $1, $2)`,
+        [CURRENT_POLICY, competitorAt],
+      );
+
+      const pending = service.grantTraining(704, { policyVersion: CURRENT_POLICY, accept: true });
+      // 确定性交错：service 的 INSERT 阻塞在锁上（预检已过）才放行竞争者——条件等待非固定睡眠
+      await waitForBlockedInsert(pool, 'consents');
+      await client.query('COMMIT');
+
+      const result = await pending; // 修复前：此处抛 25P02（in failed transaction）→ 500 类错误
+      expect(result.status).toBe('GRANTED');
+      expect(result.policyVersion).toBe(CURRENT_POLICY);
+      expect(result.grantedAt).toEqual(competitorAt); // 幂等读回=首访（竞争者）现值，非本方 now()
+      expect(await consentRows(704)).toHaveLength(1);
+      expect(await stlRows(704)).toHaveLength(1); // 守卫痕在 SAVEPOINT 之前，败退 INSERT 无痕
+      expect(await outboxCount(TRAINING_CONSENT_GRANTED_TOPIC)).toBe(0); // 事件归属首访事务，败退方不发
+    } finally {
+      client.release();
+    }
+  });
 });
+
+/** 确定性交错原语：轮询 pg_stat_activity 等 service 的 INSERT 阻塞在锁上（最长 5s，条件等待） */
+async function waitForBlockedInsert(pool: Pool, table: string): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  for (;;) {
+    const res = await pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM pg_stat_activity
+        WHERE wait_event_type = 'Lock' AND query LIKE $1`,
+      [`%INSERT INTO identity.${table}%`],
+    );
+    if ((res.rows[0]?.n ?? 0) > 0) return;
+    if (Date.now() > deadline) {
+      throw new Error(`service 未在 5s 内阻塞到 identity.${table} 的 INSERT（交错前提不成立）`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}

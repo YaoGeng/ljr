@@ -4,8 +4,10 @@
  * 关键流程（§4 状态机 ABSENT→GRANTED→REVOKED，可再 GRANTED=新行）：
  *   授权：policy_version ≠ 当前有效值（R-W2-6 config）→ 409 VERSION_MISMATCH（守卫前拒绝）；
  *         accept=false → 不写任何行/不留痕（R-02 拒绝路径，{status:'ABSENT'}）
- *         → 守卫 ?→GRANTED → INSERT 新行（活跃部分唯一索引 ux_consent_active 兜底并发，
- *         败退方幂等读回现值）→ TrainingConsentGranted 同事务 outbox
+ *         → 幂等键=user+policy_version（该版本已 GRANTED 返回现值；请求版本≠活跃行版本 →
+ *         插新 GRANTED 行旧行不动，ux_consent_active 允许跨版本并行）→ 守卫 ?→GRANTED
+ *         （from 按版本实体：无行 ABSENT / 有行 REVOKED）→ INSERT 新行（SAVEPOINT 兜并发：
+ *         23505 → ROLLBACK TO 后同事务幂等读回，Important-1）→ TrainingConsentGranted 同事务
  *   撤回：现行状态=同 user+scope 最新行；无行/已 REVOKED 幂等短路；GRANTED → 守卫
  *         GRANTED→REVOKED → 原行原位 UPDATE（不另起行）→ TrainingConsentRevoked
  *
@@ -79,8 +81,10 @@ export class ConsentService {
   ) {}
 
   /**
-   * POST /consents/training（幂等键=user+policy_version）：版本闸（R-W2-6）→ 拒绝路径
-   * （R-02：不写行不留痕不降级）→ 守卫迁移 → 新行 + 事件（同版本已 GRANTED 幂等返回现值）。
+   * POST /consents/training（幂等键=user+policy_version，Important-2 版本域定）：版本闸
+   * （R-W2-6）→ 拒绝路径（R-02）→ 幂等判定（该版本已 GRANTED 返回现值；请求版本≠活跃行
+   * 版本 → 插新 GRANTED 行，旧行不动——§4 可再 GRANTED 新 policy_version，ux_consent_active
+   * 结构上允许跨版本并行）→ 守卫迁移 → 新行 + 事件。
    */
   async grantTraining(userId: number, input: TrainingGrantInput): Promise<TrainingGrantResult> {
     if (typeof input.policyVersion !== 'string' || input.policyVersion === '') {
@@ -99,35 +103,51 @@ export class ConsentService {
     }
 
     return this.pool.withTransaction(async (uow) => {
-      const current = await this.latestRow(uow, userId);
-      const currentStatus: ConsentStatus = current?.status ?? 'ABSENT';
-      if (current !== undefined && current.status === 'GRANTED') {
-        // 同 (user, scope) 已 GRANTED：唯一有效版本下必同版本 → 返回现值（幂等，§3 注）
+      // 幂等键=user+policy_version：该版本已有活跃授权 → 返回现值（跨版本并行时各版本独立幂等，
+      // 互不吞并——修复前按「最新行 GRANTED」短路会把升版接受静默吞掉）。单查询同时给出该版本
+      // 实体的现行状态，消除两读竞窗。
+      const versionLatest = await this.latestRowOfVersion(uow, userId, input.policyVersion);
+      if (versionLatest !== undefined && versionLatest.status === 'GRANTED') {
         return {
           status: 'GRANTED',
-          policyVersion: current.policy_version,
-          grantedAt: current.granted_at ?? undefined,
+          policyVersion: versionLatest.policy_version,
+          grantedAt: versionLatest.granted_at ?? undefined,
         };
       }
+      // 版本实体现行状态：该版本无行=ABSENT（首授/跨版本升版），有行必 REVOKED（重授新行）
+      const from: ConsentStatus = versionLatest === undefined ? 'ABSENT' : 'REVOKED';
       await this.guard.assertTransition(CONSENT_MACHINE, {
         entityId: userId,
-        from: currentStatus,
+        from,
         to: 'GRANTED',
         reason: `consent.grant:${TRAINING_SCOPE}:policy=${input.policyVersion}`,
         uow,
       });
-      let grantedAt: Date;
+      await uow.query('SAVEPOINT consent_grant_insert');
       try {
         const inserted = await uow.query<{ granted_at: Date }>(
           `INSERT INTO identity.consents (user_id, scope, status, policy_version, granted_at)
            VALUES ($1, $2, 'GRANTED', $3, now()) RETURNING granted_at`,
           [userId, TRAINING_SCOPE, input.policyVersion],
         );
-        grantedAt = inserted.rows[0]!.granted_at;
+        await uow.query('RELEASE SAVEPOINT consent_grant_insert');
+        const grantedAt = inserted.rows[0]!.granted_at;
+        await this.outbox.recordOutbox(uow, {
+          type: TRAINING_CONSENT_GRANTED_TOPIC,
+          payload: {
+            user_id: userId,
+            policy_version: input.policyVersion,
+          } satisfies TrainingConsentGrantedPayload,
+        });
+        this.logger.log(`consent: training 授权 user_id=${userId} policy=${input.policyVersion}`);
+        return { status: 'GRANTED', policyVersion: input.policyVersion, grantedAt };
       } catch (e) {
         if (!isActiveUniqueViolation(e)) throw e;
-        // 并发双授权：活跃唯一索引败退方幂等读回首访现值
-        const active = await this.activeRow(uow, userId);
+        // 并发同版本双授权：活跃唯一索引败退。23505 后事务已 abort，同 uow 直接读回必 25P02
+        // （Important-1：原实现的「幂等读回」是死代码）——先 ROLLBACK TO SAVEPOINT 解除 abort
+        // 态，再同事务读回首访现值（败退方不发事件，事件归属首访事务）。
+        await uow.query('ROLLBACK TO SAVEPOINT consent_grant_insert');
+        const active = await this.activeRowOfVersion(uow, userId, input.policyVersion);
         if (!active || active.granted_at === null) {
           throw new AppError(ErrorCode.InternalError, '授权并发败退后无活跃行（不应触达）');
         }
@@ -137,15 +157,6 @@ export class ConsentService {
           grantedAt: active.granted_at,
         };
       }
-      await this.outbox.recordOutbox(uow, {
-        type: TRAINING_CONSENT_GRANTED_TOPIC,
-        payload: {
-          user_id: userId,
-          policy_version: input.policyVersion,
-        } satisfies TrainingConsentGrantedPayload,
-      });
-      this.logger.log(`consent: training 授权 user_id=${userId} policy=${input.policyVersion}`);
-      return { status: 'GRANTED', policyVersion: input.policyVersion, grantedAt };
     });
   }
 
@@ -193,7 +204,8 @@ export class ConsentService {
 
   /** GET /consents/training：设置中心授权状态查询（§2 做项，§5 契约表缺口——报告回写项） */
   async trainingConsentStatus(userId: number): Promise<TrainingConsentView> {
-    const row = await this.latestRow(this.pool, userId);
+    // Important-2：跨版本并行授权时「当前同意」取最新 GRANTED 行（无活跃授权才回退最新 REVOKED 行）
+    const row = await this.currentViewRow(this.pool, userId);
     if (!row) return { status: 'ABSENT' };
     return {
       status: row.status,
@@ -203,7 +215,36 @@ export class ConsentService {
     };
   }
 
-  /** 同 user+scope 最新行（现行状态事实源；无行=ABSENT） */
+  /** 该版本最新行（幂等判定 + 版本实体现行状态推导；无行=ABSENT） */
+  private async latestRowOfVersion(
+    uow: SqlExecutor,
+    userId: number,
+    policyVersion: string,
+  ): Promise<ConsentRow | undefined> {
+    const found = await uow.query<ConsentRow>(
+      `SELECT id, status, policy_version, granted_at, revoked_at FROM identity.consents
+        WHERE user_id = $1 AND scope = $2 AND policy_version = $3 ORDER BY id DESC LIMIT 1`,
+      [userId, TRAINING_SCOPE, policyVersion],
+    );
+    return found.rows[0];
+  }
+
+  /** 该版本活跃行（并发败退后的幂等读回） */
+  private async activeRowOfVersion(
+    uow: SqlExecutor,
+    userId: number,
+    policyVersion: string,
+  ): Promise<ConsentRow | undefined> {
+    const found = await uow.query<ConsentRow>(
+      `SELECT id, status, policy_version, granted_at, revoked_at FROM identity.consents
+        WHERE user_id = $1 AND scope = $2 AND policy_version = $3 AND status = 'GRANTED'
+        ORDER BY id DESC LIMIT 1`,
+      [userId, TRAINING_SCOPE, policyVersion],
+    );
+    return found.rows[0];
+  }
+
+  /** 同 user+scope 最新行（撤回目标：授权恒为最新插入的 GRANTED 行原位迁移） */
   private async latestRow(uow: SqlExecutor, userId: number): Promise<ConsentRow | undefined> {
     const found = await uow.query<ConsentRow>(
       `SELECT id, status, policy_version, granted_at, revoked_at FROM identity.consents
@@ -213,11 +254,12 @@ export class ConsentService {
     return found.rows[0];
   }
 
-  /** 活跃行（并发败退后的幂等读回） */
-  private async activeRow(uow: SqlExecutor, userId: number): Promise<ConsentRow | undefined> {
+  /** 状态视图行：最新 GRANTED 行优先（GRANTED 排前），否则最新 REVOKED 行 */
+  private async currentViewRow(uow: SqlExecutor, userId: number): Promise<ConsentRow | undefined> {
     const found = await uow.query<ConsentRow>(
       `SELECT id, status, policy_version, granted_at, revoked_at FROM identity.consents
-        WHERE user_id = $1 AND scope = $2 AND status = 'GRANTED' LIMIT 1`,
+        WHERE user_id = $1 AND scope = $2
+        ORDER BY (status = 'GRANTED') DESC, id DESC LIMIT 1`,
       [userId, TRAINING_SCOPE],
     );
     return found.rows[0];

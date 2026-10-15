@@ -383,4 +383,63 @@ describe('A2 实名领域层（状态机/幂等/受控解密/PII 红线，需 PG
     expect(digest).toMatch(/^[0-9a-f]{64}$/);
     expect(digest).not.toBe(createHash('sha256').update(digest, 'utf8').digest('hex'));
   });
+
+  it('并发败退幂等读回（评审 Important-1）：受控交错迫使 INSERT 命中 user 唯一 23505，SAVEPOINT 回退后同事务读回现值（25P02 不再冒出）', async () => {
+    const client = await pool.connect();
+    try {
+      // 竞争者：未提交的实名行——对 service 事务不可见（预检/守卫必放行），但独占唯一索引等待位
+      await client.query('BEGIN');
+      const competitorAt = new Date();
+      await client.query(
+        `INSERT INTO identity.real_name_infos (user_id, verify_provider, verify_token_digest, verified_at)
+         VALUES (511, 'MOCK', $1, $2)`,
+        ['a'.repeat(64), competitorAt],
+      );
+
+      const pending = service.submitRealname(511, { name: '张三', idNo: VALID_ID_NO });
+      // 确定性交错：service 的 INSERT 阻塞在锁上（预检+双守卫已过）才放行竞争者——条件等待非固定睡眠
+      await waitForBlockedInsert(pool, 'real_name_infos');
+      await client.query('COMMIT');
+
+      const result = await pending; // 修复前：此处抛 25P02（in failed transaction）→ 500 类错误
+      expect(result.status).toBe('VERIFIED');
+      expect(result.verifiedAt).toEqual(competitorAt); // 幂等读回=首访（竞争者）现值，非本方 now()
+      expect(provider.calls).toBe(1); // 本方核验已执行，败退只发生在落行点
+
+      const rows = await pool.query<{ n: number }>(
+        'SELECT count(*)::int AS n FROM identity.real_name_infos WHERE user_id = $1',
+        [511],
+      );
+      expect(rows.rows[0]?.n).toBe(1);
+      // 守卫痕在 SAVEPOINT 之前全部存活；败退 INSERT 无额外留痕、事件归属首访事务
+      expect(await stlRows(511)).toEqual([
+        { from_status: 'NONE', to_status: 'PENDING', allowed: true },
+        { from_status: 'PENDING', to_status: 'VERIFIED', allowed: true },
+      ]);
+      const evt = await pool.query<{ n: number }>(
+        'SELECT count(*)::int AS n FROM platform.outbox WHERE topic = $1',
+        [REAL_NAME_VERIFIED_TOPIC],
+      );
+      expect(evt.rows[0]?.n).toBe(0);
+    } finally {
+      client.release();
+    }
+  });
 });
+
+/** 确定性交错原语：轮询 pg_stat_activity 等 service 的 INSERT 阻塞在锁上（最长 5s，条件等待） */
+async function waitForBlockedInsert(pool: Pool, table: string): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  for (;;) {
+    const res = await pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM pg_stat_activity
+        WHERE wait_event_type = 'Lock' AND query LIKE $1`,
+      [`%INSERT INTO identity.${table}%`],
+    );
+    if ((res.rows[0]?.n ?? 0) > 0) return;
+    if (Date.now() > deadline) {
+      throw new Error(`service 未在 5s 内阻塞到 identity.${table} 的 INSERT（交错前提不成立）`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}

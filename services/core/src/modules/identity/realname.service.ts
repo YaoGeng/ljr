@@ -124,16 +124,19 @@ export class RealnameService {
           reason: `realname.passed:${this.provider.kind}`,
           uow,
         });
-        const verifiedAt = await this.insertVerifiedRow(uow, userId, idNo, name, verdict.token);
-        await this.outbox.recordOutbox(uow, {
-          type: REAL_NAME_VERIFIED_TOPIC,
-          payload: { user_id: userId } satisfies RealNameVerifiedPayload,
-        });
-        // PII 红线：日志只记 user_id 与摘要前缀，姓名/证件号不落日志
-        this.logger.log(
-          `realname: 核验通过 user_id=${userId} provider=${this.provider.kind} token_digest=${sha256Hex(verdict.token).slice(0, 8)}…`,
-        );
-        return { status: 'VERIFIED', verifiedAt };
+        const inserted = await this.insertVerifiedRow(uow, userId, idNo, name, verdict.token);
+        if (inserted.wonRace) {
+          // 事件归属首访事务：并发败退方不再发（同一次核验单事件，消费侧 at-least-once 不背重复）
+          await this.outbox.recordOutbox(uow, {
+            type: REAL_NAME_VERIFIED_TOPIC,
+            payload: { user_id: userId } satisfies RealNameVerifiedPayload,
+          });
+          // PII 红线：日志只记 user_id 与摘要前缀，姓名/证件号不落日志
+          this.logger.log(
+            `realname: 核验通过 user_id=${userId} provider=${this.provider.kind} token_digest=${sha256Hex(verdict.token).slice(0, 8)}…`,
+          );
+        }
+        return { status: 'VERIFIED', verifiedAt: inserted.verifiedAt };
       }
 
       await this.guard.assertTransition(REALNAME_MACHINE, {
@@ -229,15 +232,16 @@ export class RealnameService {
     return last.rows[0]?.to_status ?? 'NONE';
   }
 
-  /** 核验通过落行（默认仅摘要；留存开启才写密文列——R-04 密文最小化） */
+  /** 核验通过落行结果：verifiedAt 恒为首访现值；wonRace=false=并发败退（首访事务已落行并发事件） */
   private async insertVerifiedRow(
     uow: SqlExecutor,
     userId: number,
     idNo: string,
     name: string,
     token: string,
-  ): Promise<Date> {
+  ): Promise<{ verifiedAt: Date; wonRace: boolean }> {
     const digest = sha256Hex(token);
+    await uow.query('SAVEPOINT realname_verified_insert');
     try {
       const inserted = await uow.query<{ verified_at: Date }>(
         `INSERT INTO identity.real_name_infos (user_id, verify_provider, verify_token_digest, name_enc, id_no_enc, verified_at)
@@ -250,14 +254,19 @@ export class RealnameService {
           this.config.retainIdentityText ? this.crypto.encryptIdentityField(idNo) : null,
         ],
       );
-      return inserted.rows[0]!.verified_at;
+      await uow.query('RELEASE SAVEPOINT realname_verified_insert');
+      return { verifiedAt: inserted.rows[0]!.verified_at, wonRace: true };
     } catch (e) {
-      if (isUniqueViolation(e)) {
-        // 并发双提交：唯一约束败退方幂等读回首访现值（事务继续提交，仅 STL 多一行同向留痕）
-        const row = await this.verifiedRowOf(uow, userId);
-        if (row) return row.verified_at;
+      if (!isUniqueViolation(e)) throw e;
+      // 并发双提交：user 唯一约束败退。23505 后事务已 abort，同 uow 直接读回必 25P02
+      // （Important-1：原实现的「幂等读回」是死代码）——先 ROLLBACK TO SAVEPOINT 解除 abort 态，
+      // 再同事务读回首访现值；事务继续提交（仅 STL 多一行同向守卫留痕），事件由首访事务发。
+      await uow.query('ROLLBACK TO SAVEPOINT realname_verified_insert');
+      const row = await this.verifiedRowOf(uow, userId);
+      if (!row) {
+        throw new AppError(ErrorCode.InternalError, '实名并发败退后无现值行（不应触达）');
       }
-      throw e;
+      return { verifiedAt: row.verified_at, wonRace: false };
     }
   }
 }
