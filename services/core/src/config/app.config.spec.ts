@@ -105,15 +105,17 @@ describe('密钥红线（ENV_ONLY_KEYS 机器强制）', () => {
       resolveAppConfig(sources({ env: { LJR_ENV: 'prod', LJR_PG_PASSWORD: password } })),
     ).toThrowError(expect.objectContaining({ code: ErrorCode.ConfigMissing }) as AppError);
     expect(() =>
-      resolveAppConfig(sources({
-        env: {
-          LJR_ENV: 'staging',
-          LJR_PG_PASSWORD: password,
-          LJR_AUTH_JWT_SECRET: randomPassword(),
-          LJR_IDENTITY_PHONE_BLIND_PEPPER: randomPassword(),
-        },
-        file: {},
-      })),
+      resolveAppConfig(
+        sources({
+          env: {
+            LJR_ENV: 'staging',
+            LJR_PG_PASSWORD: password,
+            LJR_AUTH_JWT_SECRET: randomPassword(),
+            LJR_IDENTITY_PHONE_BLIND_PEPPER: randomPassword(),
+          },
+          file: {},
+        }),
+      ),
     ).toThrowError(expect.objectContaining({ code: ErrorCode.ConfigMissing }) as AppError);
   });
 
@@ -121,16 +123,18 @@ describe('密钥红线（ENV_ONLY_KEYS 机器强制）', () => {
     const jwt = randomPassword();
     const pepper = randomPassword();
     const dataKey = Buffer.from(randomUUID()).toString('base64');
-    const cfg = resolveAppConfig(sources({
-      env: {
-        LJR_ENV: 'prod',
-        LJR_PG_PASSWORD: randomPassword(),
-        LJR_AUTH_JWT_SECRET: jwt,
-        LJR_IDENTITY_PHONE_BLIND_PEPPER: pepper,
-        LJR_IDENTITY_PHONE_DATA_KEY: dataKey,
-      },
-      file: {},
-    }));
+    const cfg = resolveAppConfig(
+      sources({
+        env: {
+          LJR_ENV: 'prod',
+          LJR_PG_PASSWORD: randomPassword(),
+          LJR_AUTH_JWT_SECRET: jwt,
+          LJR_IDENTITY_PHONE_BLIND_PEPPER: pepper,
+          LJR_IDENTITY_PHONE_DATA_KEY: dataKey,
+        },
+        file: {},
+      }),
+    );
     expect(cfg.identity.jwtSecret).toBe(jwt);
     expect(cfg.identity.phoneBlindPepper).toBe(pepper);
     expect(cfg.identity.phoneDataKey).toBe(dataKey);
@@ -143,25 +147,29 @@ describe('密钥红线（ENV_ONLY_KEYS 机器强制）', () => {
     // dev 默认数据密钥可解出 32 字节（AES-256）
     expect(Buffer.from(cfg.identity.phoneDataKey, 'base64')).toHaveLength(32);
     // 且与显式注入值可区分（同 env 两次解析派生值稳定，换值即刻不同）
-    const cfg2 = resolveAppConfig(sources({
-      env: devEnv({ LJR_AUTH_JWT_SECRET: randomPassword() }),
-    }));
+    const cfg2 = resolveAppConfig(
+      sources({
+        env: devEnv({ LJR_AUTH_JWT_SECRET: randomPassword() }),
+      }),
+    );
     expect(cfg2.identity.jwtSecret).not.toBe(cfg.identity.jwtSecret);
     expect(cfg2.identity.phoneBlindPepper).toBe(cfg.identity.phoneBlindPepper);
   });
 
   it('非 dev 经 env 注入口令则通过；redis 口令非 dev 不落占位默认', () => {
     const password = randomPassword();
-    const cfg = resolveAppConfig(sources({
-      // M1-W2 起 prod 必须注入 identity 三密钥（A1 R-W2-11）——fixture 随契约补齐
-      env: {
-        LJR_ENV: 'prod',
-        LJR_PG_PASSWORD: password,
-        LJR_IDENTITY_PHONE_DATA_KEY: Buffer.from(randomUUID()).toString('base64'),
-        LJR_IDENTITY_PHONE_BLIND_PEPPER: randomPassword(),
-        LJR_AUTH_JWT_SECRET: randomPassword(),
-      },
-    }));
+    const cfg = resolveAppConfig(
+      sources({
+        // M1-W2 起 prod 必须注入 identity 三密钥（A1 R-W2-11）——fixture 随契约补齐
+        env: {
+          LJR_ENV: 'prod',
+          LJR_PG_PASSWORD: password,
+          LJR_IDENTITY_PHONE_DATA_KEY: Buffer.from(randomUUID()).toString('base64'),
+          LJR_IDENTITY_PHONE_BLIND_PEPPER: randomPassword(),
+          LJR_AUTH_JWT_SECRET: randomPassword(),
+        },
+      }),
+    );
     expect(cfg.pg.password).toBe(password);
     expect(cfg.redis.password).toBeUndefined();
   });

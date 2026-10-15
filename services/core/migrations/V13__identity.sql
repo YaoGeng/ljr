@@ -79,7 +79,7 @@ COMMENT ON TABLE identity.refresh_tokens IS 'A1 refresh token 台账：sha256 �
 CREATE TABLE IF NOT EXISTS identity.verify_codes (
     id              bigserial   PRIMARY KEY,
     phone_blind_idx char(64)    NOT NULL,
-                      -- 与 users.phone_blind_idx 同口径（HMAC 盲索引），验证码记录不存明文手机号
+                      -- 与 identity.users 同名列同口径（HMAC 盲索引），验证码记录不存明文手机号
     code_hash       char(64)    NOT NULL,
                       -- sha256(code + ':' + phone_blind_idx) hex64：明文验证码不落库
     expires_at      timestamptz NOT NULL,
