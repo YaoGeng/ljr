@@ -76,10 +76,7 @@ export class IdentityCryptoService {
   /** 通用身份字段解密（A2 受控解密出口；列名入错文提示，定位数据损坏现场） */
   decryptIdentityField(blob: Buffer, column: string): string {
     if (blob.length < 1 + IV_BYTES + TAG_BYTES || blob[0] !== ENC_VERSION) {
-      throw new AppError(
-        ErrorCode.InternalError,
-        `${column} 密文格式非法（版本位/长度不符）`,
-      );
+      throw new AppError(ErrorCode.InternalError, `${column} 密文格式非法（版本位/长度不符）`);
     }
     const iv = blob.subarray(1, 1 + IV_BYTES);
     const tag = blob.subarray(1 + IV_BYTES, 1 + IV_BYTES + TAG_BYTES);

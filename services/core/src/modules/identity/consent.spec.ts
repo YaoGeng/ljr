@@ -40,7 +40,13 @@ describe('A2 同意领域层（训练授权/撤回/幂等/版本闸，需 PG）'
   let guard: StateTransitionGuardService;
 
   async function consentRows(userId: number): Promise<
-    { id: string; status: string; policy_version: string; granted_at: Date | null; revoked_at: Date | null }[]
+    {
+      id: string;
+      status: string;
+      policy_version: string;
+      granted_at: Date | null;
+      revoked_at: Date | null;
+    }[]
   > {
     const res = await pool.query<{
       id: string;
@@ -56,7 +62,9 @@ describe('A2 同意领域层（训练授权/撤回/幂等/版本闸，需 PG）'
     return res.rows;
   }
 
-  async function stlRows(entityId: number): Promise<{ from_status: string; to_status: string; allowed: boolean }[]> {
+  async function stlRows(
+    entityId: number,
+  ): Promise<{ from_status: string; to_status: string; allowed: boolean }[]> {
     const res = await pool.query<{
       from_status: string;
       to_status: string;
@@ -160,7 +168,10 @@ describe('A2 同意领域层（训练授权/撤回/幂等/版本闸，需 PG）'
 
   it('幂等键=user+policy_version：同版本重复授权返回现值（同 granted_at），不新增行/留痕/事件（§10-5 前半）', async () => {
     const first = await service.grantTraining(604, { policyVersion: CURRENT_POLICY, accept: true });
-    const second = await service.grantTraining(604, { policyVersion: CURRENT_POLICY, accept: true });
+    const second = await service.grantTraining(604, {
+      policyVersion: CURRENT_POLICY,
+      accept: true,
+    });
     expect(second.status).toBe('GRANTED');
     expect(second.grantedAt).toEqual(first.grantedAt);
     expect(await consentRows(604)).toHaveLength(1);
@@ -205,7 +216,10 @@ describe('A2 同意领域层（训练授权/撤回/幂等/版本闸，需 PG）'
     const first = await service.grantTraining(606, { policyVersion: CURRENT_POLICY, accept: true });
     await service.revokeTraining(606);
 
-    const reGrant = await service.grantTraining(606, { policyVersion: CURRENT_POLICY, accept: true });
+    const reGrant = await service.grantTraining(606, {
+      policyVersion: CURRENT_POLICY,
+      accept: true,
+    });
     expect(reGrant.status).toBe('GRANTED');
     expect(reGrant.grantedAt!.getTime()).toBeGreaterThanOrEqual(first.grantedAt!.getTime());
 
@@ -235,7 +249,10 @@ describe('A2 同意领域层（训练授权/撤回/幂等/版本闸，需 PG）'
     expect(await outboxCount(TRAINING_CONSENT_REVOKED_TOPIC)).toBe(0);
 
     expect(await service.trainingConsentStatus(607)).toEqual({ status: 'ABSENT' });
-    const granted = await service.grantTraining(607, { policyVersion: CURRENT_POLICY, accept: true });
+    const granted = await service.grantTraining(607, {
+      policyVersion: CURRENT_POLICY,
+      accept: true,
+    });
     expect(await service.trainingConsentStatus(607)).toEqual({
       status: 'GRANTED',
       policyVersion: CURRENT_POLICY,

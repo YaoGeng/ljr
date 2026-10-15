@@ -22,7 +22,8 @@ export const CONSENT_DEFAULT_CONFIG: ConsentConfig = {
 
 export function consentConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ConsentConfig {
   const raw = env['LJR_CONSENT_TRAINING_POLICY_VERSION'];
-  const version = raw !== undefined && raw !== '' ? raw : CONSENT_DEFAULT_CONFIG.trainingPolicyVersion;
+  const version =
+    raw !== undefined && raw !== '' ? raw : CONSENT_DEFAULT_CONFIG.trainingPolicyVersion;
   if (!/^[a-zA-Z0-9.-]{1,16}$/.test(version)) {
     throw new AppError(
       ErrorCode.ConfigInvalid,

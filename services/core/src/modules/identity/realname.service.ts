@@ -207,10 +207,7 @@ export class RealnameService {
   }
 
   /** VERIFIED 行（现值事实源：user_id 唯一，一账号至多一条） */
-  private async verifiedRowOf(
-    exec: SqlExecutor,
-    userId: number,
-  ): Promise<RealnameRow | undefined> {
+  private async verifiedRowOf(exec: SqlExecutor, userId: number): Promise<RealnameRow | undefined> {
     const found = await exec.query<RealnameRow>(
       `SELECT verified_at, name_enc, id_no_enc FROM identity.real_name_infos WHERE user_id = $1`,
       [userId],

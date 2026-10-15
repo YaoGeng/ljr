@@ -131,7 +131,11 @@ export class ConsentService {
         if (!active || active.granted_at === null) {
           throw new AppError(ErrorCode.InternalError, '授权并发败退后无活跃行（不应触达）');
         }
-        return { status: 'GRANTED', policyVersion: active.policy_version, grantedAt: active.granted_at };
+        return {
+          status: 'GRANTED',
+          policyVersion: active.policy_version,
+          grantedAt: active.granted_at,
+        };
       }
       await this.outbox.recordOutbox(uow, {
         type: TRAINING_CONSENT_GRANTED_TOPIC,

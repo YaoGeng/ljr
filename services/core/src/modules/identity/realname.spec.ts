@@ -4,13 +4,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { Logger, type INestApplication, type LoggerService } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { Pool } from 'pg';
-import {
-  ErrorCode,
-  REAL_NAME_VERIFIED_TOPIC,
-  type RealNameVerifiedPayload,
-} from '@ljr/shared';
+import { ErrorCode, REAL_NAME_VERIFIED_TOPIC, type RealNameVerifiedPayload } from '@ljr/shared';
 import { StateTransitionGuardService } from '../../infrastructure/state-machine/state-transition-guard.service';
-import { PgPoolService } from '../../infrastructure/sql';
 import { ensureTestDatabase, truncateAll } from '../../infrastructure/testing/db';
 import { IDENTITY_CONFIG, type IdentityConfig } from './identity.config';
 import { IdentityCryptoService } from './identity.crypto';
@@ -79,7 +74,9 @@ describe('A2 实名领域层（状态机/幂等/受控解密/PII 红线，需 PG
     return Number(res.rows[0]!.id);
   }
 
-  async function stlRows(entityId: number): Promise<{ from_status: string; to_status: string; allowed: boolean }[]> {
+  async function stlRows(
+    entityId: number,
+  ): Promise<{ from_status: string; to_status: string; allowed: boolean }[]> {
     const res = await pool.query<{
       from_status: string;
       to_status: string;
@@ -174,7 +171,9 @@ describe('A2 实名领域层（状态机/幂等/受控解密/PII 红线，需 PG
   });
 
   it('400 INVALID_ID 形态闸：空姓名/非 18 位证件 → 400，不触达通道、无状态迁移留痕', async () => {
-    await expect(service.submitRealname(502, { name: '  ', idNo: VALID_ID_NO })).rejects.toMatchObject({
+    await expect(
+      service.submitRealname(502, { name: '  ', idNo: VALID_ID_NO }),
+    ).rejects.toMatchObject({
       code: ErrorCode.InvalidId,
       httpStatus: 400,
     });
