@@ -298,6 +298,36 @@ describe('B1 时间表管理（REST 契约 + R-01/R-02/R-03 + 状态视图缓存
     ]);
   });
 
+  it('§10-2 禁用（enabled=false）：加锁后禁用模板 → slot_locks 照常活跃；物化不再产该候选；视图仍见已锁场次', async () => {
+    const put = await putSchedule(LAWYER_B, {
+      version: 0,
+      templates: [{ weekday: 1, start_time: '10:00', duration_small: 60 }],
+    });
+    expect(put.status).toBe(200);
+    const locked = await lock(LAWYER_B, new Date(MON_10));
+    expect(locked.ok).toBe(true);
+
+    // 禁用（保留行，enabled=false——与「删除」殊途同归：都不影响既有锁）
+    const disabled = await putSchedule(LAWYER_B, {
+      version: 1,
+      templates: [{ weekday: 1, start_time: '10:00', duration_small: 60, enabled: false }],
+    });
+    expect(disabled.status).toBe(200);
+    expect(disabled.body.templates[0]).toMatchObject({ enabled: false });
+
+    // 既有 slot_locks 照常活跃（R-01/§10-2 核心断言）
+    const locks = await activeLocks(LAWYER_B);
+    expect(locks).toHaveLength(1);
+    expect(locks[0]!.status).toBe('LOCKED');
+
+    // 未来物化不再产候选；视图仍见已锁场次
+    expect(await service.materializeSlots(LAWYER_B, MONDAY)).toEqual([]);
+    const res = await getSlots(LAWYER_B, MONDAY, MONDAY);
+    expect(res.body).toEqual([
+      { slot_start: MON_10, status: 'LOCKED', ref: { ref_type: 'session', ref_id: 7001 } },
+    ]);
+  });
+
   // ---------- R-02：模板不参与唯一约束；物化不落库 ----------
 
   it('R-02：同段双模板 PUT 成功（无唯一约束）→ materializeSlots 产两个同刻候选；物化前后表计数不变（不落库）', async () => {
