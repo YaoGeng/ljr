@@ -38,6 +38,25 @@ describe('错误码契约（ErrorCode 常量表 + AppError{code,httpStatus}）',
     expect(new AppError(ErrorCode.ConfigInvalid).httpStatus).toBe(500);
   });
 
+  it('A1 身份错误码（M1-W2 §5）：限频 429 / 验证码与登录态 401 / 角色与封禁 403 / 年龄声明 400', () => {
+    expect(ErrorCode.RateLimited).toBe('E_RATE_LIMITED');
+    expect(new AppError(ErrorCode.RateLimited).httpStatus).toBe(429);
+    expect(ErrorCode.CodeInvalid).toBe('E_CODE_INVALID');
+    expect(new AppError(ErrorCode.CodeInvalid).httpStatus).toBe(401);
+    expect(ErrorCode.RefreshExpired).toBe('E_REFRESH_EXPIRED');
+    expect(new AppError(ErrorCode.RefreshExpired).httpStatus).toBe(401);
+    expect(ErrorCode.RoleNotHeld).toBe('E_ROLE_NOT_HELD');
+    expect(new AppError(ErrorCode.RoleNotHeld).httpStatus).toBe(403);
+    expect(ErrorCode.AgeDeclarationRequired).toBe('E_AGE_DECLARATION_REQUIRED');
+    expect(new AppError(ErrorCode.AgeDeclarationRequired).httpStatus).toBe(400);
+    expect(ErrorCode.AccountBanned).toBe('E_ACCOUNT_BANNED');
+    expect(new AppError(ErrorCode.AccountBanned).httpStatus).toBe(403);
+    expect(ErrorCode.RoleForbidden).toBe('E_ROLE_FORBIDDEN');
+    expect(new AppError(ErrorCode.RoleForbidden).httpStatus).toBe(403);
+    expect(ErrorCode.Unauthorized).toBe('E_UNAUTHORIZED');
+    expect(new AppError(ErrorCode.Unauthorized).httpStatus).toBe(401);
+  });
+
   it('isAppError 类型收窄', () => {
     expect(isAppError(new AppError(ErrorCode.Conflict))).toBe(true);
     expect(isAppError(new Error('plain'))).toBe(false);

@@ -42,6 +42,22 @@ export const ErrorCode = {
   KnowledgeBadFormat: 'E_BAD_FORMAT',
   /** E3 问题树结构校验不通过：root/节点引用/连通性/环检测等（§5 400 INVALID_TREE） */
   InvalidQuestionTree: 'E_INVALID_TREE',
+  /** A1 验证码限频拒绝：同号 60s/1h/1d 三窗任一触顶（A1 §5 429 RATE_LIMITED，R-01 承接 I1 R-02） */
+  RateLimited: 'E_RATE_LIMITED',
+  /** A1 验证码无效/过期/已消费/重放（A1 §5 401 CODE_INVALID） */
+  CodeInvalid: 'E_CODE_INVALID',
+  /** A1 refresh_token 无效/过期/已吊销（A1 §5 401 REFRESH_EXPIRED；吊销即时生效 R-W2-4） */
+  RefreshExpired: 'E_REFRESH_EXPIRED',
+  /** A1 目标角色未授予：switch-role 校验 user_roles 不含目标角色（A1 §5 403 ROLE_NOT_HELD） */
+  RoleNotHeld: 'E_ROLE_NOT_HELD',
+  /** A1 R-04 年龄声明缺失：新建号 age_declared 非 true 拒绝完成注册（裁决 R-W2-C，400） */
+  AgeDeclarationRequired: 'E_AGE_DECLARATION_REQUIRED',
+  /** A1 账号不可登录：BANNED/DELETING（§5 未列，最小自定 403；DELETING 细分语义随 A4=M4 细化） */
+  AccountBanned: 'E_ACCOUNT_BANNED',
+  /** A1 R-03 角色不符：claims.role 与接口要求角色不一致（律师端拒 user token / 用户端拒 lawyer token） */
+  RoleForbidden: 'E_ROLE_FORBIDDEN',
+  /** A1 未认证：缺 Bearer / JWT 无效或过期（A1 §5 GET /me 401 未具名，最小自定） */
+  Unauthorized: 'E_UNAUTHORIZED',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -107,6 +123,38 @@ const ERROR_CODE_META: Readonly<Record<ErrorCode, ErrorCodeMeta>> = {
   [ErrorCode.InvalidQuestionTree]: {
     httpStatus: 400,
     defaultMessage: '问题树结构校验不通过（root/节点引用/连通性/环）',
+  },
+  [ErrorCode.RateLimited]: {
+    httpStatus: 429,
+    defaultMessage: '请求过于频繁，请稍后再试',
+  },
+  [ErrorCode.CodeInvalid]: {
+    httpStatus: 401,
+    defaultMessage: '验证码无效或已过期',
+  },
+  [ErrorCode.RefreshExpired]: {
+    httpStatus: 401,
+    defaultMessage: '登录态已失效，请重新登录',
+  },
+  [ErrorCode.RoleNotHeld]: {
+    httpStatus: 403,
+    defaultMessage: '目标角色未授予',
+  },
+  [ErrorCode.AgeDeclarationRequired]: {
+    httpStatus: 400,
+    defaultMessage: '须先勾选年龄声明（已满 14 周岁或不满 14 已获监护人同意）',
+  },
+  [ErrorCode.AccountBanned]: {
+    httpStatus: 403,
+    defaultMessage: '账号当前不可登录',
+  },
+  [ErrorCode.RoleForbidden]: {
+    httpStatus: 403,
+    defaultMessage: '当前角色无权访问该接口',
+  },
+  [ErrorCode.Unauthorized]: {
+    httpStatus: 401,
+    defaultMessage: '未认证或凭证无效',
   },
 };
 
