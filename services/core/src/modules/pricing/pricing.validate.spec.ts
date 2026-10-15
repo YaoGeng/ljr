@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AppError, ErrorCode, isAppError } from '@ljr/shared';
+import { ErrorCode, isAppError } from '@ljr/shared';
 import type { PutPricingInput } from './pricing.types';
 import { moneyToCents, normalizePricingWrite } from './pricing.validate';
 
@@ -185,12 +185,12 @@ describe('B3 写入校验：room_modes 多选形态', () => {
     expect(codeOf(() => normalizePricingWrite(validInput({ room_modes: ['text', 'text'] })))).toBe(
       ErrorCode.InvalidArgument,
     );
-    expect(
-      codeOf(() => normalizePricingWrite(validInput({ room_modes: ['fax'] as never }))),
-    ).toBe(ErrorCode.InvalidArgument);
-    expect(
-      codeOf(() => normalizePricingWrite(validInput({ room_modes: 'text' as never }))),
-    ).toBe(ErrorCode.InvalidArgument);
+    expect(codeOf(() => normalizePricingWrite(validInput({ room_modes: ['fax'] as never })))).toBe(
+      ErrorCode.InvalidArgument,
+    );
+    expect(codeOf(() => normalizePricingWrite(validInput({ room_modes: 'text' as never })))).toBe(
+      ErrorCode.InvalidArgument,
+    );
     expect(
       normalizePricingWrite(validInput({ room_modes: ['video', 'text', 'voice'] })).room_modes,
     ).toEqual(['video', 'text', 'voice']);
