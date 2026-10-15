@@ -1,6 +1,8 @@
 /**
  * I1 HTTP 面共用件：AppError → HTTP 错误体的模块内过滤器 + 入参解析。
- * 身份接线 ⚠决策位：A1（W2）未落位，user_id 暂经 query 注入；claims/token 校验随 A1 接入后替换。
+ * 身份接线（W2 交接 4-B，A1 落地）：用户面 user_id 改由 JWT claims 注入
+ * （identity 模块的 IdentityAuthGuard/IdentityRoleGuard/CurrentIdentity 承接），
+ * 本文件不再做 user_id 解析；admin 面控制器不动（鉴权占位延续 W1 共性）。
  */
 import { Catch, type ArgumentsHost, type ExceptionFilter } from '@nestjs/common';
 import { AppError, ErrorCode } from '@ljr/shared';
@@ -16,17 +18,6 @@ export class NotifyHttpExceptionFilter implements ExceptionFilter {
     const res = host.switchToHttp().getResponse<HttpResponse>();
     res.status(exception.httpStatus).json({ code: exception.code, message: exception.message });
   }
-}
-
-export function parseUserId(raw: string | undefined): number {
-  const n = Number(raw);
-  if (raw === undefined || raw === '' || !Number.isInteger(n) || n <= 0) {
-    throw new AppError(
-      ErrorCode.InvalidArgument,
-      `user_id 必须为正整数：${JSON.stringify(raw ?? null)}`,
-    );
-  }
-  return n;
 }
 
 export interface PrefsPutItem {

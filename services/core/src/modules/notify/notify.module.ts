@@ -5,6 +5,7 @@
  */
 import { Module } from '@nestjs/common';
 import { InfrastructureModule } from '../../infrastructure/infrastructure.module';
+import { IdentityAuthModule } from '../identity/identity-auth.module';
 import { NotificationPrefsController } from './notification-prefs.controller';
 import { NotificationsController } from './notifications.controller';
 import {
@@ -22,7 +23,8 @@ import { NotifyTemplateService } from './notify-template.service';
 import { VerifyCodeRateLimiter } from './verify-code-rate-limiter.service';
 
 @Module({
-  imports: [InfrastructureModule],
+  // IdentityAuthModule（叶子模块，无循环）：I1 用户面 REST 的身份由 A1 JWT 守卫承接（W2 交接 4-B）
+  imports: [InfrastructureModule, IdentityAuthModule],
   controllers: [NotificationsController, NotificationPrefsController],
   providers: [
     NotifyTemplateService,
