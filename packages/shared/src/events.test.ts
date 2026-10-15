@@ -145,15 +145,25 @@ describe('G1 信用体系事件契约（M1-W2）：生产 2 + 消费 5（消费�
     expect(payload.result).toBe('absent');
   });
 
-  it('SessionCancelled：topic=fulfillment.session.cancelled，{session_id, cancelled_by, cancelled_at, session_start_at}', () => {
+  it('SessionCancelled：topic=fulfillment.session.cancelled，{session_id, cancelled_by, cancelled_by_user_id, cancelled_at, session_start_at}', () => {
     expect(SESSION_CANCELLED_TOPIC).toBe('fulfillment.session.cancelled');
     const payload: SessionCancelledPayload = {
       session_id: 41,
       cancelled_by: 'lawyer',
+      cancelled_by_user_id: 9101,
       cancelled_at: '2026-10-16T10:00:00.000Z',
       session_start_at: '2026-10-18T20:00:00.000Z',
     };
     expect(payload.cancelled_by).toBe('lawyer');
+    expect(payload.cancelled_by_user_id).toBe(9101);
+    const platform: SessionCancelledPayload = {
+      session_id: 42,
+      cancelled_by: 'platform',
+      cancelled_by_user_id: null,
+      cancelled_at: '2026-10-16T10:00:00.000Z',
+      session_start_at: '2026-10-18T20:00:00.000Z',
+    };
+    expect(platform.cancelled_by_user_id).toBeNull();
   });
 
   it('ReviewSubmitted：topic=review.review.submitted，{session_id, direction, dims, reviewee_user_id}', () => {

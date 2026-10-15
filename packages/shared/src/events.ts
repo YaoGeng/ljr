@@ -172,12 +172,15 @@ export interface AttendanceAdjudicatedPayload {
 }
 
 /** 场次取消（D4 §6 生产 → G1/F2/F3/I1 消费；platform 取消无信用影响（PRD §8.7），G1 跳过）。
- *  取消档位（用户 2h/律师 24h，PRD §8.7/§8.8）由 G1 按 cancelled_at 与 session_start_at 差值归类。 */
+ *  取消档位（用户 2h/律师 24h，PRD §8.7/§8.8）由 G1 按 cancelled_at 与 session_start_at 差值归类；
+ *  cancelled_by_user_id=取消方账号（lawyer 取消时=律师 identity 侧用户 id；platform 取消为 null）。 */
 export const SESSION_CANCELLED_TOPIC = 'fulfillment.session.cancelled';
 
 export interface SessionCancelledPayload {
   readonly session_id: number;
   readonly cancelled_by: 'user' | 'lawyer' | 'platform';
+  /** 取消方账号（G1 定位信用 owner；platform 取消=null） */
+  readonly cancelled_by_user_id: number | null;
   /** 取消时刻（ISO 8601） */
   readonly cancelled_at: string;
   /** 约定开始时刻（ISO 8601；§8.7 档位判定锚点） */
