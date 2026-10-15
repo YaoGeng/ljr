@@ -1,5 +1,7 @@
 /**
  * A1 手机号加密与盲索引（裁决 R-W2-11/R-W2-12，lj-data-security 执行层）。
+ * A2 增补（M1-W2）：encryptIdentityField/decryptIdentityField 通用字段形态——name_enc/
+ * id_no_enc 与 phone_enc 同一套信封密钥体系（简报复用勿复制口径），原方法委托同实现。
  *
  * - 列加密：AES-256-GCM（node:crypto），信封=「01 版本位 + iv(12B) + auth tag(16B) + 密文」；
  *   mock KMS 口径——数据密钥经 env 注入（dev-only 派生默认），prod 前整体换装真 KMS
@@ -52,16 +54,32 @@ export class IdentityCryptoService {
 
   /** 列加密：01 + iv(12) + tag(16) + AES-256-GCM 密文（每次加密独立 iv） */
   encryptPhone(phone: string): Buffer {
-    const iv = randomBytes(IV_BYTES);
-    const cipher = createCipheriv('aes-256-gcm', this.config.phoneDataKey, iv);
-    const ct = Buffer.concat([cipher.update(phone, 'utf8'), cipher.final()]);
-    return Buffer.concat([Buffer.from([ENC_VERSION]), iv, cipher.getAuthTag(), ct]);
+    return this.encryptIdentityField(phone);
   }
 
   /** 列解密：版本位/长度不符即 E_INTERNAL（数据损坏或非本模块密文，不静默） */
   decryptPhone(blob: Buffer): string {
+    return this.decryptIdentityField(blob, 'phone_enc');
+  }
+
+  /**
+   * 通用身份字段加密（A2 增补，信封与密钥同 phone_enc 一套）：name_enc/id_no_enc 落库形态。
+   * 明文禁落日志/载荷/文本列——调用方只许持有本返回值（bytea）与 sha256 摘要。
+   */
+  encryptIdentityField(plaintext: string): Buffer {
+    const iv = randomBytes(IV_BYTES);
+    const cipher = createCipheriv('aes-256-gcm', this.config.phoneDataKey, iv);
+    const ct = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+    return Buffer.concat([Buffer.from([ENC_VERSION]), iv, cipher.getAuthTag(), ct]);
+  }
+
+  /** 通用身份字段解密（A2 受控解密出口；列名入错文提示，定位数据损坏现场） */
+  decryptIdentityField(blob: Buffer, column: string): string {
     if (blob.length < 1 + IV_BYTES + TAG_BYTES || blob[0] !== ENC_VERSION) {
-      throw new AppError(ErrorCode.InternalError, 'phone_enc 密文格式非法（版本位/长度不符）');
+      throw new AppError(
+        ErrorCode.InternalError,
+        `${column} 密文格式非法（版本位/长度不符）`,
+      );
     }
     const iv = blob.subarray(1, 1 + IV_BYTES);
     const tag = blob.subarray(1 + IV_BYTES, 1 + IV_BYTES + TAG_BYTES);
