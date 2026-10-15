@@ -13,6 +13,7 @@
  * 防止真实凭据借 config/*.env 入库）；任何环境缺 LJR_PG_PASSWORD → 抛 E_CONFIG_MISSING
  *（dev 由 start.mjs 生成的 .secrets/dev.env 兜住；staging/prod 走部署平台 secrets）。
  */
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { AppError, ErrorCode } from '@ljr/shared';
 import { readEnvFile, type EnvFileVars } from './env-file';
@@ -57,6 +58,17 @@ export interface AppConfig {
      */
     readonly enabled: boolean;
   };
+  readonly identity: {
+    /**
+     * 手机号列加密数据密钥（base64，解码须为 32 字节 = AES-256；A1 R-W2-11 mock KMS 信封）。
+     * dev 缺省走 dev-only 派生默认（非生产强度，仅限本机便携轨）；staging/prod 必须 env 注入。
+     */
+    readonly phoneDataKey: string;
+    /** 盲索引 HMAC-SHA256 pepper（R-W2-11）；注入口径同上 */
+    readonly phoneBlindPepper: string;
+    /** JWT 签名密钥（access/refresh 双 token，R-W2-3）；注入口径同上 */
+    readonly jwtSecret: string;
+  };
 }
 
 /** env 键名（LJR_ 前缀沿用 T3 的 scripts/db 与 sql.ts 口径；PORT 沿用 main.ts 既有键） */
@@ -78,6 +90,9 @@ export const ENV_KEYS = {
   rocketmqNamesrv: 'LJR_ROCKETMQ_NAMESRV_ADDR',
   nacosServerAddr: 'LJR_NACOS_SERVER_ADDR',
   obsEnabled: 'LJR_OBS_ENABLED',
+  identityPhoneDataKey: 'LJR_IDENTITY_PHONE_DATA_KEY',
+  identityPhoneBlindPepper: 'LJR_IDENTITY_PHONE_BLIND_PEPPER',
+  authJwtSecret: 'LJR_AUTH_JWT_SECRET',
 } as const;
 
 /** 密钥与环境选择键：禁止出现在文件层（出现即 E_CONFIG_INVALID，防凭据入库） */
@@ -85,6 +100,9 @@ export const ENV_ONLY_KEYS: readonly string[] = [
   ENV_KEYS.env,
   ENV_KEYS.pgPassword,
   ENV_KEYS.redisPassword,
+  ENV_KEYS.identityPhoneDataKey,
+  ENV_KEYS.identityPhoneBlindPepper,
+  ENV_KEYS.authJwtSecret,
 ];
 
 /** 凭据键白名单：dev 下允许从 .secrets/dev.env 装载的仅有键（其余键 secrets 文件说了不算） */
@@ -185,6 +203,41 @@ export function resolveAppConfig({ env, file }: ConfigSources): AppConfig {
     observability: {
       enabled: parseBoolean(pick(ENV_KEYS.obsEnabled) ?? 'true', ENV_KEYS.obsEnabled),
     },
+    identity: resolveIdentityKeys(envName, pick),
+  };
+}
+
+/**
+ * identity 密钥解析（A1 R-W2-11，裁决「dev 默认值仅 dev」）：env/文件注入优先；
+ * dev 缺省走 dev-only 派生默认——由明确标注 dev-only 的标签串派生，非生产强度、仅限本机
+ * 便携轨，换 env 注入即刻失效；staging/prod 缺失即 E_CONFIG_MISSING（fail-fast，派生默认
+ * 不外溢出 dev）。数据密钥派生为 base64（可解出 32 字节 = AES-256），其余为 hex。
+ */
+function devOnlySecret(label: string, enc: 'hex' | 'base64'): string {
+  return createHash('sha256').update(`ljr-dev-only:${label}:v1`).digest(enc);
+}
+
+function resolveIdentityKeys(
+  envName: AppEnvName,
+  pick: (key: string) => string | undefined,
+): AppConfig['identity'] {
+  const requireOrDev = (key: string, label: string, enc: 'hex' | 'base64'): string => {
+    const value = pick(key);
+    if (value !== undefined && value !== '') return value;
+    if (envName === 'dev') return devOnlySecret(label, enc);
+    throw new AppError(
+      ErrorCode.ConfigMissing,
+      `环境 ${envName} 必须注入 ${key}（密钥禁入配置文件；dev 有 dev-only 派生默认，非 dev 一律进程 env 注入）`,
+    );
+  };
+  return {
+    phoneDataKey: requireOrDev(ENV_KEYS.identityPhoneDataKey, 'identity:phone-data-key', 'base64'),
+    phoneBlindPepper: requireOrDev(
+      ENV_KEYS.identityPhoneBlindPepper,
+      'identity:phone-blind-pepper',
+      'hex',
+    ),
+    jwtSecret: requireOrDev(ENV_KEYS.authJwtSecret, 'auth:jwt-secret', 'hex'),
   };
 }
 

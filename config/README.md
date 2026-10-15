@@ -27,6 +27,7 @@ config/
 - **可入库**：连接地址、端口、库名、账号名（非口令）、特性开关等非敏感默认值——即各 `app.env` 现有内容。
 - **必须 env 注入（禁入文件/代码/skill）**：
   - `LJR_PG_PASSWORD`、`LJR_REDIS_PASSWORD`（数据库/缓存口令）
+  - `LJR_IDENTITY_PHONE_DATA_KEY`、`LJR_IDENTITY_PHONE_BLIND_PEPPER`、`LJR_AUTH_JWT_SECRET`（A1 身份密钥，M1-W2；dev 缺省走 dev-only 派生默认——非生产强度仅限本机便携轨，staging/prod 缺失即 `E_CONFIG_MISSING`）
   - 后续接入时的 `LJR_NACOS_AUTH_ADMIN_TOKEN`、LLM API Key、支付通道密钥等一切凭据
   - `LJR_ENV` 本身（环境选择是部署动作，不是仓库内容）
 - **机器强制**（非口头约定）：
