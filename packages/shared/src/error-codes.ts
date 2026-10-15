@@ -68,6 +68,10 @@ export const ErrorCode = {
   AlreadySubmitted: 'E_ALREADY_SUBMITTED',
   /** A3a R-03 执业证号已被其他账号占用：盲索引等值命中他人档案（A3a §5 409，最小自定命名） */
   LicenseNoTaken: 'E_LICENSE_NO_TAKEN',
+  /** B3 1对1 价格区间越界（R-02：文字 50-300 元/次、语音/视频 100-500 元/15min；§5 400 OUT_OF_RANGE） */
+  PriceOutOfRange: 'E_OUT_OF_RANGE',
+  /** B3 R-04 在团修改默认价格：须走 C6 改价引擎，本模块拒绝直改（§5 409 IN_GROUP_CHANGE，转 C6 流程） */
+  InGroupChange: 'E_IN_GROUP_CHANGE',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -185,6 +189,14 @@ const ERROR_CODE_META: Readonly<Record<ErrorCode, ErrorCodeMeta>> = {
   [ErrorCode.LicenseNoTaken]: {
     httpStatus: 409,
     defaultMessage: '执业证号已被其他账号使用（R-03 防一人多号重复入驻）',
+  },
+  [ErrorCode.PriceOutOfRange]: {
+    httpStatus: 400,
+    defaultMessage: '价格越界：文字 50-300 元/次，语音/视频 100-500 元/15 分钟（R-02）',
+  },
+  [ErrorCode.InGroupChange]: {
+    httpStatus: 409,
+    defaultMessage: '存在进行中拼团，默认价格修改须走改价引擎（C6，R-04）',
   },
 };
 

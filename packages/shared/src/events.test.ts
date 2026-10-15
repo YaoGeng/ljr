@@ -4,6 +4,8 @@ import {
   AccountDeletionExecutedPayload,
   LAWYER_AUDIT_PASSED_TOPIC,
   LawyerAuditPassedPayload,
+  PRICE_VERSION_CREATED_TOPIC,
+  PriceVersionCreatedPayload,
   REAL_NAME_VERIFIED_TOPIC,
   RealNameVerifiedPayload,
   TRAINING_CONSENT_GRANTED_TOPIC,
@@ -61,5 +63,13 @@ describe('A2 实名与同意事件契约（M1-W2）：topic 命名 + 载荷形�
       revoked_at: '2026-10-16T12:00:00.000Z',
     };
     expect(payload.revoked_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+});
+
+describe('B3 价格版本事件契约（M1-W2）：topic 命名 + 载荷形状', () => {
+  it('PriceVersionCreated：topic=pricing.price_version.created，{lawyer_id, version}', () => {
+    expect(PRICE_VERSION_CREATED_TOPIC).toBe('pricing.price_version.created');
+    const payload: PriceVersionCreatedPayload = { lawyer_id: 9101, version: 3 };
+    expect(payload).toEqual({ lawyer_id: 9101, version: 3 });
   });
 });

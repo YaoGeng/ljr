@@ -66,6 +66,13 @@ describe('错误码契约（ErrorCode 常量表 + AppError{code,httpStatus}）',
     expect(new AppError(ErrorCode.NotApproved).httpStatus).toBe(403);
   });
 
+  it('B3 价格配置错误码（M1-W2 §5）：区间越界 400 / 在团修改 409', () => {
+    expect(ErrorCode.PriceOutOfRange).toBe('E_OUT_OF_RANGE');
+    expect(new AppError(ErrorCode.PriceOutOfRange).httpStatus).toBe(400);
+    expect(ErrorCode.InGroupChange).toBe('E_IN_GROUP_CHANGE');
+    expect(new AppError(ErrorCode.InGroupChange).httpStatus).toBe(409);
+  });
+
   it('isAppError 类型收窄', () => {
     expect(isAppError(new AppError(ErrorCode.Conflict))).toBe(true);
     expect(isAppError(new Error('plain'))).toBe(false);

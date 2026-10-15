@@ -85,3 +85,19 @@ export interface TrainingConsentRevokedPayload {
   /** 撤回时刻（ISO 8601 UTC 即时；D5 删除执行的时间锚点） */
   readonly revoked_at: string;
 }
+
+// ---------------------------------------------------------------------------
+// B3 默认价格与1对1价格配置（M1-W2）：1 生产契约。消费位（W3 接线，M1-W2 T5 简报裁决）：
+//   I1「通知已参与拼团用户」经本事件消费实现；C6 改价引擎的回流判定
+//   （PriceChangeApproved/Rejected）本批不落——B3 只生产，不自带消费端。
+// ---------------------------------------------------------------------------
+
+/** 价格版本创建（B3 §6 生产 → I1 参与者通知 W3 消费位 / C6 改价引擎基线）。 */
+export const PRICE_VERSION_CREATED_TOPIC = 'pricing.price_version.created';
+
+export interface PriceVersionCreatedPayload {
+  /** 价格所属律师（identity 侧用户 id，bigint 裸引用口径） */
+  readonly lawyer_id: number;
+  /** 新版本号（= 该律师 price_versions 当前最大 version + 1，从 1 起） */
+  readonly version: number;
+}
