@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { AppError, ErrorCode } from '@ljr/shared';
+import { AppError, ErrorCode, isValidIdempotencyKey } from '@ljr/shared';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -170,6 +170,36 @@ describe('I1 下发链路（默认 mock 通道，需 PG）', () => {
       `SELECT count(*)::int AS n FROM notify.notifications`,
     );
     expect(rows.rows[0]?.n).toBe(0);
+  });
+
+  it('幂等键列宽对齐契约（终审 A-1）：65/98 位合法键全链 SENT（列宽 ≥ shared 规范上限 98）', async () => {
+    // shared 键规范（packages/shared/src/idempotency.ts）：三段各 ≤32 → 合法键最长 32+1+32+1+32=98；
+    // 65 位已超 V4 建列 varchar(64) 的旧列宽（修复前 INSERT 撞 22001 裸库错 → 重试轨道 → 死信）
+    const key65 = `${'a'.repeat(32)}/${'b'.repeat(30)}/c`;
+    const key98 = `${'a'.repeat(32)}/${'b'.repeat(32)}/${'c'.repeat(32)}`;
+    expect(key65).toHaveLength(65);
+    expect(key98).toHaveLength(98);
+    expect(isValidIdempotencyKey(key65)).toBe(true);
+    expect(isValidIdempotencyKey(key98)).toBe(true);
+
+    await dispatcher.dispatch({
+      userId: 111,
+      templateCode: 'PRICE_UP_LOCKED',
+      idempotencyKey: key65,
+    });
+    await dispatcher.dispatch({
+      userId: 112,
+      templateCode: 'PRICE_DOWN_COMP',
+      idempotencyKey: key98,
+    });
+    const r = await dispatcher.processPending();
+    expect(r).toMatchObject({ sent: 2, failed: 0 });
+
+    const rows = await pool.query<{ idempotency_key: string; status: string }>(
+      `SELECT idempotency_key, status FROM notify.notifications ORDER BY id`,
+    );
+    expect(rows.rows.map((x) => x.idempotency_key)).toEqual([key65, key98]);
+    expect(rows.rows.every((x) => x.status === 'SENT')).toBe(true);
   });
 
   it('模板缺失：事件消费被拒（AppError 上抛 → relay 重试轨道），不静默丢弃', async () => {
