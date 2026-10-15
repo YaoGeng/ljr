@@ -10,6 +10,7 @@ import { KNOWLEDGE_CONFIG, KNOWLEDGE_DEFAULT_CONFIG } from './knowledge.config';
 import { chunkText } from './knowledge.chunker';
 import { EMBEDDING_PROVIDER } from './knowledge.embedding';
 import { KNOWLEDGE_UPDATED_TOPIC } from './knowledge.events';
+import { detectEmbeddingColumnMode } from './knowledge.vector';
 import { SpecialtyKnowledgeModule } from './specialty.module';
 import { KnowledgeService } from './knowledge.service';
 
@@ -361,12 +362,15 @@ describe('E3 知识库机制（需 PG）', () => {
     await expect(svc.setDocActive(99999, true)).rejects.toMatchObject({ code: ErrorCode.NotFound });
   });
 
-  it('R4 双路径落库形态：本环境 embedding 列=jsonb（兜底路径②），探针与检索分派一致；检索入参校验', async () => {
+  it('R4 双路径落库形态：embedding 列型与探针判定一致（jsonb=路径② / vector=路径①归位 public）；检索入参校验', async () => {
     const col = await pool.query<{ udt_name: string }>(
       `SELECT udt_name FROM information_schema.columns
         WHERE table_schema='agent_assist' AND table_name='knowledge_chunks' AND column_name='embedding'`,
     );
-    expect(col.rows[0]!.udt_name).toBe('jsonb'); // portable 轨=路径②（真 pgvector 随 docker ⚠ R4）
+    // 断言「物理列型 = 应用探针判定」的一致性（真实 DB 行为），不钉具体环境：
+    // portable 轨=jsonb（路径②）、pgvector 镜像=vector（路径①，V12 归位 public 后可真跑）
+    const detected = await detectEmbeddingColumnMode(pool);
+    expect(col.rows[0]!.udt_name).toBe(detected);
     await expect(
       svc.retrieve({ specialty: 'labor_arbitration', query: '   ' }),
     ).rejects.toMatchObject({ code: ErrorCode.InvalidArgument });

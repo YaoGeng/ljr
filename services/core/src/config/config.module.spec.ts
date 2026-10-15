@@ -18,7 +18,9 @@ describe('AppConfigModule 装配（@nestjs/config 承载 + CONFIG_PROVIDER 接�
     const moduleRef = await Test.createTestingModule({ imports: [AppConfigModule] }).compile();
     const cs = moduleRef.get(ConfigService, { strict: false });
     expect(cs.get('env')).toBe('dev');
-    expect(cs.get('pg.port')).toBe(5435);
+    // pg.port 断言随进程 env（进程 env > app.env > 代码默认；CI 注入 LJR_PG_PORT=5432，
+    // portable 轨缺省 5435）——本测试断言「同源透传」，不钉具体端口值
+    expect(cs.get('pg.port')).toBe(Number(process.env.LJR_PG_PORT ?? '5435'));
     expect(cs.get('nacos.serverAddr')).toBe('127.0.0.1:8848');
     await moduleRef.close();
   });
