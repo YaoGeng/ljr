@@ -1,0 +1,412 @@
+/**
+ * A3a 律师资质审核领域服务（docs/modules/A-身份与账号/A3a §2/§4/§5/§7）。
+ *
+ * 关键流程（§4 状态机 DRAFT→SUBMITTED→IN_REVIEW→PASSED｜REJECTED，PASSED→SUSPENDED→PASSED）：
+ *   提交（幂等键=user）：在审中再提交 → 409 ALREADY_SUBMITTED；REJECTED 重提/PASSED 后修改
+ *         须构成「新材料版本」（§4 守卫：material_version 递增 + 材料指纹变化，同材料 → 409）；
+ *         R-03 盲索引预检他人占用 → 409；守卫迁移 → 建行/原行迁移 + qualification_files
+ *         新版本行（旧版本保留追溯）。
+ *   审核动作（H1 契约归 A3a）：claim/approve/reject/suspend/resume 全部经守卫（非法迁移
+ *         拒绝并留痕，§10-2）；approve 同事务发 LawyerAuditPassed{lawyer_user_id, firm_id}
+ *         （A3b 进件前 firm_id=null，简报裁决）；suspend 发 LawyerSuspended{lawyer_user_id,
+ *         reason}；恢复不发事件（§6 仅两个生产事件）。
+ *   查询面：GET /lawyer/audit-status（本人视角）；isAuditPassed=R-01 内部闸口（W3 C3/
+ *         接单大厅消费，本批查询面交付、列表联调=W3 桩 §10-1）。
+ *
+ * PII 红线（§9 禁止）：license_no 明文只存在于请求入参与列加密入参；落库仅密文+盲索引，
+ * 日志只记 user_id/profile_id/版本号，事件载荷仅 lawyer_user_id/firm_id/reason。
+ */
+import { createHash } from 'node:crypto';
+import { Injectable, Logger } from '@nestjs/common';
+import {
+  AppError,
+  ErrorCode,
+  LAWYER_AUDIT_PASSED_TOPIC,
+  LAWYER_SUSPENDED_TOPIC,
+  type LawyerAuditPassedPayload,
+  type LawyerSuspendedPayload,
+} from '@ljr/shared';
+import { OutboxService } from '../../infrastructure/outbox/outbox.service';
+import type { SqlExecutor } from '../../infrastructure/sql';
+import { PgPoolService } from '../../infrastructure/sql';
+import { StateTransitionGuardService } from '../../infrastructure/state-machine/state-transition-guard.service';
+import { IdentityCryptoService } from './identity.crypto';
+import type { LawyerAuditStatus } from './lawyer.machine';
+import { LAWYER_AUDIT_MACHINE } from './lawyer.machine';
+import type { LawyerAuditAction, QualificationFileInput } from './lawyer.http';
+import { assertLicenseNo, parseFirmName, parseQualificationFiles } from './lawyer.http';
+
+export interface QualificationSubmitInput {
+  readonly licenseNo: string;
+  readonly firmName?: string;
+  readonly files: readonly QualificationFileInput[];
+}
+
+export interface QualificationSubmitResult {
+  readonly status: 'SUBMITTED';
+  /** 本次提交构成的材料版本（服务端单调，qualification_files 同源） */
+  readonly materialVersion: number;
+}
+
+export interface AuditActionInput {
+  readonly action: LawyerAuditAction;
+  readonly rejectReason?: string;
+  readonly reason?: string;
+}
+
+export interface AuditStatusView {
+  readonly status: LawyerAuditStatus;
+  /** 仅 REJECTED 有值（§5 {status, reason?}） */
+  readonly reason?: string;
+}
+
+interface LawyerProfileRow {
+  readonly id: string;
+  readonly user_id: string;
+  readonly firm_id: string | null;
+  readonly audit_status: LawyerAuditStatus;
+  readonly material_version: number;
+  readonly material_fingerprint: string;
+}
+
+/** 审核动作 → 目标状态（§4 矩阵的入参面映射；前置缺失由守卫拒绝并留痕） */
+const ACTION_TO_STATUS: Record<LawyerAuditAction, LawyerAuditStatus> = {
+  claim: 'IN_REVIEW',
+  approve: 'PASSED',
+  reject: 'REJECTED',
+  suspend: 'SUSPENDED',
+  resume: 'PASSED',
+};
+
+/** 并发窗口唯一约束败退（23505）：user 唯一/盲索引唯一的竞窗兜底入口（显式复检，不吞错） */
+function isUniqueViolation(e: unknown): boolean {
+  return typeof e === 'object' && e !== null && (e as { code?: string }).code === '23505';
+}
+
+/** 材料集内容指纹（§4 新材料版本守卫）：规范化后 sha256 hex64——同材料重提不构成新版本 */
+function materialFingerprintOf(
+  licenseNo: string,
+  firmName: string | undefined,
+  files: readonly QualificationFileInput[],
+): string {
+  const canonical = JSON.stringify({
+    license_no: licenseNo,
+    firm_name: firmName ?? null,
+    files: files
+      .map((f) => `${f.kind}|${f.ref}`)
+      .sort()
+      .map((s) => {
+        const [kind, ...rest] = s.split('|');
+        return { kind, ref: rest.join('|') };
+      }),
+  });
+  return createHash('sha256').update(canonical, 'utf8').digest('hex');
+}
+
+@Injectable()
+export class LawyerQualificationService {
+  private readonly logger = new Logger(LawyerQualificationService.name);
+
+  constructor(
+    private readonly pool: PgPoolService,
+    private readonly outbox: OutboxService,
+    private readonly guard: StateTransitionGuardService,
+    private readonly crypto: IdentityCryptoService,
+  ) {}
+
+  /**
+   * POST /lawyer/qualification（幂等键=user）：在审冲突 → §4 版本守卫 → R-03 盲索引预检 →
+   * 守卫迁移 → 建行（DRAFT）或原行迁移（REJECTED/PASSED 侧）+ 材料新版本行。
+   */
+  async submitQualification(
+    userId: number,
+    input: QualificationSubmitInput,
+  ): Promise<QualificationSubmitResult> {
+    // 形态防呆（REST 与服务层共用同一事实源，lawyer.http）：不产生任何状态迁移
+    const licenseNo = assertLicenseNo(input.licenseNo);
+    const firmName = parseFirmName(input.firmName);
+    const files = parseQualificationFiles(input.files);
+    const fingerprint = materialFingerprintOf(licenseNo, firmName, files);
+
+    return this.pool.withTransaction(async (uow) => {
+      const current = await this.profileOfUserForUpdate(uow, userId);
+      if (
+        current &&
+        (current.audit_status === 'SUBMITTED' || current.audit_status === 'IN_REVIEW')
+      ) {
+        // §5 409 ALREADY_SUBMITTED：在审中重复提交（幂等键=user 的冲突面）
+        throw new AppError(
+          ErrorCode.AlreadySubmitted,
+          `资质审核已在流程中（${current.audit_status}），请等待审核结论`,
+        );
+      }
+      if (
+        current &&
+        (current.audit_status === 'REJECTED' || current.audit_status === 'PASSED') &&
+        current.material_fingerprint === fingerprint
+      ) {
+        // §4 守卫：重提/修改需新材料版本——同材料不构成新版本
+        throw new AppError(ErrorCode.Conflict, '材料未变更，不构成新材料版本（重提须更新材料）');
+      }
+
+      // R-03 盲索引预检：他人已占用 → 409（明文不落库，等值检索只走 HMAC）
+      const licenseBlind = this.crypto.blindIndex(licenseNo);
+      const holder = await this.profileIdByLicense(uow, licenseBlind);
+      if (holder !== undefined && Number(holder) !== Number(current?.id ?? -1)) {
+        throw new AppError(ErrorCode.LicenseNoTaken, '执业证号已被其他账号使用（R-03）');
+      }
+
+      const from: LawyerAuditStatus = current ? current.audit_status : 'DRAFT';
+      const version = (current?.material_version ?? 0) + 1;
+      await this.guard.assertTransition(LAWYER_AUDIT_MACHINE, {
+        entityId: userId,
+        from,
+        to: 'SUBMITTED',
+        reason: `lawyer.qualification.${current === undefined ? 'submit' : from === 'REJECTED' ? 'resubmit' : 'revision'}:v${version}`,
+        uow,
+      });
+
+      const licenseEnc = this.crypto.encryptIdentityField(licenseNo);
+      await uow.query('SAVEPOINT lawyer_profile_submit');
+      let profileId: number;
+      try {
+        if (current === undefined) {
+          const inserted = await uow.query<{ id: string }>(
+            `INSERT INTO identity.lawyer_profiles
+               (user_id, license_no_enc, license_no_blind_idx, firm_name,
+                material_version, material_fingerprint, audit_status, submitted_at)
+             VALUES ($1, $2, $3, $4, $5, $6, 'SUBMITTED', now())
+             RETURNING id`,
+            [userId, licenseEnc, licenseBlind, firmName ?? null, version, fingerprint],
+          );
+          profileId = Number(inserted.rows[0]!.id);
+        } else {
+          const updated = await uow.query<{ id: string }>(
+            `UPDATE identity.lawyer_profiles SET
+               license_no_enc = $1, license_no_blind_idx = $2, firm_name = $3,
+               material_version = $4, material_fingerprint = $5, audit_status = 'SUBMITTED',
+               submitted_at = now(), audited_at = NULL, auditor_id = NULL, reject_reason = NULL
+             WHERE id = $6 AND audit_status = $7
+             RETURNING id`,
+            [
+              licenseEnc,
+              licenseBlind,
+              firmName ?? null,
+              version,
+              fingerprint,
+              current.id,
+              current.audit_status,
+            ],
+          );
+          if (updated.rows.length === 0) {
+            throw new AppError(
+              ErrorCode.StateStaleEntity,
+              `用户 ${userId} 的资质档案状态已被并发迁移`,
+            );
+          }
+          profileId = Number(updated.rows[0]!.id);
+        }
+        await uow.query('RELEASE SAVEPOINT lawyer_profile_submit');
+      } catch (e) {
+        if (!isUniqueViolation(e)) throw e;
+        // 并发唯一竞窗（user 唯一/盲索引唯一）：显式复检定位语义——不吞错、不盲重试。
+        // 23505 后事务 abort，先 ROLLBACK TO SAVEPOINT 解除，再以新快照复检：
+        // 同号被他人抢注 → 409 E_LICENSE_NO_TAKEN；同账号并发首提 → 409 ALREADY_SUBMITTED。
+        await uow.query('ROLLBACK TO SAVEPOINT lawyer_profile_submit');
+        const winner = await this.profileOfUser(uow, userId);
+        if (
+          winner &&
+          (winner.audit_status === 'SUBMITTED' || winner.audit_status === 'IN_REVIEW')
+        ) {
+          throw new AppError(
+            ErrorCode.AlreadySubmitted,
+            '资质审核已在流程中（并发提交，以在先提交为准）',
+          );
+        }
+        const licenseHolder = await this.profileIdByLicense(uow, licenseBlind);
+        if (licenseHolder !== undefined && Number(licenseHolder) !== Number(winner?.id ?? -1)) {
+          throw new AppError(
+            ErrorCode.LicenseNoTaken,
+            '执业证号已被其他账号使用（R-03，并发窗口）',
+          );
+        }
+        throw new AppError(
+          ErrorCode.InternalError,
+          '资质提交唯一约束败退但复检未定位到现值（不应触达）',
+        );
+      }
+
+      await this.insertQualificationFiles(uow, profileId, version, files);
+      // PII 红线：日志只记 id/版本/件数，license_no 不落日志
+      this.logger.log(
+        `lawyer.qualification: 提交 user_id=${userId} profile_id=${profileId} version=${version} files=${files.length}`,
+      );
+      return { status: 'SUBMITTED', materialVersion: version };
+    });
+  }
+
+  /**
+   * POST /admin/lawyers/{id}/audit（H1 审核操作面，契约归 A3a）：{id}=lawyer_profiles.id；
+   * 全动作经守卫（前置缺失=非法迁移拒绝并留痕）；approve/suspend 同事务发领域事件。
+   * auditor_id=R-W2-F admin 鉴权占位期间 NULL（H1 接线后取 admin claims 回填）。
+   */
+  async audit(profileId: number, input: AuditActionInput): Promise<{ status: LawyerAuditStatus }> {
+    // action 专属必填项在事务外先校验（reject_reason/suspend reason；parseAuditActionBody 同规则）
+    if (input.action === 'reject' && (!input.rejectReason || input.rejectReason.trim() === '')) {
+      throw new AppError(ErrorCode.InvalidArgument, '拒绝必须携带 reject_reason');
+    }
+    if (input.action === 'suspend' && (!input.reason || input.reason.trim() === '')) {
+      throw new AppError(ErrorCode.InvalidArgument, '停用必须携带 reason');
+    }
+    const to = ACTION_TO_STATUS[input.action];
+
+    return this.pool.withTransaction(async (uow) => {
+      const row = await this.profileByIdForUpdate(uow, profileId);
+      if (row === undefined) {
+        throw new AppError(ErrorCode.NotFound, `律师资质档案 ${profileId} 不存在`);
+      }
+      const userId = Number(row.user_id);
+      await this.guard.assertTransition(LAWYER_AUDIT_MACHINE, {
+        entityId: userId,
+        from: row.audit_status,
+        to,
+        reason: `lawyer.audit.${input.action}`,
+        uow,
+      });
+
+      const updates: Record<LawyerAuditAction, { set: string; values: unknown[] }> = {
+        claim: { set: `audit_status = 'IN_REVIEW'`, values: [] },
+        approve: { set: `audit_status = 'PASSED', audited_at = now()`, values: [] },
+        reject: {
+          set: `audit_status = 'REJECTED', audited_at = now(), reject_reason = $3`,
+          values: [input.rejectReason],
+        },
+        suspend: { set: `audit_status = 'SUSPENDED'`, values: [] },
+        resume: { set: `audit_status = 'PASSED'`, values: [] },
+      };
+      const plan = updates[input.action];
+      const updated = await uow.query<{ id: string }>(
+        `UPDATE identity.lawyer_profiles SET ${plan.set}
+          WHERE id = $1 AND audit_status = $2 RETURNING id`,
+        [profileId, row.audit_status, ...plan.values],
+      );
+      if (updated.rows.length === 0) {
+        throw new AppError(ErrorCode.StateStaleEntity, `资质档案 ${profileId} 状态已被并发迁移`);
+      }
+
+      if (input.action === 'approve') {
+        await this.outbox.recordOutbox(uow, {
+          type: LAWYER_AUDIT_PASSED_TOPIC,
+          payload: {
+            lawyer_user_id: userId,
+            firm_id: row.firm_id === null ? null : Number(row.firm_id), // A3b 进件前 null（简报裁决）
+          } satisfies LawyerAuditPassedPayload,
+        });
+      }
+      if (input.action === 'suspend') {
+        await this.outbox.recordOutbox(uow, {
+          type: LAWYER_SUSPENDED_TOPIC,
+          payload: {
+            lawyer_user_id: userId,
+            reason: input.reason!,
+          } satisfies LawyerSuspendedPayload,
+        });
+      }
+      this.logger.log(
+        `lawyer.audit: ${input.action} profile_id=${profileId} user_id=${userId} ${row.audit_status}→${to}`,
+      );
+      return { status: to };
+    });
+  }
+
+  /** GET /lawyer/audit-status（本人视角）：无档案=DRAFT；REJECTED 附拒绝事由（§5 {status, reason?}） */
+  async auditStatus(userId: number): Promise<AuditStatusView> {
+    const found = await this.pool.query<{
+      audit_status: LawyerAuditStatus;
+      reject_reason: string | null;
+    }>('SELECT audit_status, reject_reason FROM identity.lawyer_profiles WHERE user_id = $1', [
+      userId,
+    ]);
+    const row = found.rows[0];
+    if (row === undefined) return { status: 'DRAFT' };
+    if (row.audit_status === 'REJECTED') {
+      return { status: 'REJECTED', ...(row.reject_reason ? { reason: row.reject_reason } : {}) };
+    }
+    return { status: row.audit_status };
+  }
+
+  /** R-01 内部查询面（W3 C3 场次列表/接单大厅消费；本批交付查询面，列表联调=W3 桩 §10-1） */
+  async isAuditPassed(lawyerUserId: number): Promise<boolean> {
+    const found = await this.pool.query(
+      `SELECT 1 FROM identity.lawyer_profiles WHERE user_id = $1 AND audit_status = 'PASSED'`,
+      [lawyerUserId],
+    );
+    return found.rows.length > 0;
+  }
+
+  // ---------- 内部查询 ----------
+
+  /** 本人档案（行锁：提交/审核串行化同一账号的状态判定） */
+  private async profileOfUserForUpdate(
+    uow: SqlExecutor,
+    userId: number,
+  ): Promise<LawyerProfileRow | undefined> {
+    const found = await uow.query<LawyerProfileRow>(
+      `SELECT id, user_id, firm_id, audit_status, material_version, material_fingerprint
+         FROM identity.lawyer_profiles WHERE user_id = $1 FOR UPDATE`,
+      [userId],
+    );
+    return found.rows[0];
+  }
+
+  /** 本人档案（无锁读：查询面/竞窗复检） */
+  private async profileOfUser(
+    uow: SqlExecutor,
+    userId: number,
+  ): Promise<LawyerProfileRow | undefined> {
+    const found = await uow.query<LawyerProfileRow>(
+      `SELECT id, user_id, firm_id, audit_status, material_version, material_fingerprint
+         FROM identity.lawyer_profiles WHERE user_id = $1`,
+      [userId],
+    );
+    return found.rows[0];
+  }
+
+  private async profileByIdForUpdate(
+    uow: SqlExecutor,
+    profileId: number,
+  ): Promise<LawyerProfileRow | undefined> {
+    const found = await uow.query<LawyerProfileRow>(
+      `SELECT id, user_id, firm_id, audit_status, material_version, material_fingerprint
+         FROM identity.lawyer_profiles WHERE id = $1 FOR UPDATE`,
+      [profileId],
+    );
+    return found.rows[0];
+  }
+
+  /** R-03 盲索引等值检索（无锁：唯一性由 ux_lawyer_profiles_license 兜底，竞窗显式复检） */
+  private async profileIdByLicense(
+    uow: SqlExecutor,
+    licenseBlind: string,
+  ): Promise<string | undefined> {
+    const found = await uow.query<{ id: string }>(
+      'SELECT id FROM identity.lawyer_profiles WHERE license_no_blind_idx = $1',
+      [licenseBlind],
+    );
+    return found.rows[0]?.id;
+  }
+
+  /** 材料新版本行（旧版本保留追溯；单语句原子插入，ref 仅引用文本 R-W2-7） */
+  private async insertQualificationFiles(
+    uow: SqlExecutor,
+    profileId: number,
+    version: number,
+    files: readonly QualificationFileInput[],
+  ): Promise<void> {
+    await uow.query(
+      `INSERT INTO identity.qualification_files (lawyer_id, material_version, file_ref, kind)
+       SELECT $1, $2, f.ref, f.kind FROM unnest($3::text[], $4::text[]) AS f(ref, kind)`,
+      [profileId, version, files.map((f) => f.ref), files.map((f) => f.kind)],
+    );
+  }
+}
