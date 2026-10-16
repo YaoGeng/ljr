@@ -18,6 +18,7 @@ import { SpecialtyKnowledgeModule } from './modules/agent-assist/specialty.modul
 import { SanitizeModule } from './modules/agent-assist/sanitize.module';
 import { PaymentModule } from './modules/payment/payment.module';
 import { BenefitsModule } from './modules/benefits/points.module';
+import { TradeModule } from './modules/trade/trade.module';
 import { HealthController } from './health.controller';
 
 // ObservabilityModule 紧随配置之后：http/pg 插桩先于 Infrastructure/Demo 建池注册
@@ -43,6 +44,7 @@ import { HealthController } from './health.controller';
     SanitizeModule, // E1 实时脱敏层切片（agent_assist schema owner，M1-W1 Task 7；草稿管线接线 M2-W3）
     PaymentModule, // F1 支付网关与回调 Inbox（payment schema owner，M1-W3 Task 1；指令面+回调验签+Inbox+对账；下游 C3=T7/H3=M2 接线）+ A3b 律所进件子域（M1-W3 Task 3：firm_merchants 状态机/R-01 查询面/FIRM_REVERIFY/保证金指令台账；下游 F3=T8/T10 H1 消费 FirmMerchantService）
     BenefitsModule, // F4 权益①切片（benefits schema owner，M1-W3 Task 2；积分账户/冻结核销解冻/退款还原/过期双路径；下游 C3=T7/F2=T6 消费 PointsService，券/备付=M2-W2 ②全量）
+    TradeModule, // C1 B2C 开团（trade schema owner，M1-W3 Task 4；开团事务=B2 加锁+INSERT 同事务、幂等键=lawyer+slot_start、ENROLL_DEADLINE 流标执行器、session 终态 provider；下游 C3=T7 消费 markFull/SessionFull、F2=T6 消费 SessionFailed）
   ],
   controllers: [HealthController],
 })

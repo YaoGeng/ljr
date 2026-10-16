@@ -1,8 +1,8 @@
 /**
  * C1 HTTP 面共用件：请求形状解析（§5 契约词汇 snake_case 逐字）。
  *
- * 形态占位透传——域校验收口在服务层（assertPriceMode/assertRoomMode/assertCapacity/money），
- * 解析器只做「形状与类型」（缺字段/类型错 → 400 E_INVALID_ARGUMENT，不漏成 500）；
+ * 形状与类型收口（缺字段/类型错 → 400 E_INVALID_ARGUMENT，不漏成 500）；枚举字段的值域校验
+ * 在解析层完成（parseDeductBody 先例——返回类型即窄类型，服务层域校验兜底语义不变）；
  * 金额经 @ljr/shared assertMoney（两位小数字符串，禁 float）；
  * id 解析收口 infrastructure/parse-positive-int（十进制 + MAX_SAFE_INTEGER 上限）；
  * 错误体形态：infrastructure AppHttpExceptionFilter（{code, message}，全仓唯一过滤器）。
@@ -12,7 +12,9 @@ import { parsePositiveInt } from '../../infrastructure/parse-positive-int';
 import {
   assertIsoDate,
   assertIsoDatetime,
+  assertRoomMode,
   type PriceMode,
+  type SessionRoomMode,
 } from './session.types';
 
 function asObject(body: unknown): Record<string, unknown> {
@@ -22,15 +24,17 @@ function asObject(body: unknown): Record<string, unknown> {
   return body as Record<string, unknown>;
 }
 
-/** POST /sessions 体形状：{slot_start, price_mode, unit_price?, capacity, enroll_deadline?, room_mode} */
-export function parseSessionBody(body: unknown): {
+interface SessionBodyShape {
   slot_start: Date;
   price_mode: PriceMode;
   unit_price?: Money;
   capacity: number;
   enroll_deadline?: Date;
-  room_mode: string;
-} {
+  room_mode: SessionRoomMode;
+}
+
+/** POST /sessions 体形状：{slot_start, price_mode, unit_price?, capacity, enroll_deadline?, room_mode} */
+export function parseSessionBody(body: unknown): SessionBodyShape {
   const raw = asObject(body);
   if (raw['price_mode'] !== 'per_head' && raw['price_mode'] !== 'session_total') {
     throw new AppError(
@@ -44,24 +48,11 @@ export function parseSessionBody(body: unknown): {
       `capacity 须为整数：${JSON.stringify(raw['capacity'])}`,
     );
   }
-  if (typeof raw['room_mode'] !== 'string') {
-    throw new AppError(
-      ErrorCode.InvalidArgument,
-      `room_mode 须为字符串：${JSON.stringify(raw['room_mode'])}`,
-    );
-  }
-  const out: {
-    slot_start: Date;
-    price_mode: PriceMode;
-    unit_price?: Money;
-    capacity: number;
-    enroll_deadline?: Date;
-    room_mode: string;
-  } = {
+  const out: SessionBodyShape = {
     slot_start: assertIsoDatetime(raw['slot_start'], 'slot_start'),
     price_mode: raw['price_mode'],
     capacity: raw['capacity'],
-    room_mode: raw['room_mode'],
+    room_mode: assertRoomMode(raw['room_mode']),
   };
   if (raw['unit_price'] !== undefined) {
     if (typeof raw['unit_price'] !== 'string') {
@@ -87,15 +78,18 @@ export function parseListQuery(query: Record<string, unknown>): {
 } {
   return {
     specialty: queryParam(query['specialty'], 'specialty'),
-    lawyer: queryParam(query['lawyer'], 'lawyer') === undefined
-      ? undefined
-      : parsePositiveInt(queryParam(query['lawyer'], 'lawyer'), 'lawyer'),
-    from: queryParam(query['from'], 'from') === undefined
-      ? undefined
-      : assertIsoDate(queryParam(query['from'], 'from'), 'from'),
-    to: queryParam(query['to'], 'to') === undefined
-      ? undefined
-      : assertIsoDate(queryParam(query['to'], 'to'), 'to'),
+    lawyer:
+      queryParam(query['lawyer'], 'lawyer') === undefined
+        ? undefined
+        : parsePositiveInt(queryParam(query['lawyer'], 'lawyer'), 'lawyer'),
+    from:
+      queryParam(query['from'], 'from') === undefined
+        ? undefined
+        : assertIsoDate(queryParam(query['from'], 'from'), 'from'),
+    to:
+      queryParam(query['to'], 'to') === undefined
+        ? undefined
+        : assertIsoDate(queryParam(query['to'], 'to'), 'to'),
   };
 }
 

@@ -28,7 +28,9 @@ function positiveIntFromEnv(raw: string | undefined, fallback: number): number {
 }
 
 /** env > 代码默认；非法/非正回落默认（配置容错，pricing.cache 同款不抛） */
-export function tradeSessionConfigFromEnv(env: NodeJS.ProcessEnv = process.env): TradeSessionConfig {
+export function tradeSessionConfigFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): TradeSessionConfig {
   return {
     enrollDeadlineHours: positiveIntFromEnv(
       env['LJR_TRADE_ENROLL_DEADLINE_HOURS'],

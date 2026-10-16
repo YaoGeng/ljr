@@ -68,7 +68,9 @@ describe('C1 HTTP 契约（§5，需 PG）', () => {
     tokens.signAccessToken({ userId, role: 'user', roles: ['user'] });
 
   const postSession = (token: string | null, body: Record<string, unknown>) => {
-    const req = request(app.getHttpServer()).post('/sessions').set('Content-Type', 'application/json');
+    const req = request(app.getHttpServer())
+      .post('/sessions')
+      .set('Content-Type', 'application/json');
     if (token !== null) req.set('Authorization', `Bearer ${token}`);
     return req.send(body);
   };

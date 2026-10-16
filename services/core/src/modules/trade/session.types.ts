@@ -162,7 +162,10 @@ export function assertPriceMode(v: unknown): PriceMode {
   if (typeof v === 'string' && (PRICE_MODES as readonly string[]).includes(v)) {
     return v as PriceMode;
   }
-  throw new AppError(ErrorCode.InvalidArgument, `price_mode 须为 per_head|session_total：${JSON.stringify(v)}`);
+  throw new AppError(
+    ErrorCode.InvalidArgument,
+    `price_mode 须为 per_head|session_total：${JSON.stringify(v)}`,
+  );
 }
 
 export function assertRoomMode(v: unknown): SessionRoomMode {
@@ -188,7 +191,10 @@ export function assertCapacity(v: unknown): number {
 /** ISO 8601 时刻（POST slot_start/enroll_deadline 线格式；Date 解析失败即 400） */
 export function assertIsoDatetime(v: unknown, field: string): Date {
   if (typeof v !== 'string') {
-    throw new AppError(ErrorCode.InvalidArgument, `${field} 须为 ISO 8601 字符串：${JSON.stringify(v)}`);
+    throw new AppError(
+      ErrorCode.InvalidArgument,
+      `${field} 须为 ISO 8601 字符串：${JSON.stringify(v)}`,
+    );
   }
   const d = new Date(v);
   if (Number.isNaN(d.getTime())) {

@@ -40,6 +40,7 @@ import { StateTransitionGuardService } from '../../infrastructure/state-machine/
 import { LawyerQualificationService } from '../identity/lawyer.service';
 import { CreditService } from '../credit/credit.service';
 import { PricingConfigService } from '../pricing/pricing.service';
+import type { ScheduleJobType } from '../schedule/scheduler.catalog';
 import { SchedulerService } from '../schedule/scheduler.service';
 import { SlotLockService } from '../schedule/slot-lock.service';
 import { SESSION_MACHINE, type SessionStatus } from './session.machine';
@@ -92,7 +93,7 @@ const TERMINAL_STATUSES_SQL = `'FAILED', 'CANCELLED', 'FINISHED', 'SETTLED'`;
 const GROUPED_STATUSES = ['FULL', 'CONFIRMED', 'OPEN', 'IN_SERVICE', 'FINISHED', 'HOLD', 'SETTLED'];
 
 /** REMIND 系列 job 的 slot_start 前置偏移（I2 目录；executor=D2=M2 只预写） */
-const REMIND_OFFSETS_MS: ReadonlyArray<readonly [string, number]> = [
+const REMIND_OFFSETS_MS: ReadonlyArray<readonly [ScheduleJobType, number]> = [
   ['REMIND_24H', 24 * 3_600_000],
   ['REMIND_1H', 1 * 3_600_000],
   ['REMIND_10MIN', 10 * 60_000],
@@ -148,7 +149,10 @@ export class SessionService {
   async create(input: CreateSessionInput): Promise<SessionView> {
     const lawyerId = assertPositiveInt(input.lawyer_id, 'lawyer_id');
     if (!(input.slot_start instanceof Date) || Number.isNaN(input.slot_start.getTime())) {
-      throw new AppError(ErrorCode.InvalidArgument, `slot_start 须为有效时刻：${String(input.slot_start)}`);
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `slot_start 须为有效时刻：${String(input.slot_start)}`,
+      );
     }
     const slotStart = input.slot_start;
     const priceMode = assertPriceMode(input.price_mode);
@@ -177,12 +181,16 @@ export class SessionService {
 
     // D3 缺省（⚠04§8-3）：enroll_deadline 缺省=slot_start 前 N 小时（config 可调），律师可改
     const deadline =
-      input.enroll_deadline ?? new Date(slotStart.getTime() - this.config.enrollDeadlineHours * HOUR_MS);
+      input.enroll_deadline ??
+      new Date(slotStart.getTime() - this.config.enrollDeadlineHours * HOUR_MS);
     if (Number.isNaN(deadline.getTime())) {
       throw new AppError(ErrorCode.InvalidArgument, `enroll_deadline 须为有效时刻`);
     }
     if (deadline.getTime() >= slotStart.getTime()) {
-      throw new AppError(ErrorCode.InvalidArgument, 'enroll_deadline 须早于 slot_start（截止先于开始）');
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        'enroll_deadline 须早于 slot_start（截止先于开始）',
+      );
     }
 
     const view = await this.pool.withTransaction(async (uow) => {
@@ -360,7 +368,10 @@ export class SessionService {
     const fromDate = assertIsoDate(from, 'from');
     const toDate = assertIsoDate(to, 'to');
     if (Date.parse(`${toDate}T00:00:00Z`) < Date.parse(`${fromDate}T00:00:00Z`)) {
-      throw new AppError(ErrorCode.InvalidArgument, `区间倒置（from 须 ≤ to）：${fromDate}..${toDate}`);
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `区间倒置（from 须 ≤ to）：${fromDate}..${toDate}`,
+      );
     }
     const res = await this.pool.query<{
       total: number;
@@ -374,7 +385,12 @@ export class SessionService {
               COALESCE(sum(capacity), 0)::int AS capacity_sum
          FROM trade.sessions
         WHERE lawyer_id = $1 AND slot_start >= $2 AND slot_start < $4`,
-      [lawyerId, shanghaiDayStart(fromDate), GROUPED_STATUSES, shanghaiDayStart(shanghaiDayAfter(toDate))],
+      [
+        lawyerId,
+        shanghaiDayStart(fromDate),
+        GROUPED_STATUSES,
+        shanghaiDayStart(shanghaiDayAfter(toDate)),
+      ],
     );
     const row = res.rows[0]!;
     if (row.total === 0) {
@@ -564,8 +580,15 @@ export class SessionService {
   /** 列表筛选归一（400 收口；specialty 形态收口但不参与过滤——类型注释与报告注明口径） */
   private normalizeListFilter(filter: ListSessionsFilter): ListSessionsFilter {
     if (filter.specialty !== undefined) {
-      if (typeof filter.specialty !== 'string' || filter.specialty.length === 0 || filter.specialty.length > 64) {
-        throw new AppError(ErrorCode.InvalidArgument, `specialty 须为 1-64 字符：${JSON.stringify(filter.specialty)}`);
+      if (
+        typeof filter.specialty !== 'string' ||
+        filter.specialty.length === 0 ||
+        filter.specialty.length > 64
+      ) {
+        throw new AppError(
+          ErrorCode.InvalidArgument,
+          `specialty 须为 1-64 字符：${JSON.stringify(filter.specialty)}`,
+        );
       }
     }
     return {
@@ -579,7 +602,10 @@ export class SessionService {
   /** UNIT_PRICE 列宽上限校验落点（resolvePrices 出口统一把关） */
   private assertColumnBounds(unitCents: number, totalCents: number): void {
     if (unitCents > UNIT_PRICE_MAX_CENTS || totalCents > 999_999_999_999) {
-      throw new AppError(ErrorCode.InvalidArgument, '金额超出列宽上限（unit_price numeric(10,2) / session_total numeric(12,2)）');
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        '金额超出列宽上限（unit_price numeric(10,2) / session_total numeric(12,2)）',
+      );
     }
   }
 }

@@ -61,9 +61,7 @@ describe('C1 场次状态机（§4 全迁移矩阵，纯机器件）', () => {
           expect(() => SESSION_MACHINE.assertTransition(from, to)).not.toThrow();
         } else {
           expect(SESSION_MACHINE.canTransition(from, to)).toBe(false);
-          expect(() => SESSION_MACHINE.assertTransition(from, to)).toThrow(
-            '非法状态迁移',
-          );
+          expect(() => SESSION_MACHINE.assertTransition(from, to)).toThrow('非法状态迁移');
         }
       }
     }

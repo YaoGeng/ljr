@@ -13,13 +13,8 @@
  */
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { PgPoolService } from '../../infrastructure/sql';
-import {
-  TerminalStateRegistry,
-} from '../schedule/slot-lock.terminal-registry';
-import type {
-  EntityTerminalInfo,
-  TerminalStateProvider,
-} from '../schedule/slot-lock.types';
+import { TerminalStateRegistry } from '../schedule/slot-lock.terminal-registry';
+import type { EntityTerminalInfo, TerminalStateProvider } from '../schedule/slot-lock.types';
 import { SESSION_TERMINAL_STATUSES } from './session.machine';
 
 @Injectable()

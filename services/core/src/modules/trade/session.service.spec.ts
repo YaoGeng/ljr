@@ -1,14 +1,6 @@
 import 'reflect-metadata';
 import { randomBytes } from 'node:crypto';
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-} from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { Pool } from 'pg';
@@ -31,6 +23,7 @@ import { PricingConfigService } from '../pricing/pricing.service';
 import { SLOT_ABUSE_DETECTED_TOPIC } from '../schedule/slot-lock.events';
 import { SlotLockService } from '../schedule/slot-lock.service';
 import { TerminalStateRegistry } from '../schedule/slot-lock.terminal-registry';
+import type { CreateSessionInput } from './session.types';
 import { SchedulerService } from '../schedule/scheduler.service';
 import { SessionTerminalProvider } from './session.terminal-provider';
 import { SessionService } from './session.service';
@@ -45,7 +38,6 @@ import { TradeModule } from './trade.module';
  */
 
 const HOUR = 3_600_000;
-const MINUTE = 60_000;
 
 const testIdentityConfig = (): IdentityConfig => ({
   phoneDataKey: randomBytes(32),
@@ -99,10 +91,10 @@ describe('C1 领域层（开团事务/幂等/R-01/R-04/R-05/截止流标/终态 
       },
     });
 
-  const createInput = (over: Record<string, unknown> = {}) => ({
+  const createInput = (over: Partial<CreateSessionInput> = {}): CreateSessionInput => ({
     lawyer_id: 9101,
     slot_start: hourAfter(25),
-    price_mode: 'per_head' as const,
+    price_mode: 'per_head',
     capacity: 6,
     room_mode: 'text',
     ...over,
@@ -159,14 +151,20 @@ describe('C1 领域层（开团事务/幂等/R-01/R-04/R-05/截止流标/终态 
     expect(view.unit_price).toBe('50.00'); // R-01：缺省取 B3 默认，快照进行
     expect(view.session_total).toBe('300.00'); // R-04：per_head=单价×capacity
     const expectedDeadline = new Date(slotStart.getTime() - 24 * HOUR);
-    expect(Math.abs(new Date(view.enroll_deadline).getTime() - expectedDeadline.getTime())).toBeLessThan(1_500);
+    expect(
+      Math.abs(new Date(view.enroll_deadline).getTime() - expectedDeadline.getTime()),
+    ).toBeLessThan(1_500);
 
     const row = await pool.query<{ unit_price: string; session_total: string; status: string }>(
       `SELECT unit_price::text AS unit_price, session_total::text AS session_total, status
          FROM trade.sessions WHERE id = $1`,
       [view.id],
     );
-    expect(row.rows[0]).toMatchObject({ unit_price: '50.00', session_total: '300.00', status: 'CREATED' });
+    expect(row.rows[0]).toMatchObject({
+      unit_price: '50.00',
+      session_total: '300.00',
+      status: 'CREATED',
+    });
 
     const created = await pool.query<{ payload: Record<string, unknown> }>(
       `SELECT payload FROM platform.outbox WHERE topic = $1`,
@@ -207,7 +205,12 @@ describe('C1 领域层（开团事务/幂等/R-01/R-04/R-05/截止流标/终态 
 
   it('R-04 session_total 模式：入参=开团总价落 session_total，unit_price=总价÷capacity 半分向上分摊', async () => {
     const total = await sessions.create(
-      createInput({ lawyer_id: 9101, price_mode: 'session_total', unit_price: '100.01', capacity: 2 }),
+      createInput({
+        lawyer_id: 9101,
+        price_mode: 'session_total',
+        unit_price: '100.01',
+        capacity: 2,
+      }),
     );
     expect(total.session_total).toBe('100.01');
     expect(total.unit_price).toBe('50.01'); // 10001 分 ÷2 = 5000.5 → 半分向上 5001
@@ -228,9 +231,7 @@ describe('C1 领域层（开团事务/幂等/R-01/R-04/R-05/截止流标/终态 
 
   it('unit_price 缺省：per_head/session_total 双模式取 B3 默认；B3 无默认价 → 400 不落行', async () => {
     await seedPricing(9101, { session_total: '200.00' });
-    const view = await sessions.create(
-      createInput({ price_mode: 'session_total', capacity: 4 }),
-    );
+    const view = await sessions.create(createInput({ price_mode: 'session_total', capacity: 4 }));
     expect(view.session_total).toBe('200.00');
     expect(view.unit_price).toBe('50.00'); // 20000÷4
 
@@ -371,9 +372,7 @@ describe('C1 领域层（开团事务/幂等/R-01/R-04/R-05/截止流标/终态 
         WHERE entity_type = 'session' AND entity_id = $1 ORDER BY id`,
       [view.id],
     );
-    expect(stl.rows).toEqual([
-      { from_status: 'CREATED', to_status: 'FAILED', allowed: true },
-    ]);
+    expect(stl.rows).toEqual([{ from_status: 'CREATED', to_status: 'FAILED', allowed: true }]);
 
     const failed = await pool.query<{ payload: Record<string, unknown> }>(
       `SELECT payload FROM platform.outbox WHERE topic = $1`,
@@ -495,9 +494,10 @@ describe('C1 领域层（开团事务/幂等/R-01/R-04/R-05/截止流标/终态 
     expect(missing).toBeNull();
 
     // 终态集钉住：FINISHED 起不再需要占用锁（锁口径），CREATED/FULL/… 仍占
-    await pool.query(`UPDATE trade.sessions SET status = 'FINISHED', status_since = now() WHERE id = $1`, [
-      alive.id,
-    ]); // 夹具直写仅造 provider 输入（状态机推进路径 D 域=M2）；生产零裸写
+    await pool.query(
+      `UPDATE trade.sessions SET status = 'FINISHED', status_since = now() WHERE id = $1`,
+      [alive.id],
+    ); // 夹具直写仅造 provider 输入（状态机推进路径 D 域=M2）；生产零裸写
     const finished = await provider!.isTerminalBatch!([alive.id]);
     expect(finished.get(alive.id)?.terminal).toBe(true);
   });

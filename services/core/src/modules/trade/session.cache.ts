@@ -5,7 +5,7 @@
  * 列表键空间是筛选元组，粗粒度 invalidateAll 最小正确；状态迁移/流标走 TTL 兜底 ≤30s 最终一致，
  * W2 缓存适配位同口径）。
  */
-import { Inject, Injectable, Optional, type InjectionToken } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { TRADE_SESSION_CONFIG, type TradeSessionConfig } from './session.config';
 
 interface CacheEntry {
