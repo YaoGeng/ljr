@@ -208,15 +208,12 @@ export class PaymentGatewayService {
         ],
       );
       if (claim.rows.length === 0) {
+        // 冲突分支（并发同键）：读回原单后必须走 replayOrder 载荷比对——
+        // 同键同载荷=重放原单；异载荷=409 E_DUP_KEY（幂等铁律对并发路径与串行快路径同口径）
         const prev = await this.findOrderByKeyInTx(uow, input.idempotency_key);
         if (!prev)
           throw new AppError(ErrorCode.InternalError, '幂等键冲突但原单不可读（不应触达）');
-        return {
-          row: prev,
-          replayed: true as const,
-          degradedNow: false,
-          txnNo: prev.channel_txn_no,
-        };
+        return { row: prev, replayed: true as const };
       }
       const inserted = claim.rows[0]!;
 
@@ -243,10 +240,11 @@ export class PaymentGatewayService {
       return {
         row: finalRow,
         replayed: false as const,
-        degradedNow: out.degradedNow,
-        txnNo: out.result.channelTxnNo,
       };
     });
+
+    // 重放（串行快路径或并发冲突分支）：统一载荷比对——同键异载荷 409（I-1 修复口径）
+    if (row.replayed) return this.replayOrder(row.row, input);
 
     // 金额不变量断言（§9：生成列读回 vs 本地整化）
     assertAmountInvariant(row.row.cash_amount, row.row.points_amount, row.row.total);
@@ -740,7 +738,10 @@ export class PaymentGatewayService {
 
     return this.pool.withTransaction(async (uow) => {
       const claim = await uow.query<{ id: string }>(
-        // 无目标 ON CONFLICT DO NOTHING 覆盖双唯一两方向（PG 每语句仅一个 ON CONFLICT 子句）
+        // 无目标 ON CONFLICT DO NOTHING 覆盖双唯一两方向（PG 每语句仅一个 ON CONFLICT 子句）。
+        // M-3 载荷口径：落库=增补 channel 的 JSON（§3 inbox 无 channel 列，随 payload 携带），
+        // 原始报文以验签瞬态存在（rawBody 字节仅参与 HMAC 比对后即弃），不另设原文列——
+        // 回调重放/取证的原文事实源=通道侧重发。
         `INSERT INTO payment.inbox (channel_txn_no, biz_idempotency_key, payload, status)
          VALUES ($1, $2, $3::jsonb, 'RECEIVED')
          ON CONFLICT DO NOTHING
@@ -864,32 +865,6 @@ export class PaymentGatewayService {
     const row = res.rows[0];
     if (!row) throw new AppError(ErrorCode.InternalError, `支付单 ${id} 插入后不可读（不应触达）`);
     return row;
-  }
-
-  /** 下单重放判定：同键同载荷=返回原单+原 pay_params（确定性重建）；异载荷=409 E_DUP_KEY */
-  private replayOrCreate(
-    row: OrderRow,
-    input: CreateOrderInput,
-    _expectedTotalCents: number,
-  ): CreateOrderResult {
-    const same =
-      row.biz_type === input.biz_type &&
-      Number(row.biz_id) === input.biz_id &&
-      row.cash_amount === input.cash_amount &&
-      row.points_amount === input.points_amount;
-    if (!same) {
-      throw new AppError(
-        ErrorCode.PaymentDuplicateKey,
-        `幂等键 ${input.idempotency_key} 已绑定其他载荷（同键须同载荷重放）`,
-      );
-    }
-    assertAmountInvariant(row.cash_amount, row.points_amount, row.total);
-    const view = toOrderView(row);
-    const payParams: PayParamsView = {
-      ...this.router.payParamsFor(row.channel as PaymentChannelName, view.id, row.biz_type),
-      channel: row.channel,
-    };
-    return { payment_order: view, pay_params: payParams };
   }
 
   /**

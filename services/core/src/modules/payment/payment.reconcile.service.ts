@@ -52,7 +52,7 @@ export interface ReconcileInput {
 export interface ReconcileChannelResult {
   readonly channel: PaymentChannelName;
   readonly statement_lines: number;
-  /** 与本地记录双边对平的账单行数 */
+  /** 双边键匹配数（按 channel_txn_no 等值命中，含金额不符行——金额差异另列 diffs/AMOUNT_MISMATCH） */
   readonly matched: number;
   readonly diffs: readonly ReconciliationDiffItem[];
 }

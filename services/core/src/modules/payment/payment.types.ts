@@ -5,6 +5,14 @@
  * 进行（moneyToCents/centsToMoney 严格两位小数字符串 ↔ 整数分），全程无浮点；生成列读回
  * NUMERIC 字符串（pg 驱动对 numeric 恒返 string）与本地整化值比对，不一致 InternalError
  * 显性化（DB 兜底层失守即硬错误，不静默）。
+ *
+ * 幂等键列宽推导（M-5 更正口径；V20 已 apply 冻结，V20 头注相应表述以本注释为准）：
+ * shared 契约合法键最长 98（domain/entity/event 三段各≤32 + 两处 '/'）——
+ *   - payment_orders.idempotency_key varchar(128) ≥ 98（V11「列宽只放宽不收紧」口径，留余量）；
+ *   - inbox.biz_idempotency_key varchar(160) = 98（业务幂等号上限）+ 1（':'）+ 32（事件名上限）
+ *     = 131 < 160，余量充足（非「128+32=160」字面推导——128 是列宽非键长上限）。
+ * 回调通道事件类型（PAY_SUCCESS/REFUND_SUCCESS 等）不设枚举收口：开放值域由消费方按
+ * event 解释（§3 注释例为示意），事件名上限 32 即上式推导依据。
  */
 import { AppError, ErrorCode, assertMoney, type Money } from '@ljr/shared';
 import type { PaymentOrderStatus } from './payment.machine';
@@ -19,10 +27,6 @@ export type BizType = (typeof BIZ_TYPES)[number];
 /** §5 /pay/deduct 扣减来源（F3 待结算余额 | A3b 保证金专户） */
 export const DEDUCT_FROM = ['settlement', 'deposit'] as const;
 export type DeductFrom = (typeof DEDUCT_FROM)[number];
-
-/** 回调通道事件类型（§3 注释例；开放值域由消费方按 event 解释，本批钉两个具名值） */
-export const CHANNEL_EVENT_TYPES = ['PAY_SUCCESS', 'REFUND_SUCCESS'] as const;
-export type ChannelEventType = (typeof CHANNEL_EVENT_TYPES)[number];
 
 /** int4 上限（points_amount int 列；越界显性 400 而非 PG 22003） */
 const INT4_MAX = 2_147_483_647;

@@ -20,10 +20,20 @@ import { PaymentReconcileService } from './payment.reconcile.service';
  * 差异行落 split_ledgers（direction=DIFF + diff_reason + recon:* 确定性幂等键）+
  * ReconciliationDiffFound 同事务出箱（仅新差异行——重跑幂等，不重复工单）。
  * 调度面后置：本批仅 service+admin REST 手动触发；T+1 定时挂 I2 属 M2 真通道批。
+ *
+ * 时钟口径（I-3 拆弹）：对账链路两侧日切必须同源——mock 账单期=适配器时钟上海日切，
+ * 本地 period（split_ledgers.period/paid_at）=DB now() 上海日切。用例一律用真实时钟
+ * （不注入 DAY）并动态推导 PERIOD=now 的上海日切日期：注入固定时钟会让账单期与 DB 侧
+ * 在「非构造当日」运行时错位产生假差异（时间炸弹），日切数学本身由 channels.spec 的
+ * I-3 跨日用例（注入时钟）钉住。
  */
 
-const DAY = Date.UTC(2026, 9, 16, 8, 0, 0); // 2026-10-16（Asia/Shanghai 同日）
-const PERIOD = '2026-10-16';
+/** Asia/Shanghai 日切日期（+08:00 固定偏移，无 DST；与 payment.channels isoDate 同式） */
+function shanghaiToday(): string {
+  return new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10);
+}
+
+const PERIOD = shanghaiToday();
 
 function testConfig(): PaymentConfig {
   return {
@@ -64,22 +74,12 @@ describe('F1 PaymentReconcileService（需 PG）', () => {
   beforeEach(async () => {
     await truncateAll(pool);
     const cfg = testConfig();
-    wechat = new MockChannelAdapter(
-      'wechat_ecom',
-      cfg.primary.merchantId,
-      cfg.primary.secret,
-      () => new Date(DAY),
-    );
-    const alipay = new MockChannelAdapter(
-      'alipay',
-      cfg.backup.merchantId,
-      cfg.backup.secret,
-      () => new Date(DAY),
-    );
+    // 真实时钟（不注入 DAY）：账单期与 DB 侧 split_ledgers.period/paid_at（now() 上海日切）同源对齐
+    wechat = new MockChannelAdapter('wechat_ecom', cfg.primary.merchantId, cfg.primary.secret);
+    const alipay = new MockChannelAdapter('alipay', cfg.backup.merchantId, cfg.backup.secret);
     const router = new ChannelRouter({
       adapters: [wechat, alipay],
       switchWindowMs: cfg.switchWindowMs,
-      now: () => DAY,
     });
     const poolSvc = new PgPoolService(pool);
     svc = new PaymentGatewayService(

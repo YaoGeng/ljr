@@ -175,13 +175,73 @@ describe('F1 PaymentGatewayService（需 PG）', () => {
     expect(replay.payment_order.id).toBe(first.payment_order.id);
     expect(replay.payment_order.channel).toBe(first.payment_order.channel);
     expect(replay.pay_params.mock_pay_url).toBe(first.pay_params.mock_pay_url); // 确定性重建=原参数
-
     await expect(
       createOrder({ idempotency_key: 'payment/same-key/pay', cash_amount: '299.50' }),
     ).rejects.toMatchObject({ code: ErrorCode.PaymentDuplicateKey });
 
     const n = await pool.query(`SELECT count(*)::int AS n FROM payment.payment_orders`);
     expect(n.rows[0]!.n).toBe(1); // 恰一次
+  });
+
+  it('R-02 并发缺口（claim 冲突分支覆盖）：同键异载荷经冲突路径 → 409；同键同载荷经冲突路径 → 原单', async () => {
+    // 确定性构造：未提交事务先占唯一键（模拟并发首访在飞），快路径读不到 → 进入事务 →
+    // claim 撞唯一键败退走冲突分支；阻塞者提交后冲突分支读回比对载荷。
+    const runConflictPath = async (
+      key: string,
+      stored: { bizId: number; cash: string; points: number },
+      caller: { bizId: number; cash: string; points: number },
+    ): Promise<{ id: number } | { code: string }> => {
+      const blocker = await pool.connect();
+      try {
+        await blocker.query('BEGIN');
+        await blocker.query(
+          `INSERT INTO payment.payment_orders
+             (biz_type, biz_id, channel, cash_amount, points_amount, status, idempotency_key)
+           VALUES ('enroll', $1, 'wechat_ecom', $2::numeric, $3, 'CREATED', $4)`,
+          [stored.bizId, stored.cash, stored.points, key],
+        );
+        const loser = svc.createOrder({
+          biz_type: 'enroll',
+          biz_id: caller.bizId,
+          cash_amount: caller.cash,
+          points_amount: caller.points,
+          idempotency_key: key,
+        });
+        await new Promise((r) => setTimeout(r, 150)); // 让 loser 进入 claim 唯一键等待
+        await blocker.query('COMMIT'); // 提交阻塞者 → loser 的 claim 败退（冲突分支）
+        try {
+          const res = await loser;
+          return { id: res.payment_order.id };
+        } catch (e) {
+          return { code: (e as { code?: string }).code ?? 'UNKNOWN' };
+        }
+      } finally {
+        blocker.release();
+      }
+    };
+
+    // 异载荷经冲突路径 → 409 E_DUP_KEY（修复点：冲突分支必须比对载荷）
+    const conflict = await runConflictPath(
+      'payment/conflict-diff/pay',
+      { bizId: 888, cash: '199.50', points: 250 },
+      { bizId: 999, cash: '100.00', points: 0 },
+    );
+    expect(conflict).toEqual({ code: ErrorCode.PaymentDuplicateKey });
+
+    // 同载荷经冲突路径 → 原单（恰一次语义不受并发影响）
+    const ok = await runConflictPath(
+      'payment/conflict-same/pay',
+      { bizId: 777, cash: '50.00', points: 10 },
+      { bizId: 777, cash: '50.00', points: 10 },
+    );
+    expect('id' in ok).toBe(true);
+    const stored = await pool.query<{ id: string }>(
+      `SELECT id::text AS id FROM payment.payment_orders WHERE idempotency_key = 'payment/conflict-same/pay'`,
+    );
+    expect((ok as { id: number }).id).toBe(Number(stored.rows[0]!.id));
+
+    const n = await pool.query(`SELECT count(*)::int AS n FROM payment.payment_orders`);
+    expect(n.rows[0]!.n).toBe(2); // 每键恰一单
   });
 
   it('降级切换：主通道 5xx 注入 → 备用通道接管落单 + ChannelDegraded 同事务出箱（恰一次）', async () => {

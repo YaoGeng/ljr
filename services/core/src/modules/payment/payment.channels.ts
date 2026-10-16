@@ -112,9 +112,14 @@ export interface PaymentChannelAdapter {
 
 const PERIOD_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** 指令时点 → 对账期（UTC 日期口径；可注入时钟保测试确定性） */
+/**
+ * 指令时点 → 对账期：Asia/Shanghai 日切（+08:00 固定偏移，无 DST；与架构「时间一律
+ * Asia/Shanghai」及本地侧 split_ledgers.period=(now() AT TIME ZONE 'Asia/Shanghai')::date
+ * 同口径——I-3 修复：此前 toISOString()=UTC 日切，UTC 16:00 后的指令会与本地侧错位一日）。
+ * 可注入时钟保测试确定性。
+ */
 function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return new Date(d.getTime() + 8 * 3_600_000).toISOString().slice(0, 10);
 }
 
 export class MockChannelAdapter implements PaymentChannelAdapter {

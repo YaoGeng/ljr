@@ -13,6 +13,7 @@ import {
   PAYMENT_SWITCH_WINDOW_MS_DEFAULT,
   type PaymentConfig,
 } from './payment.config';
+import { PaymentGatewayService } from './payment.gateway.service';
 import { PaymentModule } from './payment.module';
 
 interface MockChannelLike {
@@ -124,10 +125,47 @@ describe('F1 HTTP 契约（§5，需 PG）', () => {
     expect(bad.body.code).toBe('E_MONEY_INVALID');
   });
 
-  it('POST /pay/refund：指令下发 REFUNDING；404 未知名单；409 DUP 同口径', async () => {
+  it('POST /pay/refund|split：§5 出参包键名 {refund}/{result}（契约表逐字）；404/409 守卫同口径', async () => {
     const created = await request(app.getHttpServer()).post('/pay/orders').send(createOrderBody());
-    const orderId = created.body.payment_order.id as number;
+    const order = created.body.payment_order;
+    // 生命周期前置经服务面（模块导出的应用服务——内部调用口径）
+    const gw = app.get(PaymentGatewayService);
+    await gw.markFrozen(order.id, null);
+    await gw.markPaid(order.id);
 
+    const refund = await request(app.getHttpServer()).post('/pay/refund').send({
+      order_id: order.id,
+      cash_refund: '99.50',
+      points_refund: 0,
+      reason: '部分退',
+      idempotency_key: 'payment/http-r-shape/refund',
+    });
+    expect(refund.status).toBe(201);
+    expect(Object.keys(refund.body)).toEqual(['refund']); // §5：→ {refund}
+    expect(refund.body.refund.direction).toBe('REFUND');
+    expect(refund.body.refund.order_status).toBe('REFUNDING');
+    expect(refund.body.refund.amount).toBe('99.50');
+
+    // 分账单（PAID 另起一单：SPLIT 后退款不可达，矩阵钉死）
+    const created2 = await request(app.getHttpServer())
+      .post('/pay/orders')
+      .send(createOrderBody({ idempotency_key: 'payment/http-shape-2/pay' }));
+    const order2 = created2.body.payment_order;
+    await gw.markFrozen(order2.id, null);
+    await gw.markPaid(order2.id);
+    const split = await request(app.getHttpServer())
+      .post('/pay/split')
+      .send({
+        order_id: order2.id,
+        splits: [{ payee_type: 'lawyer_firm', payee_id: 5, amount: '202.00' }],
+        idempotency_key: 'payment/http-sp-shape/split',
+      });
+    expect(split.status).toBe(201);
+    expect(Object.keys(split.body)).toEqual(['result']); // §5：→ {result}
+    expect(split.body.result.direction).toBe('SPLIT');
+    expect(split.body.result.order_status).toBe('SPLIT');
+
+    // 404 未知名单；CREATED 未冻结退款被守卫拒（409 StateIllegalTransition）——另起 CREATED 单
     const missing = await request(app.getHttpServer()).post('/pay/refund').send({
       order_id: 999999,
       cash_refund: '1.00',
@@ -136,9 +174,11 @@ describe('F1 HTTP 契约（§5，需 PG）', () => {
       idempotency_key: 'payment/http-r-missing/refund',
     });
     expect(missing.status).toBe(404);
-    // 未冻结支付（CREATED）退款被守卫拒 → 409 StateIllegalTransition
+    const created3 = await request(app.getHttpServer())
+      .post('/pay/orders')
+      .send(createOrderBody({ idempotency_key: 'payment/http-shape-3/pay' }));
     const early = await request(app.getHttpServer()).post('/pay/refund').send({
-      order_id: orderId,
+      order_id: created3.body.payment_order.id,
       cash_refund: '1.00',
       points_refund: 0,
       reason: '早退',
@@ -170,8 +210,9 @@ describe('F1 HTTP 契约（§5，需 PG）', () => {
       idempotency_key: 'payment/http-d-ok/deduct',
     });
     expect(ok.status).toBe(201);
-    expect(ok.body.direction).toBe('DEDUCT');
-    expect(ok.body.channel).toBe('wechat_ecom');
+    expect(Object.keys(ok.body)).toEqual(['result']); // §5：→ {result}
+    expect(ok.body.result.direction).toBe('DEDUCT');
+    expect(ok.body.result.channel).toBe('wechat_ecom');
 
     const bad = await request(app.getHttpServer()).post('/pay/deduct').send({
       lawyer_id: 9101,

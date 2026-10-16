@@ -43,22 +43,22 @@ export class PaymentController {
     return this.gateway.createOrder(parseOrderBody(body));
   }
 
-  /** POST /pay/refund（§5：指令下发→REFUNDING；409 DUP 同口径） */
+  /** POST /pay/refund（§5：指令下发→REFUNDING；409 DUP 同口径；出参 {refund} 契约表逐字） */
   @Post('pay/refund')
   refund(@Body() body: unknown): Promise<unknown> {
-    return this.gateway.refund(parseRefundBody(body));
+    return this.gateway.refund(parseRefundBody(body)).then((r) => ({ refund: r }));
   }
 
-  /** POST /pay/split（§5：splits 求和 ≤ 可分金额；409 DUP） */
+  /** POST /pay/split（§5：splits 求和 ≤ 可分金额；409 DUP；出参 {result} 契约表逐字） */
   @Post('pay/split')
   split(@Body() body: unknown): Promise<unknown> {
-    return this.gateway.split(parseSplitBody(body));
+    return this.gateway.split(parseSplitBody(body)).then((r) => ({ result: r }));
   }
 
-  /** POST /pay/deduct（§5：400 INSUFFICIENT；幂等键） */
+  /** POST /pay/deduct（§5：400 INSUFFICIENT；幂等键；出参 {result} 契约表逐字） */
   @Post('pay/deduct')
   deduct(@Body() body: unknown): Promise<unknown> {
-    return this.gateway.deduct(parseDeductBody(body));
+    return this.gateway.deduct(parseDeductBody(body)).then((r) => ({ result: r }));
   }
 
   /** POST /callbacks/{channel}（§5：200/403 SIGN_FAIL；Inbox 去重） */

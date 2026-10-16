@@ -94,6 +94,14 @@ describe('MockChannelAdapter（mock 适配器：零网络请求 + 故障注入�
     expect(await wechat.statement('2026-10-16')).toEqual([]);
   });
 
+  it('I-3 对账期=Asia/Shanghai 日切（+08:00 固定偏移）：UTC 16:00 后的指令归上海次日，不与 UTC 日混淆', async () => {
+    const clock = { now: Date.UTC(2026, 9, 16, 16, 5, 0) }; // 上海 2026-10-17 00:05（UTC 仍 10-16）
+    const wechat = new MockChannelAdapter('wechat_ecom', 'm', 's', () => new Date(clock.now));
+    await wechat.preorder(PREORDER);
+    expect((await wechat.statement('2026-10-17')).length).toBe(1); // 上海日切次日
+    expect(await wechat.statement('2026-10-16')).toEqual([]); // UTC 日 ≠ 对账期
+  });
+
   it('故障注入 CHANNEL_ERROR：healthy()=false 且原语抛 ChannelFaultError；INSUFFICIENT 仅 deduct 抛', async () => {
     const wechat = new MockChannelAdapter('wechat_ecom', 'm', 's');
     expect(wechat.healthy()).toBe(true);
