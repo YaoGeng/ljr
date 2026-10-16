@@ -52,7 +52,12 @@ import { SLOT_LOCK_REF_TYPES } from './slot-lock.types';
 /** 进行中（占段）状态集：ux_slot_active / ix_slot_user 的部分索引谓词同款 */
 const ACTIVE_STATUSES_SQL = `'PENDING_PAYMENT', 'LOCKED', 'OCCUPIED'`;
 
-/** R-03 计数上限（业务规则非可调参数：每用户对同律师进行中锁 ≤1、全局 ≤3） */
+/** R-03 计数集（R-W3-F 收窄）：仅 PENDING_PAYMENT——B2 §2/R-03 明文滥用防护=C2B 发布锁（发布即锁
+ *  绑支付单）；LOCKED（B2C 创建即锁/C5 改期）/OCCUPIED（履约中）不占滥用额度，律师连开多团不受限
+ *  （B2C 频控归属=R-W3-H：不设上限，B1 自然边界+G1 BAN_PUBLISH 滥用闸，待澄清备查）。 */
+const COUNTED_STATUSES_SQL = `'PENDING_PAYMENT'`;
+
+/** R-03 计数上限（业务规则非可调参数：每用户同律师进行中待支付锁 ≤1、全局 ≤3） */
 const PER_LAWYER_LIMIT = 1;
 const GLOBAL_LIMIT = 3;
 
@@ -106,7 +111,8 @@ export class SlotLockService {
    * PENDING_PAYMENT（+ttl_at +同事务 SLOT_TTL job）；缺省 ⇒ LOCKED（C1 创建即锁/C5 改期新段）。
    * 拒绝语义见 LockSlotResult：SLOT_TAKEN 时事务已被 23505 污染（调用方只能 ROLLBACK）；
    * SLOT_ABUSE_LIMIT 时锁行未写入，调用方应回滚业务写（SlotAbuseDetected 经独立连接落 outbox，
-   * 不随调用方回滚丢失——守卫拒绝留痕同款口径）。
+   * 不随调用方回滚丢失——守卫拒绝留痕同款口径）。滥用计数锚=R-W3-F 收窄：仅 PENDING_PAYMENT
+   * （C2B 专属触发；B2C 创建即锁 LOCKED 不计数，B2C 频控=R-W3-H 不设上限，B1 自然边界+G1 闸）。
    */
   async lockSlot(uow: SqlExecutor, input: LockSlotInput): Promise<LockSlotResult> {
     this.assertLockInput(input);
@@ -115,20 +121,20 @@ export class SlotLockService {
     await uow.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [
       `ljr:slot_lock_abuse:${String(input.initiatorUserId)}`,
     ]);
-    // R-03 第一重：每用户对同律师进行中锁 ≤1（PENDING_PAYMENT 纳入计数，ix_slot_user 口径）
+    // R-03 第一重：每用户对同律师进行中待支付锁 ≤1（R-W3-F：计数集=仅 PENDING_PAYMENT，C2B 滥用防护口径）
     const perLawyer = await uow.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM schedule.slot_locks
-        WHERE initiator_user_id = $1 AND lawyer_id = $2 AND status IN (${ACTIVE_STATUSES_SQL})`,
+        WHERE initiator_user_id = $1 AND lawyer_id = $2 AND status IN (${COUNTED_STATUSES_SQL})`,
       [input.initiatorUserId, input.lawyerId],
     );
     if ((perLawyer.rows[0]?.n ?? 0) >= PER_LAWYER_LIMIT) {
       await this.recordAbuse(input, 'PER_LAWYER');
       return { ok: false, reason: 'SLOT_ABUSE_LIMIT' };
     }
-    // R-03 第二重：全局 ≤3
+    // R-03 第二重：全局 ≤3（同上计数集）
     const global = await uow.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM schedule.slot_locks
-        WHERE initiator_user_id = $1 AND status IN (${ACTIVE_STATUSES_SQL})`,
+        WHERE initiator_user_id = $1 AND status IN (${COUNTED_STATUSES_SQL})`,
       [input.initiatorUserId],
     );
     if ((global.rows[0]?.n ?? 0) >= GLOBAL_LIMIT) {

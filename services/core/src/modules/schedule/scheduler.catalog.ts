@@ -82,7 +82,7 @@ export const SCHEDULE_JOB_CATALOG: Readonly<Record<ScheduleJobType, ScheduleJobD
   },
   ROOM_OPEN: {
     jobType: 'ROOM_OPEN',
-    producer: 'D1',
+    producer: 'C1（创建预写，M1-W3 T4）/D1（M2 执行）', // 同 REMIND 先例：C1 创建时同事务预写 job，开房执行器随 D1（M2）装配
     executor: 'D1（开房）',
     recheckAnchor: 'room 状态与开房结果',
     highPriority: true, // 准点保障：独立通道 ≤5s + 延迟 >30s 电话告警（R-03）

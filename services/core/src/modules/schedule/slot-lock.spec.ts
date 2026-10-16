@@ -332,13 +332,13 @@ describe('B2 时间段占用锁（机制 API，需 PG）', () => {
     expect((await lockRow(lockId))?.status).toBe('RELEASED');
   });
 
-  // ---------- R-03：滥用防护三重 ----------
+  // ---------- R-03：滥用防护三重（R-W3-F 收窄：计数集=仅 PENDING_PAYMENT，C2B 滥用防护口径） ----------
 
-  it('R-03 每用户对同律师进行中锁 ≤1（PENDING_PAYMENT 纳入计数）；他律师不受限', async () => {
+  it('R-03 每用户对同律师进行中锁 ≤1（计数集=仅 PENDING_PAYMENT）；他律师不受限', async () => {
     await poolSvc.withTransaction(async (uow) => {
-      const first = await svc.lockSlot(uow, lockInput());
+      // 第一把=PENDING_PAYMENT（计数集内，C2B 发布锁形态）→ 同用户同律师第二段 SLOT_ABUSE_LIMIT(PER_LAWYER)
+      const first = await svc.lockSlot(uow, lockInput({ paymentOrderId: 66300 }));
       expect(first.ok).toBe(true);
-      // 同用户同律师第二段（PENDING_PAYMENT 也计数）→ SLOT_ABUSE_LIMIT(PER_LAWYER)
       const second = await fastSvc.lockSlot(uow, {
         lawyerId: LAWYER,
         slotStart: new Date('2026-11-06T14:00:00.000Z'),
@@ -362,8 +362,17 @@ describe('B2 时间段占用锁（机制 API，需 PG）', () => {
     expect(await activeCount(9002, SLOT)).toBe(1);
   });
 
-  it('R-03 全局 ≤3：三把成功，第 4 把拒绝（GLOBAL）', async () => {
+  it('R-03 全局 ≤3：三把 PENDING_PAYMENT 成功，第 4 把拒绝（GLOBAL）；同夹板 LOCKED 不占计数额度', async () => {
     await poolSvc.withTransaction(async (uow) => {
+      // 夹板先行：一把 LOCKED（B2C 创建即锁形态）——不计数（此时计数=0，闸未达限）
+      const locked = await svc.lockSlot(uow, {
+        lawyerId: 9199,
+        slotStart: SLOT,
+        initiatorUserId: 520,
+        refType: 'session',
+        refId: 7299,
+      });
+      expect(locked.ok).toBe(true);
       for (const i of [1, 2, 3]) {
         const r = await svc.lockSlot(uow, {
           lawyerId: 9100 + i,
@@ -371,6 +380,7 @@ describe('B2 时间段占用锁（机制 API，需 PG）', () => {
           initiatorUserId: 520,
           refType: 'session',
           refId: 7200 + i,
+          paymentOrderId: 66400 + i, // PENDING_PAYMENT（计数集内，C2B 形态）
         });
         expect(r.ok).toBe(true);
       }
@@ -380,14 +390,15 @@ describe('B2 时间段占用锁（机制 API，需 PG）', () => {
         initiatorUserId: 520,
         refType: 'session',
         refId: 7204,
+        paymentOrderId: 66404,
       });
-      expect(fourth).toMatchObject({ ok: false, reason: 'SLOT_ABUSE_LIMIT' });
+      expect(fourth).toMatchObject({ ok: false, reason: 'SLOT_ABUSE_LIMIT' }); // 只按 PENDING 计数=3 达 GLOBAL 上限
     });
     const mine = await pool.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM schedule.slot_locks WHERE initiator_user_id = 520
         AND status IN ('PENDING_PAYMENT', 'LOCKED', 'OCCUPIED')`,
     );
-    expect(mine.rows[0]?.n).toBe(3);
+    expect(mine.rows[0]?.n).toBe(4); // 活跃口径 4 把（3 PENDING_PAYMENT+1 LOCKED）；计数口径=仅 PENDING（服务层 SQL）
     // 全局维度拒绝同样落 SlotAbuseDetected（limit=GLOBAL，→G1；PER_LAWYER 维度见上一用例）
     const evt = await outboxOf(SLOT_ABUSE_DETECTED_TOPIC);
     expect(evt).toHaveLength(1);
@@ -397,7 +408,8 @@ describe('B2 时间段占用锁（机制 API，需 PG）', () => {
   it('R-03 滥用拒绝：SlotAbuseDetected 经独立事务落 outbox（调用方回滚不丢事件）', async () => {
     await expect(
       poolSvc.withTransaction(async (uow) => {
-        const r = await svc.lockSlot(uow, lockInput()); // 第一把（占用中）
+        // 第一把=PENDING_PAYMENT（计数集内；R-W3-F 收窄后滥用触发锚=C2B 待支付锁）
+        const r = await svc.lockSlot(uow, lockInput({ paymentOrderId: 66500 }));
         expect(r.ok).toBe(true);
         const second = await svc.lockSlot(uow, {
           lawyerId: LAWYER,
@@ -411,7 +423,7 @@ describe('B2 时间段占用锁（机制 API，需 PG）', () => {
       }),
     ).rejects.toThrow('业务放弃（回滚整个发布事务）');
 
-    // 锁写入随业务回滚：只有第一把…第一把在同一事务也被回滚 → 全部无残留
+    // 锁写入随业务回滚：第一把（含其 SLOT_TTL job 同事务注册）一并回滚 → 全部无残留
     expect(
       await pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM schedule.slot_locks`),
     ).toMatchObject({ rows: [{ n: 0 }] });
@@ -421,13 +433,70 @@ describe('B2 时间段占用锁（机制 API，需 PG）', () => {
     expect(evt[0]?.payload).toMatchObject({ user_id: 501, lawyer_id: LAWYER });
   });
 
-  it('R-03 并发同用户同律师双锁：advisory 串行化下恰 1 成功 1 SLOT_ABUSE_LIMIT（计数无 TOCTOU）', async () => {
+  it('R-W3-F 收窄：LOCKED 锁不计数——已有 LOCKED 活跃锁仍可继续加锁（B2C 连开多团不受 ≤1/≤3 限）', async () => {
+    await poolSvc.withTransaction(async (uow) => {
+      const first = await svc.lockSlot(uow, lockInput()); // LOCKED（无 paymentOrderId）
+      expect(first).toMatchObject({ ok: true, status: 'LOCKED' });
+      // 同用户同律师第二段（不同段）：LOCKED 不计数 → 放行（收窄前此处 SLOT_ABUSE_LIMIT）
+      const second = await svc.lockSlot(uow, {
+        lawyerId: LAWYER,
+        slotStart: new Date('2026-11-06T17:00:00.000Z'),
+        initiatorUserId: 501,
+        refType: 'session',
+        refId: 7401,
+      });
+      expect(second).toMatchObject({ ok: true, status: 'LOCKED' });
+    });
+    expect(await activeCount(LAWYER, SLOT)).toBe(1);
+    expect(await activeCount(LAWYER, new Date('2026-11-06T17:00:00.000Z'))).toBe(1);
+    expect(await outboxOf(SLOT_ABUSE_DETECTED_TOPIC)).toHaveLength(0); // 无滥用事件
+  });
+
+  it('R-W3-F 收窄：混合形态按 PENDING_PAYMENT 计数——1 LOCKED + 1 PENDING_PAYMENT 计 1，第二笔 PENDING 拒绝', async () => {
+    await poolSvc.withTransaction(async (uow) => {
+      const locked = await svc.lockSlot(uow, lockInput()); // 1 LOCKED（不计数）
+      expect(locked.ok).toBe(true);
+      const pending = await svc.lockSlot(uow, {
+        lawyerId: LAWYER,
+        slotStart: new Date('2026-11-06T18:00:00.000Z'),
+        initiatorUserId: 501,
+        refType: 'groupbuy',
+        refId: 8110,
+        paymentOrderId: 66600, // 计数=1（达 PER_LAWYER 上限）
+      });
+      expect(pending.ok).toBe(true);
+      const third = await svc.lockSlot(uow, {
+        lawyerId: LAWYER,
+        slotStart: new Date('2026-11-06T19:00:00.000Z'),
+        initiatorUserId: 501,
+        refType: 'groupbuy',
+        refId: 8111,
+        paymentOrderId: 66601,
+      });
+      expect(third).toMatchObject({ ok: false, reason: 'SLOT_ABUSE_LIMIT' }); // 只按 PENDING 计数
+    });
+    expect(await outboxOf(SLOT_ABUSE_DETECTED_TOPIC)).toHaveLength(1);
+  });
+
+  it('R-03 并发同用户同律师双锁：advisory 串行化下恰 1 成功 1 SLOT_ABUSE_LIMIT（计数无 TOCTOU；PENDING_PAYMENT 夹具）', async () => {
     const [a, b] = await Promise.all([
       poolSvc.withTransaction((uow) =>
-        svc.lockSlot(uow, lockInput({ slotStart: new Date('2026-11-06T10:00:00.000Z') })),
+        svc.lockSlot(
+          uow,
+          lockInput({
+            slotStart: new Date('2026-11-06T10:00:00.000Z'),
+            paymentOrderId: 66700, // R-W3-F：计数集=仅 PENDING_PAYMENT，夹具用 C2B 形态保原语义
+          }),
+        ),
       ),
       poolSvc.withTransaction((uow) =>
-        svc.lockSlot(uow, lockInput({ slotStart: new Date('2026-11-06T16:00:00.000Z') })),
+        svc.lockSlot(
+          uow,
+          lockInput({
+            slotStart: new Date('2026-11-06T16:00:00.000Z'),
+            paymentOrderId: 66701,
+          }),
+        ),
       ),
     ]);
     const granted = [a, b].filter((r) => r.ok);
