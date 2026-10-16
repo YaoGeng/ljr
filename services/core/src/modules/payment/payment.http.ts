@@ -31,21 +31,30 @@ function parseBigintId(v: unknown, field: string): number {
 
 function parseKey(v: unknown): string {
   if (typeof v !== 'string' || v.length === 0) {
-    throw new AppError(ErrorCode.InvalidArgument, `idempotency_key 须为非空字符串：${JSON.stringify(v)}`);
+    throw new AppError(
+      ErrorCode.InvalidArgument,
+      `idempotency_key 须为非空字符串：${JSON.stringify(v)}`,
+    );
   }
   return v;
 }
 
 function parseMoney(v: unknown, field: string): Money {
   if (typeof v !== 'string') {
-    throw new AppError(ErrorCode.InvalidArgument, `${field} 须为两位小数字符串（Money 禁 float/number）：${JSON.stringify(v)}`);
+    throw new AppError(
+      ErrorCode.InvalidArgument,
+      `${field} 须为两位小数字符串（Money 禁 float/number）：${JSON.stringify(v)}`,
+    );
   }
   return assertMoney(v);
 }
 
 function parsePoints(v: unknown): number {
   if (typeof v !== 'number' || !Number.isInteger(v) || v < 0) {
-    throw new AppError(ErrorCode.InvalidArgument, `points_amount 须为非负整数：${JSON.stringify(v)}`);
+    throw new AppError(
+      ErrorCode.InvalidArgument,
+      `points_amount 须为非负整数：${JSON.stringify(v)}`,
+    );
   }
   return v;
 }
@@ -60,7 +69,10 @@ export function parseOrderBody(body: unknown): {
 } {
   const raw = asObject(body);
   if (typeof raw['biz_type'] !== 'string') {
-    throw new AppError(ErrorCode.InvalidArgument, `biz_type 须为字符串：${JSON.stringify(raw['biz_type'])}`);
+    throw new AppError(
+      ErrorCode.InvalidArgument,
+      `biz_type 须为字符串：${JSON.stringify(raw['biz_type'])}`,
+    );
   }
   return {
     biz_type: raw['biz_type'],
@@ -81,7 +93,10 @@ export function parseRefundBody(body: unknown): {
 } {
   const raw = asObject(body);
   if (typeof raw['reason'] !== 'string') {
-    throw new AppError(ErrorCode.InvalidArgument, `reason 须为字符串：${JSON.stringify(raw['reason'])}`);
+    throw new AppError(
+      ErrorCode.InvalidArgument,
+      `reason 须为字符串：${JSON.stringify(raw['reason'])}`,
+    );
   }
   return {
     order_id: parseBigintId(raw['order_id'], 'order_id'),
@@ -101,7 +116,10 @@ export function parseSplitBody(body: unknown): {
 } {
   const raw = asObject(body);
   if (!Array.isArray(raw['splits'])) {
-    throw new AppError(ErrorCode.InvalidArgument, `splits 须为数组：${JSON.stringify(raw['splits'])}`);
+    throw new AppError(
+      ErrorCode.InvalidArgument,
+      `splits 须为数组：${JSON.stringify(raw['splits'])}`,
+    );
   }
   return {
     order_id: parseBigintId(raw['order_id'], 'order_id'),
@@ -140,11 +158,17 @@ export function parseReconcileBody(body: unknown): {
 } {
   const raw = asObject(body);
   if (typeof raw['period'] !== 'string') {
-    throw new AppError(ErrorCode.InvalidArgument, `period 须为字符串（YYYY-MM-DD）：${JSON.stringify(raw['period'])}`);
+    throw new AppError(
+      ErrorCode.InvalidArgument,
+      `period 须为字符串（YYYY-MM-DD）：${JSON.stringify(raw['period'])}`,
+    );
   }
   if (raw['channels'] === undefined) return { period: raw['period'] };
   if (!Array.isArray(raw['channels']) || raw['channels'].some((c) => typeof c !== 'string')) {
-    throw new AppError(ErrorCode.InvalidArgument, `channels 须为字符串数组：${JSON.stringify(raw['channels'])}`);
+    throw new AppError(
+      ErrorCode.InvalidArgument,
+      `channels 须为字符串数组：${JSON.stringify(raw['channels'])}`,
+    );
   }
   return { period: raw['period'], channels: raw['channels'] as readonly string[] };
 }

@@ -27,8 +27,16 @@ const PERIOD = '2026-10-16';
 
 function testConfig(): PaymentConfig {
   return {
-    primary: { channel: 'wechat_ecom', merchantId: 'mock-wechat-mch', secret: randomBytes(32).toString('hex') },
-    backup: { channel: 'alipay', merchantId: 'mock-alipay-mch', secret: randomBytes(32).toString('hex') },
+    primary: {
+      channel: 'wechat_ecom',
+      merchantId: 'mock-wechat-mch',
+      secret: randomBytes(32).toString('hex'),
+    },
+    backup: {
+      channel: 'alipay',
+      merchantId: 'mock-alipay-mch',
+      secret: randomBytes(32).toString('hex'),
+    },
     switchWindowMs: PAYMENT_SWITCH_WINDOW_MS_DEFAULT,
   };
 }
@@ -56,9 +64,23 @@ describe('F1 PaymentReconcileService（需 PG）', () => {
   beforeEach(async () => {
     await truncateAll(pool);
     const cfg = testConfig();
-    wechat = new MockChannelAdapter('wechat_ecom', cfg.primary.merchantId, cfg.primary.secret, () => new Date(DAY));
-    const alipay = new MockChannelAdapter('alipay', cfg.backup.merchantId, cfg.backup.secret, () => new Date(DAY));
-    const router = new ChannelRouter({ adapters: [wechat, alipay], switchWindowMs: cfg.switchWindowMs, now: () => DAY });
+    wechat = new MockChannelAdapter(
+      'wechat_ecom',
+      cfg.primary.merchantId,
+      cfg.primary.secret,
+      () => new Date(DAY),
+    );
+    const alipay = new MockChannelAdapter(
+      'alipay',
+      cfg.backup.merchantId,
+      cfg.backup.secret,
+      () => new Date(DAY),
+    );
+    const router = new ChannelRouter({
+      adapters: [wechat, alipay],
+      switchWindowMs: cfg.switchWindowMs,
+      now: () => DAY,
+    });
     const poolSvc = new PgPoolService(pool);
     svc = new PaymentGatewayService(
       poolSvc,
@@ -98,7 +120,9 @@ describe('F1 PaymentReconcileService（需 PG）', () => {
     expect(w.matched).toBe(2);
     expect(w.diffs).toEqual([]);
 
-    const diffRows = await pool.query(`SELECT count(*)::int AS n FROM payment.split_ledgers WHERE direction = 'DIFF'`);
+    const diffRows = await pool.query(
+      `SELECT count(*)::int AS n FROM payment.split_ledgers WHERE direction = 'DIFF'`,
+    );
     expect(diffRows.rows[0]!.n).toBe(0);
     const events = await pool.query(
       `SELECT count(*)::int AS n FROM platform.outbox WHERE topic = $1`,
@@ -117,23 +141,29 @@ describe('F1 PaymentReconcileService（需 PG）', () => {
     expect(w.diffs[0]!.channel_txn_no).toBe('GHOST-TXN-1');
     expect(w.diffs[0]!.amount).toBe('66.00');
 
-    const row = await pool.query<{ direction: string; status: string; diff_reason: string; idempotency_key: string }>(
+    const row = await pool.query<{
+      direction: string;
+      status: string;
+      diff_reason: string;
+      idempotency_key: string;
+    }>(
       `SELECT direction, status, diff_reason, idempotency_key FROM payment.split_ledgers WHERE direction = 'DIFF'`,
     );
     expect(row.rows.length).toBe(1);
     expect(row.rows[0]!.status).toBe('DIFF');
     expect(row.rows[0]!.diff_reason).toContain('CHANNEL_ONLY');
-    expect(row.rows[0]!.idempotency_key).toBe(`recon:${PERIOD}:wechat_ecom:GHOST-TXN-1:CHANNEL_ONLY`);
+    expect(row.rows[0]!.idempotency_key).toBe(
+      `recon:${PERIOD}:wechat_ecom:GHOST-TXN-1:CHANNEL_ONLY`,
+    );
 
     const events = await pool.query(
       `SELECT count(*)::int AS n FROM platform.outbox WHERE topic = $1`,
       [RECONCILIATION_DIFF_FOUND_TOPIC],
     );
     expect(events.rows[0]!.n).toBe(1);
-    const payload = await pool.query<{ payload: { period: string; detail: Array<{ kind: string; amount: string }> } }>(
-      `SELECT payload FROM platform.outbox WHERE topic = $1`,
-      [RECONCILIATION_DIFF_FOUND_TOPIC],
-    );
+    const payload = await pool.query<{
+      payload: { period: string; detail: Array<{ kind: string; amount: string }> };
+    }>(`SELECT payload FROM platform.outbox WHERE topic = $1`, [RECONCILIATION_DIFF_FOUND_TOPIC]);
     expect(payload.rows[0]!.payload.period).toBe(PERIOD);
     expect(payload.rows[0]!.payload.detail[0]!.amount).toBe('66.00'); // Money 字符串
 
@@ -141,7 +171,9 @@ describe('F1 PaymentReconcileService（需 PG）', () => {
     const second = await recon.reconcile({ period: PERIOD });
     expect(second.per_channel.find((c) => c.channel === 'wechat_ecom')!.diffs.length).toBe(0);
     expect(events.rows[0]!.n).toBe(1);
-    const still = await pool.query(`SELECT count(*)::int AS n FROM payment.split_ledgers WHERE direction = 'DIFF'`);
+    const still = await pool.query(
+      `SELECT count(*)::int AS n FROM payment.split_ledgers WHERE direction = 'DIFF'`,
+    );
     expect(still.rows[0]!.n).toBe(1);
   });
 
@@ -191,7 +223,12 @@ describe('F1 PaymentReconcileService（需 PG）', () => {
       splits: [{ payee_type: 'lawyer_firm', payee_id: 3, amount: '100.00' }],
       idempotency_key: 'payment/recon-split/split',
     });
-    await svc.deduct({ lawyer_id: 9101, amount: '7.00', from: 'settlement', idempotency_key: 'payment/recon-deduct/deduct' });
+    await svc.deduct({
+      lawyer_id: 9101,
+      amount: '7.00',
+      from: 'settlement',
+      idempotency_key: 'payment/recon-deduct/deduct',
+    });
 
     const res = await recon.reconcile({ period: PERIOD });
     const w = res.per_channel.find((c) => c.channel === 'wechat_ecom')!;

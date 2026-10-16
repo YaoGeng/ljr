@@ -65,9 +65,13 @@ function resolveChannel(
 ): PaymentChannelCredentials {
   const merchantId = env[keys.merchantId];
   const secret = env[keys.secret];
-  if ((merchantId === undefined || merchantId === '') || (secret === undefined || secret === '')) {
+  if (merchantId === undefined || merchantId === '' || secret === undefined || secret === '') {
     if (envName === 'dev') {
-      return { channel: keys.label as PaymentChannelName, merchantId: keys.mockMerchantId, secret: keys.mockSecret };
+      return {
+        channel: keys.label as PaymentChannelName,
+        merchantId: keys.mockMerchantId,
+        secret: keys.mockSecret,
+      };
     }
     throw new AppError(
       ErrorCode.ConfigMissing,

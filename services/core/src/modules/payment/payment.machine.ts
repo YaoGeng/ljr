@@ -23,13 +23,7 @@
 import { createStateMachine } from '../../infrastructure/state-machine/state-machine';
 
 export type PaymentOrderStatus =
-  | 'CREATED'
-  | 'FROZEN'
-  | 'PAID'
-  | 'REFUNDING'
-  | 'REFUNDED'
-  | 'SPLIT'
-  | 'CLOSED';
+  'CREATED' | 'FROZEN' | 'PAID' | 'REFUNDING' | 'REFUNDED' | 'SPLIT' | 'CLOSED';
 
 export type PaymentInboxStatus = 'RECEIVED' | 'CONSUMED' | 'DEAD';
 

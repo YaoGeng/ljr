@@ -8,7 +8,11 @@ import type { Pool } from 'pg';
 import { PAYMENT_CALLBACK_INBOXED_TOPIC } from '@ljr/shared';
 import { ensureTestDatabase, truncateAll } from '../../infrastructure/testing/db';
 import { PAYMENT_CHANNEL_ADAPTERS } from './payment.channels';
-import { PAYMENT_CONFIG, PAYMENT_SWITCH_WINDOW_MS_DEFAULT, type PaymentConfig } from './payment.config';
+import {
+  PAYMENT_CONFIG,
+  PAYMENT_SWITCH_WINDOW_MS_DEFAULT,
+  type PaymentConfig,
+} from './payment.config';
 import { PaymentModule } from './payment.module';
 
 interface MockChannelLike {
@@ -24,12 +28,18 @@ interface MockChannelLike {
  * 错误体形态：infrastructure AppHttpExceptionFilter {code, message}。
  */
 
-const DAY = Date.UTC(2026, 9, 16, 8, 0, 0);
-
 function testConfig(): PaymentConfig {
   return {
-    primary: { channel: 'wechat_ecom', merchantId: 'mock-wechat-mch', secret: randomBytes(32).toString('hex') },
-    backup: { channel: 'alipay', merchantId: 'mock-alipay-mch', secret: randomBytes(32).toString('hex') },
+    primary: {
+      channel: 'wechat_ecom',
+      merchantId: 'mock-wechat-mch',
+      secret: randomBytes(32).toString('hex'),
+    },
+    backup: {
+      channel: 'alipay',
+      merchantId: 'mock-alipay-mch',
+      secret: randomBytes(32).toString('hex'),
+    },
     switchWindowMs: PAYMENT_SWITCH_WINDOW_MS_DEFAULT,
   };
 }
@@ -45,7 +55,12 @@ describe('F1 HTTP 契约（§5，需 PG）', () => {
     const raw = JSON.stringify(body);
     return request(app.getHttpServer())
       .post(`/callbacks/${channel}`)
-      .set('x-payment-signature', createHmac('sha256', secret ?? cfg.primary.secret).update(raw).digest('hex'))
+      .set(
+        'x-payment-signature',
+        createHmac('sha256', secret ?? cfg.primary.secret)
+          .update(raw)
+          .digest('hex'),
+      )
       .set('Content-Type', 'application/json')
       .send(raw);
   };
@@ -90,7 +105,9 @@ describe('F1 HTTP 契约（§5，需 PG）', () => {
     expect(ok.body.pay_params.order_id).toBe(ok.body.payment_order.id);
     expect(ok.body.pay_params.channel).toBe('wechat_ecom');
 
-    const replay = await request(app.getHttpServer()).post('/pay/orders').send(createOrderBody({ idempotency_key: body['idempotency_key'] }));
+    const replay = await request(app.getHttpServer())
+      .post('/pay/orders')
+      .send(createOrderBody({ idempotency_key: body['idempotency_key'] }));
     expect(replay.status).toBe(201);
     expect(replay.body.payment_order.id).toBe(ok.body.payment_order.id);
 
@@ -100,7 +117,9 @@ describe('F1 HTTP 契约（§5，需 PG）', () => {
     expect(conflict.status).toBe(409);
     expect(conflict.body.code).toBe('E_DUP_KEY');
 
-    const bad = await request(app.getHttpServer()).post('/pay/orders').send(createOrderBody({ cash_amount: '199.5' }));
+    const bad = await request(app.getHttpServer())
+      .post('/pay/orders')
+      .send(createOrderBody({ cash_amount: '199.5' }));
     expect(bad.status).toBe(422);
     expect(bad.body.code).toBe('E_MONEY_INVALID');
   });
@@ -190,26 +209,37 @@ describe('F1 HTTP 契约（§5，需 PG）', () => {
       .post('/callbacks/wechat_ecom')
       .set('x-payment-signature', '0'.repeat(64))
       .set('Content-Type', 'application/json')
-      .send(JSON.stringify({ order_id: order.id, event_type: 'PAY_SUCCESS', channel_txn_no: 'HTTP-TXN-2' }));
+      .send(
+        JSON.stringify({
+          order_id: order.id,
+          event_type: 'PAY_SUCCESS',
+          channel_txn_no: 'HTTP-TXN-2',
+        }),
+      );
     expect(badSig.status).toBe(403);
     expect(badSig.body.code).toBe('E_SIGN_FAIL');
 
     const unknown = await postCallback('union_pay', { order_id: order.id }, 'x');
     expect(unknown.status).toBe(404);
 
-    const events = await pool.query(`SELECT count(*)::int AS n FROM platform.outbox WHERE topic = $1`, [
-      PAYMENT_CALLBACK_INBOXED_TOPIC,
-    ]);
+    const events = await pool.query(
+      `SELECT count(*)::int AS n FROM platform.outbox WHERE topic = $1`,
+      [PAYMENT_CALLBACK_INBOXED_TOPIC],
+    );
     expect(events.rows[0]!.n).toBe(1); // 恰一次出箱
   });
 
   it('POST /admin/payment/reconcile {period}：200 对账摘要；非法 period 400（⚠W3-10 手动触发面）', async () => {
-    const ok = await request(app.getHttpServer()).post('/admin/payment/reconcile').send({ period: '2026-10-16' });
+    const ok = await request(app.getHttpServer())
+      .post('/admin/payment/reconcile')
+      .send({ period: '2026-10-16' });
     expect(ok.status).toBe(200);
     expect(ok.body.period).toBe('2026-10-16');
     expect(ok.body.per_channel.length).toBe(2);
 
-    const bad = await request(app.getHttpServer()).post('/admin/payment/reconcile').send({ period: 'yesterday' });
+    const bad = await request(app.getHttpServer())
+      .post('/admin/payment/reconcile')
+      .send({ period: 'yesterday' });
     expect(bad.status).toBe(400);
     expect(bad.body.code).toBe('E_INVALID_ARGUMENT');
   });

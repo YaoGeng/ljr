@@ -8,11 +8,7 @@ import { ensureTestDatabase, truncateAll } from '../../infrastructure/testing/db
 import { PgPoolService } from '../../infrastructure/sql';
 import { StateTransitionGuardService } from '../../infrastructure/state-machine/state-transition-guard.service';
 import { StateTransitionLogService } from '../../infrastructure/state-machine/state-transition-log.service';
-import {
-  ChannelFaultError,
-  ChannelRouter,
-  MockChannelAdapter,
-} from './payment.channels';
+import { ChannelFaultError, ChannelRouter, MockChannelAdapter } from './payment.channels';
 import { PAYMENT_SWITCH_WINDOW_MS_DEFAULT, type PaymentConfig } from './payment.config';
 import { MockPaymentAlertSink, PaymentAlertService } from './payment.alerts';
 import { PaymentGatewayService } from './payment.gateway.service';
@@ -29,8 +25,16 @@ const DAY = Date.UTC(2026, 9, 16, 8, 0, 0); // 2026-10-16（Asia/Shanghai 同日
 
 function testConfig(): PaymentConfig {
   return {
-    primary: { channel: 'wechat_ecom', merchantId: 'mock-wechat-mch', secret: randomBytes(32).toString('hex') },
-    backup: { channel: 'alipay', merchantId: 'mock-alipay-mch', secret: randomBytes(32).toString('hex') },
+    primary: {
+      channel: 'wechat_ecom',
+      merchantId: 'mock-wechat-mch',
+      secret: randomBytes(32).toString('hex'),
+    },
+    backup: {
+      channel: 'alipay',
+      merchantId: 'mock-alipay-mch',
+      secret: randomBytes(32).toString('hex'),
+    },
     switchWindowMs: PAYMENT_SWITCH_WINDOW_MS_DEFAULT,
   };
 }
@@ -45,9 +49,7 @@ describe('F1 PaymentGatewayService（需 PG）', () => {
 
   const key = (tag: string): string => `payment/${tag}-${++seq}/pay`;
 
-  const createOrder = (
-    over: Partial<Parameters<PaymentGatewayService['createOrder']>[0]> = {},
-  ) =>
+  const createOrder = (over: Partial<Parameters<PaymentGatewayService['createOrder']>[0]> = {}) =>
     svc.createOrder({
       biz_type: 'enroll',
       biz_id: 101,
@@ -64,7 +66,11 @@ describe('F1 PaymentGatewayService（需 PG）', () => {
     const created = await createOrder(over);
     await svc.markFrozen(created.payment_order.id, null);
     await svc.markPaid(created.payment_order.id);
-    return { id: created.payment_order.id, cash: created.payment_order.cash_amount, points: created.payment_order.points_amount };
+    return {
+      id: created.payment_order.id,
+      cash: created.payment_order.cash_amount,
+      points: created.payment_order.points_amount,
+    };
   };
 
   beforeAll(async () => {
@@ -75,8 +81,18 @@ describe('F1 PaymentGatewayService（需 PG）', () => {
     await truncateAll(pool);
     // 每用例重建适配器/路由/服务：路由降级窗口是进程内状态，用例间必须隔离
     const cfg = testConfig();
-    wechat = new MockChannelAdapter('wechat_ecom', cfg.primary.merchantId, cfg.primary.secret, () => new Date(DAY));
-    alipay = new MockChannelAdapter('alipay', cfg.backup.merchantId, cfg.backup.secret, () => new Date(DAY));
+    wechat = new MockChannelAdapter(
+      'wechat_ecom',
+      cfg.primary.merchantId,
+      cfg.primary.secret,
+      () => new Date(DAY),
+    );
+    alipay = new MockChannelAdapter(
+      'alipay',
+      cfg.backup.merchantId,
+      cfg.backup.secret,
+      () => new Date(DAY),
+    );
     const router = new ChannelRouter({
       adapters: [wechat, alipay],
       switchWindowMs: cfg.switchWindowMs,

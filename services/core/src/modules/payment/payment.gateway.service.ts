@@ -209,8 +209,14 @@ export class PaymentGatewayService {
       );
       if (claim.rows.length === 0) {
         const prev = await this.findOrderByKeyInTx(uow, input.idempotency_key);
-        if (!prev) throw new AppError(ErrorCode.InternalError, '幂等键冲突但原单不可读（不应触达）');
-        return { row: prev, replayed: true as const, degradedNow: false, txnNo: prev.channel_txn_no };
+        if (!prev)
+          throw new AppError(ErrorCode.InternalError, '幂等键冲突但原单不可读（不应触达）');
+        return {
+          row: prev,
+          replayed: true as const,
+          degradedNow: false,
+          txnNo: prev.channel_txn_no,
+        };
       }
       const inserted = claim.rows[0]!;
 
@@ -230,7 +236,9 @@ export class PaymentGatewayService {
         `UPDATE payment.payment_orders SET channel = $2, channel_txn_no = $3 WHERE id = $1`,
         [inserted.id, out.adapter.channel, out.result.channelTxnNo],
       );
-      if (out.degradedNow && out.degradedChannel !== null) { await this.recordDegraded(uow, out.degradedChannel); }
+      if (out.degradedNow && out.degradedChannel !== null) {
+        await this.recordDegraded(uow, out.degradedChannel);
+      }
       const finalRow = await this.findOrderByIdInTx(uow, Number(inserted.id));
       return {
         row: finalRow,
@@ -244,11 +252,7 @@ export class PaymentGatewayService {
     assertAmountInvariant(row.row.cash_amount, row.row.points_amount, row.row.total);
     const view = toOrderView(row.row);
     const payParams: PayParamsView = {
-      ...this.router.payParamsFor(
-        row.row.channel as PaymentChannelName,
-        view.id,
-        row.row.biz_type,
-      ),
+      ...this.router.payParamsFor(row.row.channel as PaymentChannelName, view.id, row.row.biz_type),
       channel: row.row.channel,
     };
     return { payment_order: view, pay_params: payParams };
@@ -410,7 +414,10 @@ export class PaymentGatewayService {
       }
 
       // R-03 退款还原边界：单笔不超 cash/points 各自额度；累计退款（本行除外）+ 本次 ≤ total
-      if (moneyToCents(input.cash_refund) > moneyToCents(order.cash_amount) || points > order.points_amount) {
+      if (
+        moneyToCents(input.cash_refund) > moneyToCents(order.cash_amount) ||
+        points > order.points_amount
+      ) {
         throw new AppError(ErrorCode.InvalidArgument, '退款额超过支付单对应币种额度');
       }
       const priorSum = await uow.query<{ s: string }>(
@@ -445,7 +452,9 @@ export class PaymentGatewayService {
         throw new AppError(ErrorCode.StateStaleEntity, `支付单 ${input.order_id} 已被并发迁移`);
       }
       const ledgerView = await this.confirmLedger(uow, Number(ledger.id), out);
-      if (out.degradedNow && out.degradedChannel !== null) { await this.recordDegraded(uow, out.degradedChannel); }
+      if (out.degradedNow && out.degradedChannel !== null) {
+        await this.recordDegraded(uow, out.degradedChannel);
+      }
 
       return {
         ledger_id: ledgerView.id,
@@ -477,13 +486,23 @@ export class PaymentGatewayService {
     }
     let sumCents = 0;
     for (const item of input.splits) {
-      if (typeof item.payee_type !== 'string' || item.payee_type.length === 0 || item.payee_type.length > 32) {
-        throw new AppError(ErrorCode.InvalidArgument, `payee_type 须为 1-32 字符：${JSON.stringify(item.payee_type)}`);
+      if (
+        typeof item.payee_type !== 'string' ||
+        item.payee_type.length === 0 ||
+        item.payee_type.length > 32
+      ) {
+        throw new AppError(
+          ErrorCode.InvalidArgument,
+          `payee_type 须为 1-32 字符：${JSON.stringify(item.payee_type)}`,
+        );
       }
       // payee_id：实体接收方须正整数；platform（平台服务费，无业务实体位）恒 0 哨兵
       if (item.payee_type === 'platform') {
         if (item.payee_id !== 0) {
-          throw new AppError(ErrorCode.InvalidArgument, `payee_type=platform 时 payee_id 须为 0：${JSON.stringify(item.payee_id)}`);
+          throw new AppError(
+            ErrorCode.InvalidArgument,
+            `payee_type=platform 时 payee_id 须为 0：${JSON.stringify(item.payee_id)}`,
+          );
         }
       } else {
         assertPositiveInt(item.payee_id, 'payee_id');
@@ -554,7 +573,9 @@ export class PaymentGatewayService {
         throw new AppError(ErrorCode.StateStaleEntity, `支付单 ${input.order_id} 已被并发迁移`);
       }
       const ledgerView = await this.confirmLedger(uow, Number(ledger.id), out);
-      if (out.degradedNow && out.degradedChannel !== null) { await this.recordDegraded(uow, out.degradedChannel); }
+      if (out.degradedNow && out.degradedChannel !== null) {
+        await this.recordDegraded(uow, out.degradedChannel);
+      }
 
       return {
         ledger_id: ledgerView.id,
@@ -579,10 +600,17 @@ export class PaymentGatewayService {
     assertPositiveInt(input.lawyer_id, 'lawyer_id');
     moneyToCents(assertMoney(input.amount));
     if (!DEDUCT_FROM.includes(input.from as DeductFrom)) {
-      throw new AppError(ErrorCode.InvalidArgument, `from 越域（settlement|deposit）：${String(input.from)}`);
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `from 越域（settlement|deposit）：${String(input.from)}`,
+      );
     }
     assertIdempotencyKey(input.idempotency_key);
-    const detail: LedgerDetail = { lawyer_id: input.lawyer_id, from: input.from, amount: input.amount };
+    const detail: LedgerDetail = {
+      lawyer_id: input.lawyer_id,
+      from: input.from,
+      amount: input.amount,
+    };
 
     return this.pool.withTransaction(async (uow) => {
       const claim = await uow.query<LedgerRow>(
@@ -623,7 +651,9 @@ export class PaymentGatewayService {
       }
 
       const ledgerView = await this.confirmLedger(uow, Number(ledger.id), out);
-      if (out.degradedNow && out.degradedChannel !== null) { await this.recordDegraded(uow, out.degradedChannel); }
+      if (out.degradedNow && out.degradedChannel !== null) {
+        await this.recordDegraded(uow, out.degradedChannel);
+      }
 
       return {
         ledger_id: ledgerView.id,
@@ -693,10 +723,16 @@ export class PaymentGatewayService {
     const eventType = body['event_type'];
     const channelTxnNo = body['channel_txn_no'];
     if (typeof eventType !== 'string' || eventType.length === 0 || eventType.length > 32) {
-      throw new AppError(ErrorCode.InvalidArgument, `回调 event_type 须为 1-32 字符：${JSON.stringify(eventType)}`);
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `回调 event_type 须为 1-32 字符：${JSON.stringify(eventType)}`,
+      );
     }
     if (typeof channelTxnNo !== 'string' || channelTxnNo.length === 0 || channelTxnNo.length > 64) {
-      throw new AppError(ErrorCode.InvalidArgument, `回调 channel_txn_no 须为 1-64 字符：${JSON.stringify(channelTxnNo)}`);
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `回调 channel_txn_no 须为 1-64 字符：${JSON.stringify(channelTxnNo)}`,
+      );
     }
 
     const order = await this.findOrderById(orderId); // 无事务读：幂等键只读定位
@@ -718,7 +754,10 @@ export class PaymentGatewayService {
       const inboxId = Number(claim.rows[0]!.id);
       await this.outbox.recordOutbox(uow, {
         type: PAYMENT_CALLBACK_INBOXED_TOPIC,
-        payload: { biz_idempotency_key: bizIdempotencyKey, event: eventType } satisfies PaymentCallbackInboxedPayload,
+        payload: {
+          biz_idempotency_key: bizIdempotencyKey,
+          event: eventType,
+        } satisfies PaymentCallbackInboxedPayload,
       });
       return { inboxed: true, inbox_id: inboxId };
     });
@@ -758,8 +797,11 @@ export class PaymentGatewayService {
         status: string;
         channel: string;
         biz_idempotency_key: string;
-      }>(`SELECT id, status, payload ->> 'channel' AS channel, biz_idempotency_key
-           FROM payment.inbox WHERE id = $1 FOR UPDATE`, [inboxId]);
+      }>(
+        `SELECT id, status, payload ->> 'channel' AS channel, biz_idempotency_key
+           FROM payment.inbox WHERE id = $1 FOR UPDATE`,
+        [inboxId],
+      );
       const row = res.rows[0];
       if (!row) throw new AppError(ErrorCode.NotFound, `Inbox 行 ${inboxId} 不存在`);
 

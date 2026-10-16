@@ -81,13 +81,7 @@ describe('MockChannelAdapter（mock 适配器：零网络请求 + 故障注入�
     await wechat.partialRefund({ ...INSTRUCTION, amount: '50.00' });
     await wechat.deduct(DEDUCT);
     const lines = await wechat.statement('2026-10-16');
-    expect(lines.map((l) => l.direction)).toEqual([
-      'PAY',
-      'SPLIT',
-      'REFUND',
-      'REFUND',
-      'DEDUCT',
-    ]);
+    expect(lines.map((l) => l.direction)).toEqual(['PAY', 'SPLIT', 'REFUND', 'REFUND', 'DEDUCT']);
     // refund 与 partialRefund 在账单上同为 REFUND 行（通道口径），本地按全额/部分选原语
     expect(lines.every((l) => l.status === 'SUCCESS')).toBe(true);
   });

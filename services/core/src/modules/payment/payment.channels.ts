@@ -25,8 +25,9 @@ import { type InjectionToken } from '@nestjs/common';
 export type PaymentChannelName = 'wechat_ecom' | 'alipay';
 
 /** DI 令牌：适配器实例数组 [主, 备]（module useFactory 装配；测试可 override） */
-export const PAYMENT_CHANNEL_ADAPTERS: InjectionToken<readonly PaymentChannelAdapter[]> =
-  Symbol('PAYMENT_CHANNEL_ADAPTERS');
+export const PAYMENT_CHANNEL_ADAPTERS: InjectionToken<readonly PaymentChannelAdapter[]> = Symbol(
+  'PAYMENT_CHANNEL_ADAPTERS',
+);
 
 /** 通道指令通用入参（amount=Money 字符串；idempotencyKey=业务幂等键，通道侧透传审计） */
 export interface ChannelInstructionRequest {
@@ -205,16 +206,19 @@ export class MockChannelAdapter implements PaymentChannelAdapter {
     // 预下单与冻结在 mock 合一（§4「通道预下单/冻结 → 返回支付参数」）：支付参数回传时资金已入
     // 冻结托管——PAY 为账单资金行；服务层仍可显式调 freeze/refreeze 原语（托管状态操作，不出账单行）
     const txn = this.record('PAY', req.amount);
-    return { channelTxnNo: txn.channelTxnNo, payParams: { mock_pay_url: url, order_id: req.orderId } };
+    return {
+      channelTxnNo: txn.channelTxnNo,
+      payParams: { mock_pay_url: url, order_id: req.orderId },
+    };
   }
 
-  async freeze(req: ChannelInstructionRequest): Promise<ChannelResult> {
+  async freeze(_req: ChannelInstructionRequest): Promise<ChannelResult> {
     this.assertChannelHealthy();
     // 托管状态操作：无资金移动不出账单行（账单=资金行口径，R-04 对账只核资金行）
     return { channelTxnNo: this.nextTxnNo() };
   }
 
-  async refreeze(req: ChannelInstructionRequest): Promise<ChannelResult> {
+  async refreeze(_req: ChannelInstructionRequest): Promise<ChannelResult> {
     this.assertChannelHealthy();
     return { channelTxnNo: this.nextTxnNo() };
   }
@@ -259,7 +263,11 @@ export class MockChannelAdapter implements PaymentChannelAdapter {
 
   private assertChannelHealthy(): void {
     if (this.fault?.kind === 'CHANNEL_ERROR') {
-      throw new ChannelFaultError('CHANNEL_ERROR', this.channel, 'CHANNEL_ERROR：模拟通道 5xx 故障');
+      throw new ChannelFaultError(
+        'CHANNEL_ERROR',
+        this.channel,
+        'CHANNEL_ERROR：模拟通道 5xx 故障',
+      );
     }
   }
 
@@ -319,7 +327,9 @@ export class ChannelRouter {
    * 按主→备执行指令：CHANNEL_ERROR 翻降级并落备用；INSUFFICIENT 业务应答原样上抛不切换；
    * 双通道均不可用 → AppError(E_CHANNEL_UNAVAILABLE, 503)。
    */
-  async execute<S>(op: (adapter: PaymentChannelAdapter) => Promise<S>): Promise<ChannelRouterOutcome<S>> {
+  async execute<S>(
+    op: (adapter: PaymentChannelAdapter) => Promise<S>,
+  ): Promise<ChannelRouterOutcome<S>> {
     let degradedNow = false;
     let degradedChannel: string | null = null;
     let lastFault: ChannelFaultError | null = null;

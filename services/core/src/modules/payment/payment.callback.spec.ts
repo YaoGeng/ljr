@@ -25,8 +25,16 @@ const DAY = Date.UTC(2026, 9, 16, 8, 0, 0);
 
 function testConfig(): PaymentConfig {
   return {
-    primary: { channel: 'wechat_ecom', merchantId: 'mock-wechat-mch', secret: randomBytes(32).toString('hex') },
-    backup: { channel: 'alipay', merchantId: 'mock-alipay-mch', secret: randomBytes(32).toString('hex') },
+    primary: {
+      channel: 'wechat_ecom',
+      merchantId: 'mock-wechat-mch',
+      secret: randomBytes(32).toString('hex'),
+    },
+    backup: {
+      channel: 'alipay',
+      merchantId: 'mock-alipay-mch',
+      secret: randomBytes(32).toString('hex'),
+    },
     switchWindowMs: PAYMENT_SWITCH_WINDOW_MS_DEFAULT,
   };
 }
@@ -75,8 +83,18 @@ describe('F1 回调验签与 Inbox（需 PG）', () => {
     cfg = testConfig();
     const router = new ChannelRouter({
       adapters: [
-        new MockChannelAdapter('wechat_ecom', cfg.primary.merchantId, cfg.primary.secret, () => new Date(DAY)),
-        new MockChannelAdapter('alipay', cfg.backup.merchantId, cfg.backup.secret, () => new Date(DAY)),
+        new MockChannelAdapter(
+          'wechat_ecom',
+          cfg.primary.merchantId,
+          cfg.primary.secret,
+          () => new Date(DAY),
+        ),
+        new MockChannelAdapter(
+          'alipay',
+          cfg.backup.merchantId,
+          cfg.backup.secret,
+          () => new Date(DAY),
+        ),
       ],
       switchWindowMs: cfg.switchWindowMs,
       now: () => DAY,
@@ -118,10 +136,12 @@ describe('F1 回调验签与 Inbox（需 PG）', () => {
     expect(inbox.rows[0]!.biz_idempotency_key).toBe(`${order.key}:PAY_SUCCESS`);
     expect(inbox.rows[0]!.payload['channel']).toBe('wechat_ecom');
 
-    const events = await pool.query<{ topic: string; payload: { biz_idempotency_key: string; event: string } }>(
-      `SELECT topic, payload FROM platform.outbox WHERE topic = $1`,
-      [PAYMENT_CALLBACK_INBOXED_TOPIC],
-    );
+    const events = await pool.query<{
+      topic: string;
+      payload: { biz_idempotency_key: string; event: string };
+    }>(`SELECT topic, payload FROM platform.outbox WHERE topic = $1`, [
+      PAYMENT_CALLBACK_INBOXED_TOPIC,
+    ]);
     expect(events.rows.length).toBe(1);
     expect(events.rows[0]!.payload).toEqual({
       biz_idempotency_key: `${order.key}:PAY_SUCCESS`,
@@ -133,24 +153,28 @@ describe('F1 回调验签与 Inbox（需 PG）', () => {
     const order = await createOrder();
     const good = signedBody(payCallbackBody(order, 'MOCK-WECHAT-900002'));
 
-    await expect(
-      svc.ingestCallback('wechat_ecom', good.raw, '0'.repeat(64)),
-    ).rejects.toMatchObject({ code: ErrorCode.SignVerificationFailed, httpStatus: 403 });
+    await expect(svc.ingestCallback('wechat_ecom', good.raw, '0'.repeat(64))).rejects.toMatchObject(
+      { code: ErrorCode.SignVerificationFailed, httpStatus: 403 },
+    );
     await expect(svc.ingestCallback('wechat_ecom', good.raw, null)).rejects.toMatchObject({
       code: ErrorCode.SignVerificationFailed,
     });
     // 报文被改：用原签名验篡改体
-    const tampered = Buffer.from(JSON.stringify({ ...payCallbackBody(order, 'X'), amount: '9999.00' }), 'utf8');
-    await expect(svc.ingestCallback('wechat_ecom', tampered, good.signature)).rejects.toMatchObject({
-      code: ErrorCode.SignVerificationFailed,
-    });
+    const tampered = Buffer.from(
+      JSON.stringify({ ...payCallbackBody(order, 'X'), amount: '9999.00' }),
+      'utf8',
+    );
+    await expect(svc.ingestCallback('wechat_ecom', tampered, good.signature)).rejects.toMatchObject(
+      {
+        code: ErrorCode.SignVerificationFailed,
+      },
+    );
 
     const n = await pool.query(`SELECT count(*)::int AS n FROM payment.inbox`);
     expect(n.rows[0]!.n).toBe(0);
-    const e = await pool.query(
-      `SELECT count(*)::int AS n FROM platform.outbox WHERE topic = $1`,
-      [PAYMENT_CALLBACK_INBOXED_TOPIC],
-    );
+    const e = await pool.query(`SELECT count(*)::int AS n FROM platform.outbox WHERE topic = $1`, [
+      PAYMENT_CALLBACK_INBOXED_TOPIC,
+    ]);
     expect(e.rows[0]!.n).toBe(0);
   });
 
@@ -164,10 +188,9 @@ describe('F1 回调验签与 Inbox（需 PG）', () => {
 
     const n = await pool.query(`SELECT count(*)::int AS n FROM payment.inbox`);
     expect(n.rows[0]!.n).toBe(1);
-    const e = await pool.query(
-      `SELECT count(*)::int AS n FROM platform.outbox WHERE topic = $1`,
-      [PAYMENT_CALLBACK_INBOXED_TOPIC],
-    );
+    const e = await pool.query(`SELECT count(*)::int AS n FROM platform.outbox WHERE topic = $1`, [
+      PAYMENT_CALLBACK_INBOXED_TOPIC,
+    ]);
     expect(e.rows[0]!.n).toBe(1);
   });
 
@@ -219,10 +242,9 @@ describe('F1 回调验签与 Inbox（需 PG）', () => {
     expect(arr[0]).toBe(`${order.key}:PAY_SUCCESS`);
     expect(arr[1]).toBe(`${order.key}:REFUND_SUCCESS`);
 
-    const e = await pool.query(
-      `SELECT count(*)::int AS n FROM platform.outbox WHERE topic = $1`,
-      [PAYMENT_CALLBACK_INBOXED_TOPIC],
-    );
+    const e = await pool.query(`SELECT count(*)::int AS n FROM platform.outbox WHERE topic = $1`, [
+      PAYMENT_CALLBACK_INBOXED_TOPIC,
+    ]);
     expect(e.rows[0]!.n).toBe(2);
   });
 
@@ -245,7 +267,10 @@ describe('F1 回调验签与 Inbox（需 PG）', () => {
 
     // 消费侧标记 DEAD + 告警位
     await svc.markInboxDead(inboxId, 'illegal_transition:CREATED→REFUNDED');
-    const row = await pool.query<{ status: string }>(`SELECT status FROM payment.inbox WHERE id = $1`, [inboxId]);
+    const row = await pool.query<{ status: string }>(
+      `SELECT status FROM payment.inbox WHERE id = $1`,
+      [inboxId],
+    );
     expect(row.rows[0]!.status).toBe('DEAD');
     expect(sink.alerts.length).toBe(1);
     expect(sink.alerts[0]!.kind).toBe('CALLBACK_DEAD');
@@ -289,17 +314,29 @@ describe('F1 回调验签与 Inbox（需 PG）', () => {
     });
 
     const missing = signedBody({ order_id: order.id });
-    await expect(svc.ingestCallback('wechat_ecom', missing.raw, missing.signature)).rejects.toMatchObject({
+    await expect(
+      svc.ingestCallback('wechat_ecom', missing.raw, missing.signature),
+    ).rejects.toMatchObject({
       code: ErrorCode.InvalidArgument,
     });
 
-    const ghost = signedBody({ order_id: 999999, event_type: 'PAY_SUCCESS', channel_txn_no: 'T-1' });
-    await expect(svc.ingestCallback('wechat_ecom', ghost.raw, ghost.signature)).rejects.toMatchObject({
+    const ghost = signedBody({
+      order_id: 999999,
+      event_type: 'PAY_SUCCESS',
+      channel_txn_no: 'T-1',
+    });
+    await expect(
+      svc.ingestCallback('wechat_ecom', ghost.raw, ghost.signature),
+    ).rejects.toMatchObject({
       code: ErrorCode.NotFound,
     });
 
     // 备通道密钥验签：alipay 通道用 backup secret
-    const aliBody = { order_id: order.id, event_type: 'PAY_SUCCESS', channel_txn_no: 'MOCK-ALIPAY-900010' };
+    const aliBody = {
+      order_id: order.id,
+      event_type: 'PAY_SUCCESS',
+      channel_txn_no: 'MOCK-ALIPAY-900010',
+    };
     const aliSigned = signedBody(aliBody, cfg.backup.secret);
     const ali = await svc.ingestCallback('alipay', aliSigned.raw, aliSigned.signature);
     expect(ali.inboxed).toBe(true);
@@ -310,7 +347,10 @@ describe('F1 回调验签与 Inbox（需 PG）', () => {
 
     // timingSafeEqual 形态自检（本 spec 驱动器与实现同构）
     expect(
-      timingSafeEqual(Buffer.from(signedBody(payCallbackBody(order, 'T')).signature), Buffer.from(signedBody(payCallbackBody(order, 'T')).signature)),
+      timingSafeEqual(
+        Buffer.from(signedBody(payCallbackBody(order, 'T')).signature),
+        Buffer.from(signedBody(payCallbackBody(order, 'T')).signature),
+      ),
     ).toBe(true);
     expect(AppError).toBeDefined();
   });

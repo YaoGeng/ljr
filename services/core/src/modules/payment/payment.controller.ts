@@ -67,7 +67,10 @@ export class PaymentController {
   callback(@Param('channel') channel: string, @Req() req: RawBodyRequest): Promise<unknown> {
     if (req.rawBody === undefined) {
       // 进程未以 rawBody:true 装载——验签无法字节级进行，显性化不静默
-      throw new AppError(ErrorCode.InternalError, '回调验签要求 rawBody（main.ts 须以 rawBody:true 装载）');
+      throw new AppError(
+        ErrorCode.InternalError,
+        '回调验签要求 rawBody（main.ts 须以 rawBody:true 装载）',
+      );
     }
     const header = req.headers[SIGNATURE_HEADER];
     const signature = Array.isArray(header) ? header[0] : header;

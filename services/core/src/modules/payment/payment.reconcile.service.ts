@@ -41,7 +41,6 @@ const PERIOD_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** 与账单核对的指令行方向（PAY 行走 payment_orders，其余走 split_ledgers） */
 const LEDGER_DIRECTIONS = ['REFUND', 'SPLIT', 'DEDUCT'] as const;
-type LedgerDirection = (typeof LEDGER_DIRECTIONS)[number];
 
 export interface ReconcileInput {
   /** 对账期（ISO date YYYY-MM-DD；本地侧按 Asia/Shanghai 日切比对） */
@@ -88,7 +87,10 @@ export class PaymentReconcileService {
   /** 对账入口（admin REST POST /admin/payment/reconcile {period}；channels 缺省双通道） */
   async reconcile(input: ReconcileInput): Promise<ReconcileResult> {
     if (!PERIOD_RE.test(input.period)) {
-      throw new AppError(ErrorCode.InvalidArgument, `对账期须为 YYYY-MM-DD：${String(input.period)}`);
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `对账期须为 YYYY-MM-DD：${String(input.period)}`,
+      );
     }
     const requested: readonly string[] = input.channels ?? this.adapters.map((a) => a.channel);
     if (requested.length === 0) {
@@ -111,7 +113,12 @@ export class PaymentReconcileService {
           throw new AppError(ErrorCode.NotFound, `未知支付通道：${channel}`);
         }
         const lines = await adapter.statement(input.period);
-        const { matched, candidates } = await this.reconcileChannel(uow, channel, input.period, lines);
+        const { matched, candidates } = await this.reconcileChannel(
+          uow,
+          channel,
+          input.period,
+          lines,
+        );
         const diffs: ReconciliationDiffItem[] = [];
         for (const c of candidates) {
           const item: ReconciliationDiffItem = {
@@ -164,7 +171,10 @@ export class PaymentReconcileService {
       [channel, period],
     );
     const payByTxn = new Map<string, LocalRef>(
-      localOrders.rows.map((o) => [o.channel_txn_no as string, { txn: o.channel_txn_no, amount: o.total }]),
+      localOrders.rows.map((o) => [
+        o.channel_txn_no as string,
+        { txn: o.channel_txn_no, amount: o.total },
+      ]),
     );
     const seenPayTxns = new Set<string>();
     for (const line of payLines) {
@@ -253,7 +263,12 @@ export class PaymentReconcileService {
       }
       // 本地 CONFIRMED 行却无通道流水号：指令落定缺锚点——LOCAL_ONLY（txn=null）显性化不静默
       for (const row of nullTxn) {
-        candidates.push({ channel_txn_no: null, kind: 'LOCAL_ONLY', amount: row.amount, expect: row.amount });
+        candidates.push({
+          channel_txn_no: null,
+          kind: 'LOCAL_ONLY',
+          amount: row.amount,
+          expect: row.amount,
+        });
       }
     }
 
