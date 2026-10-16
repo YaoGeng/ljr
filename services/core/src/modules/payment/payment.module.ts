@@ -34,6 +34,7 @@ import {
 import { FirmMerchantConsumer } from './firm-merchant.consumer';
 import { FirmMerchantJobExecutors } from './firm-merchant.executors';
 import { FirmMerchantService } from './firm-merchant.service';
+import { DepositService } from './deposit.service';
 
 @Module({
   imports: [InfrastructureModule, SchedulerModule],
@@ -71,6 +72,7 @@ import { FirmMerchantService } from './firm-merchant.service';
     PaymentGatewayService,
     PaymentReconcileService,
     FirmMerchantService,
+    DepositService,
     // FIRM_REVERIFY 执行器经 onModuleInit 注册到 I2 执行器注册表（job 由进件生效时按商户注册）
     FirmMerchantJobExecutors,
     // LawyerAuditPassed 消费者经 onModuleInit 注册到 outbox relay（与 A1 同 topic 扇出）
