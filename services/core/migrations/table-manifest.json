@@ -22,6 +22,8 @@
     "agent_assist.knowledge_docs": "V9__agent_assist.sql",
     "agent_assist.sanitize_audit": "V10__agent_assist.sql",
     "agent_assist.specialty_configs": "V9__agent_assist.sql",
+    "benefits.points_accounts": "V21__benefits.sql",
+    "benefits.points_txns": "V21__benefits.sql",
     "credit.credit_accounts": "V18__credit.sql",
     "credit.credit_events": "V18__credit.sql",
     "credit.credit_restrictions": "V18__credit.sql",
