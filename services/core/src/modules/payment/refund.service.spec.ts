@@ -251,4 +251,192 @@ describe('F2 退款受理（需 PG）', () => {
     );
     expect(orderRow.rows[0]!.status).toBe('REFUNDING');
   });
+
+  // =========================================================================
+  // 回调收敛（REFUND_SUCCESS → DONE + RefundCompleted 出箱）+ R-03 积分还原
+  // =========================================================================
+
+  it('REFUND_SUCCESS 收敛：PROCESSING→DONE（done_at+STL）+ RefundCompleted 出箱逐字段', async () => {
+    const order = await createPaidOrder();
+    const { refund } = await accept(order, '100.00', 0, 'refund/po-6/group-fail');
+
+    const out = await svc.convergeRefundSuccess(order.idempotency_key);
+    expect(out.completed).toEqual([refund.refund_id]);
+
+    const row = await pool.query<{ status: string; done_at: Date | null }>(
+      `SELECT status, done_at FROM payment.refunds WHERE id = $1`,
+      [refund.refund_id],
+    );
+    expect(row.rows[0]!.status).toBe('DONE');
+    expect(row.rows[0]!.done_at).not.toBeNull();
+
+    const events = await pool.query<{ topic: string; payload: Record<string, unknown> }>(
+      `SELECT topic, payload FROM platform.outbox WHERE topic = $1`,
+      ['payment.refund.completed'],
+    );
+    expect(events.rows.length).toBe(1);
+    expect(events.rows[0]!.payload).toEqual({
+      refund_id: refund.refund_id,
+      order_id: order.id,
+      amounts: { cash: '100.00', points: 0 },
+    });
+
+    const stl = await pool.query<{ allowed: boolean; entity_type: string }>(
+      `SELECT allowed, entity_type FROM platform.state_transition_log
+        WHERE entity_type = 'refund' AND entity_id = $1 ORDER BY id`,
+      [refund.refund_id],
+    );
+    expect(stl.rows.map((r) => r.allowed)).toEqual([true, true]); // 下发 + 回调收敛两笔合法迁移
+  });
+
+  it('多笔在途按单收敛：同单两笔部分退款一次回调全部 DONE，各出箱一条', async () => {
+    const order = await createPaidOrder();
+    await accept(order, '50.00', 0, 'refund/po-7a/group-fail');
+    await accept(order, '50.00', 0, 'refund/po-7b/group-fail');
+
+    const out = await svc.convergeRefundSuccess(order.idempotency_key);
+    expect(out.completed).toHaveLength(2);
+    const events = await pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM platform.outbox WHERE topic = $1`,
+      ['payment.refund.completed'],
+    );
+    expect(events.rows[0]!.n).toBe(2);
+    const statuses = await pool.query<{ status: string }>(
+      `SELECT status FROM payment.refunds WHERE payment_order_id = $1 ORDER BY id`,
+      [order.id],
+    );
+    expect(statuses.rows.map((r) => r.status)).toEqual(['DONE', 'DONE']);
+  });
+
+  it('R-03 积分还原：还原额=积分部分（不退现金额），ref=refund:{id}；重放收敛幂等（恰一次入账）', async () => {
+    // 拆分单：cash 60.00 + points 4000；积分账户种子余额 100
+    const order = await createPaidOrder({ cash: '60.00', points: 4000 });
+    await pool.query(
+      `INSERT INTO benefits.points_accounts (user_id, balance) VALUES ($1, 100)
+       ON CONFLICT (user_id) DO UPDATE SET balance = 100`,
+      [601],
+    );
+    const { refund } = await accept(order, '60.00', 4000, 'refund/po-8/group-fail');
+    await svc.convergeRefundSuccess(order.idempotency_key);
+
+    // 还原额=积分 4000（现金 60.00 走原路台账，绝不折积分入账）
+    const acct = await pool.query<{ balance: number }>(
+      `SELECT balance FROM benefits.points_accounts WHERE user_id = 601`,
+    );
+    expect(acct.rows[0]!.balance).toBe(100 + 4000);
+    const txn = await pool.query<{ delta: number; kind: string; source_ref: string }>(
+      `SELECT delta, kind, source_ref FROM benefits.points_txns WHERE kind = 'REFUND_RESTORE'`,
+    );
+    expect(txn.rows).toHaveLength(1);
+    expect(txn.rows[0]).toEqual({
+      delta: 4000,
+      kind: 'REFUND_RESTORE',
+      source_ref: `refund:${refund.refund_id}`,
+    });
+
+    // 崩溃窗口收敛重放：completed 空、还原短路（不重复入账）
+    const replay = await svc.convergeRefundSuccess(order.idempotency_key);
+    expect(replay.completed).toEqual([]);
+    const after = await pool.query<{ balance: number; n: number }>(
+      `SELECT (SELECT balance FROM benefits.points_accounts WHERE user_id = 601) AS balance,
+              (SELECT count(*)::int FROM benefits.points_txns WHERE kind = 'REFUND_RESTORE') AS n`,
+    );
+    expect(after.rows[0]!.balance).toBe(100 + 4000);
+    expect(after.rows[0]!.n).toBe(1);
+  });
+
+  // =========================================================================
+  // 失败路径：指令面失败退避重试，耗尽 3 次 → FAILED + RefundFailed 出箱
+  // =========================================================================
+
+  it('失败重试（§4）：未支付单指令被 F1 守卫拒 → 退避记账；到期重入；3 次耗尽 FAILED+RefundFailed', async () => {
+    seq += 1;
+    // 未支付单（CREATED）：F1 矩阵无 CREATED→REFUNDING 边 → 指令面每次必抛（真实失败注入）
+    const res = await gateway.createOrder({
+      biz_type: 'enroll',
+      biz_id: 300 + seq,
+      cash_amount: '10.00',
+      points_amount: 0,
+      idempotency_key: `payment/f2-unpaid-${seq}/pay`,
+    });
+    const unpaid = res.payment_order;
+
+    await expect(
+      svc.accept({
+        order_id: unpaid.id,
+        user_id: 601,
+        cash: '10.00',
+        points: 0,
+        reason: 'GROUP_FAIL',
+        idempotency_key: 'refund/po-9/group-fail',
+      }),
+    ).rejects.toMatchObject({ code: ErrorCode.StateIllegalTransition });
+
+    // 首败记账：PROCESSING + attempt 1 + 退避位 + last_error
+    let row = await pool.query<{
+      status: string;
+      attempt_count: number;
+      next_retry_at: Date | null;
+      last_error: string | null;
+    }>(`SELECT status, attempt_count, next_retry_at, last_error FROM payment.refunds`);
+    expect(row.rows[0]).toMatchObject({ status: 'PROCESSING', attempt_count: 1 });
+    expect(row.rows[0]!.next_retry_at).not.toBeNull();
+    expect(row.rows[0]!.last_error).toContain('非法状态迁移');
+
+    // 未到期不重试
+    expect(await svc.dispatchDue()).toEqual({ attempted: 0, failed: 0 });
+
+    // 时间旅行到期 → 第 2 次尝试仍败 → 退避
+    await pool.query(`UPDATE payment.refunds SET next_retry_at = now() - interval '1s'`);
+    expect(await svc.dispatchDue()).toEqual({ attempted: 0, failed: 1 });
+    row = await pool.query<{
+      status: string;
+      attempt_count: number;
+      next_retry_at: Date | null;
+    }>(`SELECT status, attempt_count, next_retry_at FROM payment.refunds`);
+    expect(row.rows[0]).toMatchObject({ status: 'PROCESSING', attempt_count: 2 });
+    expect(row.rows[0]!.next_retry_at).not.toBeNull();
+
+    // 第 3 次尝试耗尽 → FAILED + RefundFailed 出箱 + 终态无退避位
+    await pool.query(`UPDATE payment.refunds SET next_retry_at = now() - interval '1s'`);
+    expect(await svc.dispatchDue()).toEqual({ attempted: 0, failed: 1 });
+    row = await pool.query<{
+      status: string;
+      attempt_count: number;
+      next_retry_at: Date | null;
+      last_error: string | null;
+    }>(`SELECT status, attempt_count, next_retry_at, last_error FROM payment.refunds`);
+    expect(row.rows[0]).toMatchObject({ status: 'FAILED', attempt_count: 3, next_retry_at: null });
+    expect(row.rows[0]!.last_error).toContain('非法状态迁移');
+
+    const dead = await pool.query<{ topic: string; payload: Record<string, unknown> }>(
+      `SELECT topic, payload FROM platform.outbox WHERE topic = $1`,
+      ['payment.refund.failed'],
+    );
+    expect(dead.rows.length).toBe(1);
+    expect(dead.rows[0]!.payload).toMatchObject({
+      refund_id: expect.any(Number),
+      order_id: unpaid.id,
+      reason: 'GROUP_FAIL',
+      attempts: 3,
+    });
+
+    // FAILED 单同键重放不复活、不新增行、不重发指令（终态无出边，F1 重放口径：同键同载荷返回原单）
+    const replay = await svc.accept({
+      order_id: unpaid.id,
+      user_id: 601,
+      cash: '10.00',
+      points: 0,
+      reason: 'GROUP_FAIL',
+      idempotency_key: 'refund/po-9/group-fail',
+    });
+    expect(replay.refund.status).toBe('FAILED');
+    const n = await pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM payment.refunds`);
+    expect(n.rows[0]!.n).toBe(1);
+    const deadAgain = await pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM platform.outbox WHERE topic = $1`,
+      ['payment.refund.failed'],
+    );
+    expect(deadAgain.rows[0]!.n).toBe(1);
+  });
 });

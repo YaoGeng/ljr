@@ -358,6 +358,7 @@ export class RefundService {
     let attempted = 0;
     let failed = 0;
     for (const row of due.rows) {
+      const refundId = Number(row.id);
       const task: IssueRefundInput = {
         order_id: Number(row.payment_order_id),
         user_id: Number(row.user_id),
@@ -366,6 +367,12 @@ export class RefundService {
         reason: row.reason as RefundReason,
         idempotency_key: row.idempotency_key,
       };
+      // 尝试计数先行（首发路径在 dispatch 事务内 +1，重试路径在此 +1——两路同口径）
+      await this.pool.query(
+        `UPDATE payment.refunds SET attempt_count = attempt_count + 1
+          WHERE id = $1 AND status = 'PROCESSING'`,
+        [refundId],
+      );
       try {
         await this.payment.refund({
           order_id: task.order_id,
@@ -375,11 +382,11 @@ export class RefundService {
           idempotency_key: task.idempotency_key,
         });
         await this.pool.query(`UPDATE payment.refunds SET next_retry_at = NULL WHERE id = $1`, [
-          Number(row.id),
+          refundId,
         ]);
         attempted += 1;
       } catch (e) {
-        await this.bookFailure(Number(row.id), task.order_id, task.reason, e);
+        await this.bookFailure(refundId, task.order_id, task.reason, e);
         failed += 1;
       }
     }
