@@ -1,0 +1,384 @@
+import 'reflect-metadata';
+import { randomBytes } from 'node:crypto';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import type { Pool } from 'pg';
+import {
+  PAYMENT_CALLBACK_INBOXED_TOPIC,
+  SESSION_FAILED_TOPIC,
+  type SessionFailedPayload,
+} from '@ljr/shared';
+import { OutboxRelayService } from '../../infrastructure/outbox/outbox-relay.service';
+import { OutboxService } from '../../infrastructure/outbox/outbox.service';
+import { ensureTestDatabase, truncateAll } from '../../infrastructure/testing/db';
+import { PgPoolService } from '../../infrastructure/sql';
+import { StateTransitionGuardService } from '../../infrastructure/state-machine/state-transition-guard.service';
+import { StateTransitionLogService } from '../../infrastructure/state-machine/state-transition-log.service';
+import { BenefitsConfig, POINTS_TTL_DAYS_DEFAULT } from '../benefits/benefits.config';
+import { PointsService } from '../benefits/points.service';
+import {
+  ChannelRouter,
+  MockChannelAdapter,
+} from './payment.channels';
+import { PAYMENT_SWITCH_WINDOW_MS_DEFAULT, type PaymentConfig } from './payment.config';
+import { MockPaymentAlertSink, PaymentAlertService } from './payment.alerts';
+import { PaymentGatewayService } from './payment.gateway.service';
+import {
+  RefundConsumer,
+  createRefundCallbackHandler,
+  createSessionFailedHandler,
+} from './refund.consumer';
+import { RefundService } from './refund.service';
+import { RefundSourceRegistry } from './refund.source';
+import type { RefundSource, RefundSourceOrder } from '@ljr/shared';
+import type { PaymentOrderView } from './payment.types';
+
+/**
+ * F2 批量退款消费端（§2 批量/R-W3-M 裁决/§10 验收）：
+ *   SessionFailed 消费器（付款人清单经 RefundSource 注册表——T6 假源跑全流程、无源注册 warn
+ *   跳过不炸、部分失败可重入续跑）+ REFUND_SUCCESS 回调消费器（F1 Inbox 既有出口，PAY_SUCCESS
+ *   noop 待 C3=T7）。§10 全链用例经假源+真 F1/F4：SessionFailed → 全员全额退款 → 真回调 →
+ *   DONE+积分单还原。
+ */
+
+const DAY = Date.UTC(2026, 9, 16, 8, 0, 0);
+
+function testConfig(): PaymentConfig {
+  return {
+    primary: {
+      channel: 'wechat_ecom',
+      merchantId: 'mock-wechat-mch',
+      secret: randomBytes(32).toString('hex'),
+    },
+    backup: {
+      channel: 'alipay',
+      merchantId: 'mock-alipay-mch',
+      secret: randomBytes(32).toString('hex'),
+    },
+    switchWindowMs: PAYMENT_SWITCH_WINDOW_MS_DEFAULT,
+  };
+}
+
+describe('RefundSourceRegistry（R-W3-M 注册表形态）', () => {
+  it('register/resolve 按注册键存取；未注册键 resolve=null（消费端 warn 跳过的依据）', () => {
+    const registry = new RefundSourceRegistry();
+    expect(registry.resolve('session')).toBeNull();
+    const fake: RefundSource = { listPaidPaymentOrders: async () => [] };
+    registry.register('session', fake);
+    expect(registry.resolve('session')).toBe(fake);
+    expect(registry.resolve('groupbuy')).toBeNull();
+  });
+});
+
+describe('F2 批量退款消费端（需 PG）', () => {
+  let pool: Pool;
+  let poolSvc: PgPoolService;
+  let cfg: PaymentConfig;
+  let gateway: PaymentGatewayService;
+  let refunds: RefundService;
+  let registry: RefundSourceRegistry;
+  let relay: OutboxRelayService;
+  let outbox: OutboxService;
+  let seq = 0;
+
+  const createPaidOrder = async (opts?: {
+    cash?: string;
+    points?: number;
+  }): Promise<PaymentOrderView> => {
+    seq += 1;
+    const res = await gateway.createOrder({
+      biz_type: 'enroll',
+      biz_id: 500 + seq,
+      cash_amount: opts?.cash ?? '100.00',
+      points_amount: opts?.points ?? 0,
+      idempotency_key: `payment/f2c-order-${seq}/pay`,
+    });
+    await gateway.markFrozen(res.payment_order.id, `MOCK-WECHAT-F2C-${seq}`);
+    return res.payment_order;
+  };
+
+  /** 夹具：SessionFailed 事件真实出箱（C1 ENROLL_DEADLINE 执行器等价物） */
+  const recordSessionFailed = async (sessionId: number): Promise<void> => {
+    const payload: SessionFailedPayload = {
+      id: sessionId,
+      lawyer_id: 9101,
+      slot_start: '2026-10-20T02:00:00.000Z',
+      price_mode: 'per_head',
+      unit_price: '100.00',
+      session_total: '100.00',
+      reason: 'ENROLL_DEADLINE_PASSED',
+    };
+    await poolSvc.withTransaction((uow) =>
+      outbox.recordOutbox(uow, { type: SESSION_FAILED_TOPIC, payload }),
+    );
+  };
+
+  /** 真回调驱动器：签发 REFUND_SUCCESS 报文走 F1 ingestCallback（验签→Inbox→事件出箱） */
+  const ingestRefundSuccess = async (order: PaymentOrderView) => {
+    const raw = Buffer.from(
+      JSON.stringify({
+        order_id: order.id,
+        event_type: 'REFUND_SUCCESS',
+        channel_txn_no: `MOCK-WECHAT-RF-${order.id}`,
+        amount: '0',
+      }),
+      'utf8',
+    );
+    const { createHmac } = await import('node:crypto');
+    const signature = createHmac('sha256', cfg.primary.secret).update(raw).digest('hex');
+    return gateway.ingestCallback('wechat_ecom', raw, signature);
+  };
+
+  beforeAll(async () => {
+    pool = await ensureTestDatabase();
+  });
+
+  beforeEach(async () => {
+    await truncateAll(pool);
+    cfg = testConfig();
+    const router = new ChannelRouter({
+      adapters: [
+        new MockChannelAdapter(
+          'wechat_ecom',
+          cfg.primary.merchantId,
+          cfg.primary.secret,
+          () => new Date(DAY),
+        ),
+        new MockChannelAdapter(
+          'alipay',
+          cfg.backup.merchantId,
+          cfg.backup.secret,
+          () => new Date(DAY),
+        ),
+      ],
+      switchWindowMs: cfg.switchWindowMs,
+      now: () => DAY,
+    });
+    poolSvc = new PgPoolService(pool);
+    outbox = new OutboxService();
+    const guard = new StateTransitionGuardService(new StateTransitionLogService(), poolSvc);
+    gateway = new PaymentGatewayService(
+      poolSvc,
+      outbox,
+      guard,
+      router,
+      new PaymentAlertService(new MockPaymentAlertSink()),
+      cfg,
+    );
+    const points = new PointsService(poolSvc, outbox, {
+      pointsTtlDays: POINTS_TTL_DAYS_DEFAULT,
+    } satisfies BenefitsConfig);
+    refunds = new RefundService(poolSvc, outbox, guard, gateway, points);
+    registry = new RefundSourceRegistry();
+    relay = new OutboxRelayService(poolSvc, { batch: 50, maxRetry: 2 });
+    new RefundConsumer(relay, refunds, registry, gateway).onModuleInit();
+  });
+
+  afterEach(async () => {
+    await truncateAll(pool);
+  });
+  afterAll(async () => {
+    await pool.end();
+  });
+
+  it('§10 流标批量全员退款（经假源+真 F1/F4 全链）：全员全额（含积分单还原）、回调推进 DONE、inbox CONSUMED', async () => {
+    const payerA = await createPaidOrder({ cash: '100.00', points: 0 });
+    const payerB = await createPaidOrder({ cash: '60.00', points: 4000 });
+    const source: RefundSource = {
+      listPaidPaymentOrders: async () => [
+        {
+          payment_order_id: payerA.id,
+          user_id: 601,
+          cash_amount: payerA.cash_amount,
+          points_amount: payerA.points_amount,
+        },
+        {
+          payment_order_id: payerB.id,
+          user_id: 602,
+          cash_amount: payerB.cash_amount,
+          points_amount: payerB.points_amount,
+        },
+      ],
+    };
+    registry.register('session', source);
+    await pool.query(
+      `INSERT INTO benefits.points_accounts (user_id, balance) VALUES (602, 0)
+       ON CONFLICT (user_id) DO UPDATE SET balance = 0`,
+    );
+
+    await recordSessionFailed(501);
+    const tick = await relay.tick();
+    expect(tick.dispatched).toBe(1);
+
+    // 全员全额受理：退款额=原支付拆分（现金+积分逐字段），F1 单在途 REFUNDING
+    const rows = await pool.query<{
+      payment_order_id: number;
+      user_id: number;
+      cash_amount: string;
+      points_amount: number;
+      status: string;
+      reason: string;
+    }>(`SELECT payment_order_id::int AS payment_order_id, user_id::int AS user_id,
+                cash_amount::text AS cash_amount, points_amount,
+                status, reason FROM payment.refunds ORDER BY id`);
+    expect(rows.rows).toHaveLength(2);
+    expect(rows.rows[0]).toMatchObject({
+      payment_order_id: payerA.id,
+      user_id: 601,
+      cash_amount: '100.00',
+      points_amount: 0,
+      status: 'PROCESSING',
+      reason: 'GROUP_FAIL',
+    });
+    expect(rows.rows[1]).toMatchObject({
+      payment_order_id: payerB.id,
+      user_id: 602,
+      cash_amount: '60.00',
+      points_amount: 4000,
+      status: 'PROCESSING',
+    });
+    const funding = await pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM payment.payment_orders WHERE status = 'REFUNDING'`,
+    );
+    expect(funding.rows[0]!.n).toBe(2);
+
+    // 通道真回调 → relay 二次 tick → 消费收敛：DONE + F1 单 REFUNDED + RefundCompleted×2 + 还原
+    await ingestRefundSuccess(payerA);
+    await ingestRefundSuccess(payerB);
+    const tick2 = await relay.tick();
+    expect(tick2.dispatched).toBe(2);
+
+    const done = await pool.query<{ status: string }>(
+      `SELECT status FROM payment.refunds ORDER BY id`,
+    );
+    expect(done.rows.map((r) => r.status)).toEqual(['DONE', 'DONE']);
+    const refunded = await pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM payment.payment_orders WHERE status = 'REFUNDED'`,
+    );
+    expect(refunded.rows[0]!.n).toBe(2);
+    const completed = await pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM platform.outbox WHERE topic = 'payment.refund.completed'`,
+    );
+    expect(completed.rows[0]!.n).toBe(2);
+    const restore = await pool.query<{ delta: number; source_ref: string }>(
+      `SELECT delta, source_ref FROM benefits.points_txns WHERE kind = 'REFUND_RESTORE'`,
+    );
+    expect(restore.rows).toHaveLength(1);
+    expect(restore.rows[0]!.delta).toBe(4000); // 积分单还原恰一次；现金绝不折积分
+    const inbox = await pool.query<{ status: string }>(`SELECT status FROM payment.inbox`);
+    expect(inbox.rows.every((r) => r.status === 'CONSUMED')).toBe(true);
+  });
+
+  it('R-W3-M 无源注册：warn 跳过不炸（handler 正常返回，零退款行，事件可 SENT）', async () => {
+    await recordSessionFailed(502);
+    const tick = await relay.tick();
+    expect(tick.dispatched).toBe(1); // handler 正常返回 → SENT（不进重试轨道）
+    const n = await pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM payment.refunds`);
+    expect(n.rows[0]!.n).toBe(0);
+  });
+
+  it('载荷防御：SessionFailed 缺 id 抛错进重试轨道（不静默丢弃）', async () => {
+    const handler = createSessionFailedHandler(refunds, registry);
+    await expect(
+      handler({ id: 1, eventId: 'e', topic: SESSION_FAILED_TOPIC, payload: {}, retryCount: 0 }),
+    ).rejects.toMatchObject({ code: 'E_INVALID_ARGUMENT' });
+  });
+
+  it('§10 部分失败批次可重入续跑：逐单独立事务，重入只补未 DONE 单（幂等键防重不重复）', async () => {
+    const payerA = await createPaidOrder();
+    const ghostId = payerA.id + 100000; // 首轮失败源：第二单不存在（受理面 404 注入）
+    const payerC = await createPaidOrder();
+    const source: RefundSource = {
+      listPaidPaymentOrders: async () => [
+        {
+          payment_order_id: payerA.id,
+          user_id: 601,
+          cash_amount: payerA.cash_amount,
+          points_amount: payerA.points_amount,
+        },
+        { payment_order_id: ghostId, user_id: 602, cash_amount: '50.00', points_amount: 0 },
+        {
+          payment_order_id: payerC.id,
+          user_id: 603,
+          cash_amount: payerC.cash_amount,
+          points_amount: payerC.points_amount,
+        },
+      ],
+    };
+    registry.register('session', source);
+    const handler = createSessionFailedHandler(refunds, registry);
+
+    // 首轮：ghost 单失败 → handler 抛错（relay 语义=进重试轨道），A/C 已逐单落单
+    await expect(
+      handler({
+        id: 2,
+        eventId: 'e',
+        topic: SESSION_FAILED_TOPIC,
+        payload: { id: 503 } as unknown as SessionFailedPayload,
+        retryCount: 0,
+      }),
+    ).rejects.toMatchObject({ code: 'E_OUTBOX_HANDLER_FAILED' });
+    let rows = await pool.query<{ payment_order_id: number }>(
+      `SELECT payment_order_id::int AS payment_order_id FROM payment.refunds ORDER BY payment_order_id`,
+    );
+    expect(rows.rows.map((r) => r.payment_order_id)).toEqual([payerA.id, payerC.id]);
+
+    // 重入：ghost 单落库补齐（新单换 id 到 ghost 槽位，已 FROZEN 可退）→ 续跑只补未受理单；
+    // 已落单的幂等重放不重复
+    const payerB = await createPaidOrder();
+    await pool.query(`UPDATE payment.payment_orders SET id = $1 WHERE id = $2`, [
+      ghostId,
+      payerB.id,
+    ]);
+    await handler({
+      id: 3,
+      eventId: 'e',
+      topic: SESSION_FAILED_TOPIC,
+      payload: { id: 503 } as unknown as SessionFailedPayload,
+      retryCount: 1,
+    });
+
+    rows = await pool.query<{ payment_order_id: number }>(
+      `SELECT payment_order_id::int AS payment_order_id FROM payment.refunds ORDER BY payment_order_id`,
+    );
+    expect(rows.rows.map((r) => r.payment_order_id)).toEqual([payerA.id, payerC.id, ghostId]);
+    const n = await pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM payment.refunds`);
+    expect(n.rows[0]!.n).toBe(3); // 每单恰一笔（幂等键防重）
+  });
+
+  it('回调消费面过滤：PAY_SUCCESS 事件 noop（C3=T7 消费位），不动 refunds/inbox', async () => {
+    const order = await createPaidOrder();
+    const handler = createRefundCallbackHandler(refunds, gateway);
+    const raw = Buffer.from(
+      JSON.stringify({
+        order_id: order.id,
+        event_type: 'PAY_SUCCESS',
+        channel_txn_no: 'MOCK-WECHAT-PAY-NOOP',
+      }),
+      'utf8',
+    );
+    const { createHmac } = await import('node:crypto');
+    const signature = createHmac('sha256', cfg.primary.secret).update(raw).digest('hex');
+    await gateway.ingestCallback('wechat_ecom', raw, signature);
+    const before = await pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM payment.inbox WHERE status = 'RECEIVED'`,
+    );
+
+    await handler({
+      id: 4,
+      eventId: 'e',
+      topic: PAYMENT_CALLBACK_INBOXED_TOPIC,
+      payload: {
+        biz_idempotency_key: `${order.idempotency_key}:PAY_SUCCESS`,
+        event: 'PAY_SUCCESS',
+      },
+      retryCount: 0,
+    });
+
+    const after = await pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM payment.inbox WHERE status = 'RECEIVED'`,
+    );
+    expect(after.rows[0]!.n).toBe(before.rows[0]!.n); // RECEIVED 原样（消费权归 C3）
+    const refundsN = await pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM payment.refunds`);
+    expect(refundsN.rows[0]!.n).toBe(0);
+  });
+});
