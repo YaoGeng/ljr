@@ -12,7 +12,7 @@ import { Pool } from 'pg';
 import { pgConfigFromEnv } from '../sql';
 
 /**
- * 全部基座/demo/notify/schedule/ops/agent_assist/identity/pricing/credit 测试表（TRUNCATE 清场清单，须与 V2~V18 迁移同步）。
+ * 全部基座/demo/notify/schedule/ops/agent_assist/identity/pricing/credit/payment 测试表（TRUNCATE 清场清单，须与 V2~V20 迁移同步）。
  *
  * notify.notification_templates 不入清单：PRD §8.2 三档话术是 V4 迁移 seed 的参照数据
  * （R-01 全等断言的事实源），清场会把它一并抹掉——同 flyway 历史表不参与清场的道理。
@@ -52,6 +52,9 @@ export const TEST_DB_TABLES = [
   'agent_assist.knowledge_docs',
   'agent_assist.knowledge_chunks',
   'agent_assist.sanitize_audit',
+  'payment.payment_orders',
+  'payment.inbox',
+  'payment.split_ledgers',
 ] as const;
 
 export async function ensureTestDatabase(): Promise<Pool> {
