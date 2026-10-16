@@ -85,11 +85,9 @@ describe('F4 ①切片 POINTS_EXPIRE 执行器（I2 registry 注册 + 自投下�
     expect(second.registered).toBe(false);
     expect(second.jobId).toBe(first.jobId);
 
-    const pending = await pool.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM schedule.schedule_jobs
-        WHERE job_type = 'POINTS_EXPIRE' AND status = 'PENDING'`,
-    );
-    expect(pending.rows[0]?.n).toBe(1);
+    // 断言经 I2 运维视图查询面（跨 schema 禁直查 schedule 表——schema-refs 红线）
+    const pending = await scheduler.listJobs({ status: 'PENDING', jobType: 'POINTS_EXPIRE' });
+    expect(pending).toHaveLength(1);
   });
 
   it('到期 job → tick 执行：全量扫扣减 + PointsExpired 出箱 + 自投下一日 03:00（上海）job；再 tick 空转', async () => {
@@ -118,16 +116,14 @@ describe('F4 ①切片 POINTS_EXPIRE 执行器（I2 registry 注册 + 自投下�
     );
     expect(account.rows[0]?.balance).toBe(0);
 
-    // 自投下一日：恰一条 PENDING，dueAt=上海 03:00 整、refId=上海日 yyyymmdd
-    const next = await pool.query<{ ref_type: string; ref_id: string; due_at: Date }>(
-      `SELECT ref_type, ref_id, due_at FROM schedule.schedule_jobs
-        WHERE job_type = 'POINTS_EXPIRE' AND status = 'PENDING'`,
-    );
-    expect(next.rows).toHaveLength(1);
-    const row = next.rows[0]!;
-    expect(row.ref_type).toBe('daily');
-    expect(Number(row.ref_id)).toBeGreaterThan(20_261_016);
-    const shanghai = new Date(row.due_at.getTime() + 8 * 3_600_000);
+    // 自投下一日：恰一条 PENDING（经 I2 运维视图查询面断言——跨 schema 禁直查 schedule 表），
+    // dueAt=上海 03:00 整、refId=上海日 yyyymmdd
+    const next = await scheduler.listJobs({ status: 'PENDING', jobType: 'POINTS_EXPIRE' });
+    expect(next).toHaveLength(1);
+    const row = next[0]!;
+    expect(row.refType).toBe('daily');
+    expect(row.refId).toBeGreaterThan(20_261_016);
+    const shanghai = new Date(row.dueAt.getTime() + 8 * 3_600_000);
     expect(shanghai.getUTCHours()).toBe(3);
     expect(shanghai.getUTCMinutes()).toBe(0);
 
