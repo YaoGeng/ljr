@@ -208,6 +208,21 @@ export class PaymentGatewayService {
     return row ? toOrderView(row) : null;
   }
 
+  /**
+   * id 定位支付单（导出只读面，M1-W3 T6 扩展——沿 T5 createOrderInTx 导出面扩展先例，加法不改
+   * 既有契约）：F2 受理面金额守恒（R-04 累计退款 ≤ 支付额）需原支付拆分快照（简报「从 F1
+   * payment_orders 读（服务面）」）。不存在=null（调用方自行语义化 404）。
+   */
+  async findOrderById(orderId: number): Promise<PaymentOrderView | null> {
+    assertPositiveInt(orderId, 'order_id');
+    const res = await this.pool.query<OrderRow>(
+      `SELECT ${ORDER_COLS} FROM payment.payment_orders WHERE id = $1`,
+      [orderId],
+    );
+    const row = res.rows[0];
+    return row ? toOrderView(row) : null;
+  }
+
   /** 入参校验收口（createOrder/createOrderInTx 共用） */
   private assertCreateOrderInput(input: CreateOrderInput): void {
     assertBizType(input.biz_type);
