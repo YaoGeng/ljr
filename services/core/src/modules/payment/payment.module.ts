@@ -34,11 +34,12 @@ import {
 import { FirmMerchantConsumer } from './firm-merchant.consumer';
 import { FirmMerchantJobExecutors } from './firm-merchant.executors';
 import { FirmMerchantService } from './firm-merchant.service';
+import { FirmMerchantController } from './firm-merchant.controller';
 import { DepositService } from './deposit.service';
 
 @Module({
   imports: [InfrastructureModule, SchedulerModule],
-  controllers: [PaymentController],
+  controllers: [PaymentController, FirmMerchantController],
   providers: [
     // 配置装配（LJR_PAYMENT_* env > dev mock 缺省；Symbol token，测试 override 注入测试密钥）
     { provide: PAYMENT_CONFIG, useFactory: () => paymentConfigFromEnv(process.env) },

@@ -41,7 +41,7 @@ import { HealthController } from './health.controller';
     WordDictModule, // H5 风控词库切片（ops schema owner，M1-W1 Task 5；人审闭环 M2-W2）
     SpecialtyKnowledgeModule, // E3 专项配置与知识库基建（agent_assist schema owner，M1-W1 Task 6；E1 Task 7 同目录追加）
     SanitizeModule, // E1 实时脱敏层切片（agent_assist schema owner，M1-W1 Task 7；草稿管线接线 M2-W3）
-    PaymentModule, // F1 支付网关与回调 Inbox（payment schema owner，M1-W3 Task 1；指令面+回调验签+Inbox+对账；下游 C3=T7/H3=M2 接线）
+    PaymentModule, // F1 支付网关与回调 Inbox（payment schema owner，M1-W3 Task 1；指令面+回调验签+Inbox+对账；下游 C3=T7/H3=M2 接线）+ A3b 律所进件子域（M1-W3 Task 3：firm_merchants 状态机/R-01 查询面/FIRM_REVERIFY/保证金指令台账；下游 F3=T8/T10 H1 消费 FirmMerchantService）
     BenefitsModule, // F4 权益①切片（benefits schema owner，M1-W3 Task 2；积分账户/冻结核销解冻/退款还原/过期双路径；下游 C3=T7/F2=T6 消费 PointsService，券/备付=M2-W2 ②全量）
   ],
   controllers: [HealthController],
