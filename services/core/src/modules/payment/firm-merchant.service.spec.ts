@@ -11,6 +11,7 @@ import {
   LAWYER_AUDIT_PASSED_TOPIC,
 } from '@ljr/shared';
 import { ensureTestDatabase, truncateAll } from '../../infrastructure/testing/db';
+import { PgPoolService } from '../../infrastructure/sql';
 import {
   MockChannelAdapter,
   PAYMENT_CHANNEL_ADAPTERS,
@@ -274,6 +275,35 @@ describe('A3b 进件服务（§4/§5/§7，需 PG）', () => {
     expect(tick2.done).toBe(0);
   });
 
+  it('F-1 双钟闭合：应用钟落后 DB 钟时到期商户仍被停用（到期判定 DB 钟——R-03 不因应用钟漂移静默失效）', async () => {
+    const view = await submitActive(24);
+    // DB 钟：直插过期复验锚（recheck 与修后 suspendOverdueInTx 同锚同钟）
+    await pool.query(
+      `UPDATE payment.firm_merchants SET reverify_due = now() - interval '1s' WHERE id = $1`,
+      [view.id],
+    );
+    // 应用钟人为推迟 1 小时（vi 挂 Date——模拟 app host 时钟漂移；修复前应用钟判定误判「未到期」静默跳过）
+    vi.useFakeTimers({ now: new Date(Date.now() - 3_600_000), toFake: ['Date'] });
+    try {
+      const out = await new PgPoolService(pool).withTransaction((uow) =>
+        service.suspendOverdueInTx(uow, view.id),
+      );
+      expect(out).not.toBeNull(); // 应用钟落后不得抑制停用
+      expect(out!.firm_id).toBe(24);
+      expect((await service.getMerchant(24, 'wechat_ecom'))!.status).toBe('SUSPENDED');
+      const events = await pool.query<{ topic: string }>(
+        `SELECT topic FROM platform.outbox WHERE topic IN ($1, $2) ORDER BY topic`,
+        [FIRM_MERCHANT_REVERIFIED_DUE_TOPIC, FIRM_MERCHANT_SUSPENDED_TOPIC],
+      );
+      expect(events.rows.map((r) => r.topic)).toEqual([
+        FIRM_MERCHANT_REVERIFIED_DUE_TOPIC,
+        FIRM_MERCHANT_SUSPENDED_TOPIC,
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('R-03 复验端点：SUSPENDED→ACTIVE（刷新 verified_at/reverify_due+新 job+Activated）；ACTIVE 复验被守卫拒', async () => {
     const view = await submitActive(19);
     await travelJobDue(view.id);
@@ -298,7 +328,7 @@ describe('A3b 进件服务（§4/§5/§7，需 PG）', () => {
     });
   });
 
-  it('R-01 分账前置查询面（F3 消费）：仅 ACTIVE 放行；IN_REVIEW/CHANGING/SUSPENDED/未进件全拒 E_MERCHANT_NOT_ACTIVE', async () => {
+  it('R-01 分账前置查询面（F3 消费）：仅 ACTIVE 放行；IN_REVIEW/CHANGING/SUSPENDED/STOPPED/未进件全拒 E_MERCHANT_NOT_ACTIVE', async () => {
     await submitActive(20); // ACTIVE
     await service.assertSplittable(20, 'wechat_ecom'); // 不抛
 
@@ -322,6 +352,15 @@ describe('A3b 进件服务（§4/§5/§7，需 PG）', () => {
     await travelJobDue(v23.id);
     await scheduler.tick('normal');
     await expect(service.assertSplittable(23, 'wechat_ecom')).rejects.toMatchObject({
+      code: ErrorCode.MerchantNotActive,
+    });
+
+    // F-4 STOPPED 显式拒绝（停用面=运营侧后续切片，夹具直插本模块表；矩阵 ACTIVE→STOPPED 唯一入边）
+    const v25 = await submitActive(25);
+    await pool.query(`UPDATE payment.firm_merchants SET status = 'STOPPED' WHERE id = $1`, [
+      v25.id,
+    ]);
+    await expect(service.assertSplittable(25, 'wechat_ecom')).rejects.toMatchObject({
       code: ErrorCode.MerchantNotActive,
     });
 

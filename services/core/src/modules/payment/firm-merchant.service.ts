@@ -332,18 +332,23 @@ export class FirmMerchantService {
    * 到期未复验 → SUSPENDED（ACTIVE→SUSPENDED，reason=reverify_overdue）+ 成对出箱
    * Suspended(REVERIFY_OVERDUE)/ReverifiedDue（I1 通知律所复验、F3 暂停分账——§8「SUSPENDED
    * 期间 F3 待结算挂起可见」）。非 ACTIVE/未到期 → null（回查兜底，executor recheck 双保险）。
+   *
+   * 双钟闭合（评审 F-1）：到期判定一律 DB 钟（SELECT 计算 due 列 + UPDATE WHERE
+   * reverify_due <= now()，与 executor recheck 同锚同钟）——应用钟（本进程 Date.now()）不参与
+   * 到期判定，app host 与 DB host 时钟漂移不得使 job DONE 收口而商户滞留 ACTIVE（R-03 静默失效）。
    */
   async suspendOverdueInTx(
     uow: SqlExecutor,
     merchantId: number,
   ): Promise<ReverifyOverdueOutcome | null> {
-    const res = await uow.query<MerchantRow>(
-      `SELECT ${MERCHANT_COLS} FROM payment.firm_merchants WHERE id = $1 FOR UPDATE`,
+    const res = await uow.query<MerchantRow & { due: boolean }>(
+      `SELECT ${MERCHANT_COLS},
+              (reverify_due IS NOT NULL AND reverify_due <= now()) AS due
+         FROM payment.firm_merchants WHERE id = $1 FOR UPDATE`,
       [assertPositiveInt(merchantId, 'merchant_id')],
     );
     const row = res.rows[0];
-    if (!row || row.status !== 'ACTIVE' || row.reverify_due === null) return null;
-    if (new Date(row.reverify_due).getTime() > Date.now()) return null; // 未到期（应用钟兜底；recheck 走 DB 钟）
+    if (!row || row.status !== 'ACTIVE' || !row.due) return null;
 
     await this.guard.assertTransition(FIRM_MERCHANT_MACHINE, {
       entityId: Number(row.id),
@@ -354,7 +359,7 @@ export class FirmMerchantService {
     });
     const updated = await uow.query<MerchantRow>(
       `UPDATE payment.firm_merchants SET status = 'SUSPENDED'
-        WHERE id = $1 AND status = 'ACTIVE' RETURNING ${MERCHANT_COLS}`,
+        WHERE id = $1 AND status = 'ACTIVE' AND reverify_due <= now() RETURNING ${MERCHANT_COLS}`,
       [row.id],
     );
     if (updated.rows.length === 0) {

@@ -26,7 +26,8 @@ export class FirmMerchantJobExecutors implements OnModuleInit {
     this.registry.register({
       jobType: 'FIRM_REVERIFY',
       recheck: async ({ job, uow }) => {
-        // DB 钟回查：仅「ACTIVE 且已到期」需要处置（到期未复验 → SUSPENDED，R-03）
+        // DB 钟回查：仅「ACTIVE 且已到期」需要处置（到期未复验 → SUSPENDED，R-03）——
+        // 与 execute 侧 suspendOverdueInTx 的到期判定同锚同钟（评审 F-1 双钟闭合：应用钟不参与）
         const res = await uow.query<{ due: boolean }>(
           `SELECT (status = 'ACTIVE' AND reverify_due IS NOT NULL AND reverify_due <= now()) AS due
              FROM payment.firm_merchants WHERE id = $1`,
