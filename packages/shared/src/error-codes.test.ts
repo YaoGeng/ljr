@@ -113,6 +113,15 @@ describe('错误码契约（ErrorCode 常量表 + AppError{code,httpStatus}）',
     expect(new AppError(ErrorCode.HasJoined).httpStatus).toBe(409);
   });
 
+  it('C3 报名与支付成团错误码（M1-W3 T7 §5）：未实名 402 REALNAME_REQUIRED（R-06 闸口）/ 满员或截止 409 FULL_OR_DEADLINE / 报名幂等键同键异载荷 409（F1 R-02 口径先例）', () => {
+    expect(ErrorCode.RealnameRequired).toBe('E_REALNAME_REQUIRED');
+    expect(new AppError(ErrorCode.RealnameRequired).httpStatus).toBe(402);
+    expect(ErrorCode.FullOrDeadline).toBe('E_FULL_OR_DEADLINE');
+    expect(new AppError(ErrorCode.FullOrDeadline).httpStatus).toBe(409);
+    expect(ErrorCode.EnrollDuplicateKey).toBe('E_ENROLL_DUP_KEY');
+    expect(new AppError(ErrorCode.EnrollDuplicateKey).httpStatus).toBe(409);
+  });
+
   it('isAppError 类型收窄', () => {
     expect(isAppError(new AppError(ErrorCode.Conflict))).toBe(true);
     expect(isAppError(new Error('plain'))).toBe(false);

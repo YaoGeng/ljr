@@ -473,6 +473,30 @@ export interface GroupBuyExpiredPayload {
 }
 
 // ---------------------------------------------------------------------------
+// C3 报名与支付成团（M1-W3 T7）：1 生产契约。EnrollmentPaid = 成团原子守卫支付事务内
+// 同箱出箱（§6 逐字载荷 {ref_type, ref_id, user_id, amounts}；先席位 UPDATE 后报名 PAID
+// 的顺序铁律见 C3 §4/§9）——消费位：I1 成团通知（M2 接线，出箱即止）与审计扇出。
+// 金额一律 Money 字符串（NUMERIC 禁 float）。
+// ---------------------------------------------------------------------------
+
+/** 支付完成·席位生效（C3 §6 生产；成团守卫事务 PENDING→PAID 同箱出箱）。 */
+export const ENROLLMENT_PAID_TOPIC = 'trade.enrollment.paid';
+
+/** 报名所属业务实体类型（B2 占用锁 ref_type 同词汇：session|groupbuy） */
+export type EnrollmentRefType = 'session' | 'groupbuy';
+
+export interface EnrollmentPaidPayload {
+  /** 报名所属业务实体类型（session=B2C 场次；groupbuy=C2B 拼团） */
+  readonly ref_type: EnrollmentRefType;
+  /** 业务实体 id（trade.sessions.id / trade.group_buys.id） */
+  readonly ref_id: number;
+  /** 付款人（identity 侧用户 id） */
+  readonly user_id: number;
+  /** 金额拆分（paid=应付总额、cash=现金部分，Money 字符串；points=积分部分，100 积分=1 元） */
+  readonly amounts: { readonly paid: Money; readonly cash: Money; readonly points: number };
+}
+
+// ---------------------------------------------------------------------------
 // F2 退款处理（M1-W3 T6）：2 生产契约。消费位：RefundCompleted → C3 状态推进（T7）、
 // I1 通知、H4 指标（F2 §6；I1 消费接线=M2 联调，T6 出箱即止）；RefundFailed → H3 工单
 // （M2 接线）。金额一律 Money 字符串（NUMERIC 禁 float）。

@@ -100,6 +100,12 @@ export const ErrorCode = {
   ReachedLocked: 'E_REACHED_LOCKED',
   /** C2 发起人取消被拒：已有已支付加入者（R-W3-L 保守裁决：无任何已支付加入者才可取消；409 HAS_JOINED） */
   HasJoined: 'E_HAS_JOINED',
+  /** C3 实名闸口未满足：报名/下单前用户未完成实名认证（C3 §5 402 REALNAME_REQUIRED，R-06；A2 isRealnameVerified=false） */
+  RealnameRequired: 'E_REALNAME_REQUIRED',
+  /** C3 满员或截止：场次满员/已过报名截止前 30s 停开新单（R-05）/拼团达上限（C3 §5 409 FULL_OR_DEADLINE） */
+  FullOrDeadline: 'E_FULL_OR_DEADLINE',
+  /** C3 报名幂等键同键异载荷：同 user+ref 已有活跃报名但载荷不一致（F1 R-02 口径先例：同键同载荷=幂等重放原单；C3 §5 409） */
+  EnrollDuplicateKey: 'E_ENROLL_DUP_KEY',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -287,6 +293,19 @@ const ERROR_CODE_META: Readonly<Record<ErrorCode, ErrorCodeMeta>> = {
   [ErrorCode.HasJoined]: {
     httpStatus: 409,
     defaultMessage: '该拼团已有已支付加入者，发起人不可单方取消（R-W3-L；走协商/客服 ⚠04§8-14）',
+  },
+  [ErrorCode.RealnameRequired]: {
+    httpStatus: 402,
+    defaultMessage: '报名前须先完成实名认证（R-06 实名闸口）',
+  },
+  [ErrorCode.FullOrDeadline]: {
+    httpStatus: 409,
+    defaultMessage: '场次已满员或已过报名截止（截止前 30s 停开新单，R-05），不再接受报名',
+  },
+  [ErrorCode.EnrollDuplicateKey]: {
+    httpStatus: 409,
+    defaultMessage:
+      '报名幂等键冲突：同场次同用户已有活跃报名且载荷不一致（同载荷请走幂等重放，返回原单）',
   },
 };
 

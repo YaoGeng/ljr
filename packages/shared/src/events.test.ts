@@ -55,6 +55,8 @@ import {
   GroupBuyReachedPayload,
   GROUP_BUY_EXPIRED_TOPIC,
   GroupBuyExpiredPayload,
+  ENROLLMENT_PAID_TOPIC,
+  EnrollmentPaidPayload,
   TRAINING_CONSENT_GRANTED_TOPIC,
   TRAINING_CONSENT_REVOKED_TOPIC,
   TrainingConsentGrantedPayload,
@@ -440,5 +442,28 @@ describe('C2 C2B 发起拼团事件契约（M1-W3 T5）：3 生产契约（Expir
       reason: 'INITIATOR_CANCELLED',
     };
     expect(byCancel.reason).toBe('INITIATOR_CANCELLED');
+  });
+});
+
+describe('C3 报名与支付成团事件契约（M1-W3 T7）：EnrollmentPaid 生产契约（成团守卫支付事务同箱出）', () => {
+  it('EnrollmentPaid：topic=trade.enrollment.paid，{ref_type, ref_id, user_id, amounts}（C3 §6 逐字；金额 Money 字符串禁 float）', () => {
+    expect(ENROLLMENT_PAID_TOPIC).toBe('trade.enrollment.paid');
+    const payload: EnrollmentPaidPayload = {
+      ref_type: 'session',
+      ref_id: 61,
+      user_id: 601,
+      amounts: { paid: '33.34', cash: '23.34', points: 1000 },
+    };
+    expect(payload.ref_type).toBe('session');
+    expect(payload.amounts.paid).toBe('33.34');
+    expect(payload.amounts.cash).toBe('23.34');
+    expect(payload.amounts.points).toBe(1000);
+    const groupJoin: EnrollmentPaidPayload = {
+      ref_type: 'groupbuy',
+      ref_id: 71,
+      user_id: 602,
+      amounts: { paid: '50.00', cash: '50.00', points: 0 },
+    };
+    expect(groupJoin.ref_type).toBe('groupbuy');
   });
 });
