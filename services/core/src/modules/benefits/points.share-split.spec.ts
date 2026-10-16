@@ -78,9 +78,28 @@ describe('R-04 缺席 30% 分摊取整纯函数（F4 §7）', () => {
 
   it('Σ分配额恒 ≤ 30% 池（不变量，随机形态抽查）', () => {
     const cases: Array<[number, Array<{ user_id: number; paid_cents: number }>]> = [
-      [12345, [{ user_id: 1, paid_cents: 1 }, { user_id: 2, paid_cents: 2 }, { user_id: 3, paid_cents: 3 }]],
-      [7, [{ user_id: 1, paid_cents: 100 }, { user_id: 2, paid_cents: 1 }]],
-      [999999999999, [{ user_id: 9, paid_cents: 3 }, { user_id: 4, paid_cents: 1 }]],
+      [
+        12345,
+        [
+          { user_id: 1, paid_cents: 1 },
+          { user_id: 2, paid_cents: 2 },
+          { user_id: 3, paid_cents: 3 },
+        ],
+      ],
+      [
+        7,
+        [
+          { user_id: 1, paid_cents: 100 },
+          { user_id: 2, paid_cents: 1 },
+        ],
+      ],
+      [
+        999999999999,
+        [
+          { user_id: 9, paid_cents: 3 },
+          { user_id: 4, paid_cents: 1 },
+        ],
+      ],
     ];
     for (const [pool, participants] of cases) {
       const r = splitAbsenceShare(pool, participants);

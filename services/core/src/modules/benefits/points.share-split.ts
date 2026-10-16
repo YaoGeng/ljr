@@ -49,7 +49,10 @@ export function splitAbsenceShare(
       throw new AppError(ErrorCode.InvalidArgument, `user_id 须为正整数：${String(p.user_id)}`);
     }
     if (!Number.isInteger(p.paid_cents) || p.paid_cents < 0) {
-      throw new AppError(ErrorCode.InvalidArgument, `paid_cents 须为非负整数：${String(p.paid_cents)}`);
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `paid_cents 须为非负整数：${String(p.paid_cents)}`,
+      );
     }
     if (seen.has(p.user_id)) {
       throw new AppError(ErrorCode.InvalidArgument, `user_id 重复：${String(p.user_id)}`);

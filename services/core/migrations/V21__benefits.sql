@@ -22,10 +22,11 @@
 --                             入任一列（core 的 points 服务头注同口径）。③delta 符号 ck 按kind
 --                             分组固化（授予/解冻 >0；核销/过期/冻结 <0）。④source_ref 可空 +
 --                             ck 要求非 EXPIRE 行必填（V20 ck_split_ledgers_idem_required 同形）：
---                             uq(kind, source_ref)=§5 幂等键 DB 真兜底（冻结/核销/解冻=order、
---                             授予/退款还原=调用方 ref）；EXPIRE 聚合行无业务键 → source_ref NULL
---                             （PG 唯一约束 NULLS DISTINCT 天然豁免），重放防护由账户行锁串行化
---                             「算未处理过期额→扣减」临界区承担。⑤expires_at 与 kind 联动 ck：
+--                             uq(user_id, kind, source_ref)=§5 幂等键 DB 真兜底（冻结/核销/解冻
+--                             =order、授予/退款还原=调用方 ref；用户维度入键——ref 由调用方自由
+--                             给定，跨用户同 ref 不得互锁）；EXPIRE 聚合行无业务键 → source_ref
+--                             NULL（PG 唯一约束 NULLS DISTINCT 天然豁免），重放防护由账户行锁
+--                             串行化「算未处理过期额→扣减」临界区承担。⑤expires_at 与 kind 联动
 --                             仅正向授予三 kind 可带（§3「只对正向 delta 行有意义」），且授予行
 --                             必带（R-02 时钟是过期扣减的唯一依据）；R-06 退款还原图新鲜时钟
 --                             （新 expires_at=restore 时刻+TTL，应用侧写入口径）。
@@ -89,7 +90,7 @@ CREATE TABLE IF NOT EXISTS benefits.points_txns (
                              -- R-02 过期时钟：仅正向授予三 kind 携带（⑤），R-06 退款还原写新鲜时钟
     created_at  timestamptz  NOT NULL DEFAULT now(),
                              -- 口径归一（V18 先例）
-    CONSTRAINT ux_points_txns_kind_ref UNIQUE (kind, source_ref),
+    CONSTRAINT ux_points_txns_user_kind_ref UNIQUE (user_id, kind, source_ref),
     CONSTRAINT ck_points_txns_kind CHECK (
         kind IN ('COMPENSATION', 'ABSENCE_SHARE', 'REDEEM', 'REFUND_RESTORE', 'EXPIRE', 'FREEZE', 'UNFREEZE')
     ),
@@ -104,7 +105,7 @@ CREATE TABLE IF NOT EXISTS benefits.points_txns (
     )
 );
 
-COMMENT ON TABLE benefits.points_txns IS 'F4 积分流水（R-03「流水不可变」纪律：触发器硬禁 UPDATE/DELETE；uq(kind,source_ref)=幂等键 DB 真兜底）；FREEZE/UNFREEZE 为①切片口径归一追加的冻结/解冻留痕行';
+COMMENT ON TABLE benefits.points_txns IS 'F4 积分流水（R-03「流水不可变」纪律：触发器硬禁 UPDATE/DELETE；uq(user_id,kind,source_ref)=幂等键 DB 真兜底）；FREEZE/UNFREEZE 为①切片口径归一追加的冻结/解冻留痕行';
 COMMENT ON COLUMN benefits.points_txns.source_ref IS '幂等引用（§5：冻结/核销/解冻=order:{支付单id}；授予/退款还原=调用方 ref）；EXPIRE 聚合行 NULL（重放防护由账户行锁承担）';
 COMMENT ON COLUMN benefits.points_txns.expires_at IS 'R-02 过期时钟（仅授予行携带；R-06 退款还原=restore 时刻+TTL 新鲜时钟；frozen 冻结中不过期）';
 
