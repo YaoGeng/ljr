@@ -53,10 +53,10 @@ DRAFT→SUBMITTED（提交）/ SUBMITTED→IN_REVIEW（H1 领取）/ →PASSED�
 - 禁止：license_no 明文日志；审核自动化判断（人工审核是产品规则，不做 AI 自动过审）。
 
 ## 10. 验收清单
-- [ ] 未 PASSED 律师在 C3 列表不可见（联调）
-- [ ] 状态机非法迁移被守卫拒绝并告警
-- [ ] 重复 license_no 提交被 409
-- [ ] 审核动作在 H9 审计可查
+- [ ] 未 PASSED 律师在 C3 列表不可见（联调）（后续联调：W3——isAuditPassed(lawyerUserId) 查询面已交付并测（非 PASSED 全态=false、材料修改/停用即翻转），C3 列表接入=W3 联调，task-3-report §四）
+- [x] 状态机非法迁移被守卫拒绝并告警（证据：commits bb809a3..dbd6453，task-3-report §四——409 E_STATE_ILLEGAL_TRANSITION+STL allowed=false 留痕（独立连接），6×6 矩阵封闭性断言）
+- [x] 重复 license_no 提交被 409（证据：commits bb809a3..dbd6453，task-3-report §四——E_LICENSE_NO_TAKEN 预检+唯一索引 23505 DB 事实源+竞窗显式复检用例）
+- [ ] 审核动作在 H9 审计可查（后续联调：M4——现形态=每动作一行 STL+应用日志（无 PII）可查，H9 正式审计存储=M4；auditor_id 回填随 H1 鉴权接线绑定（R-W2-G 前置门），task-3-report §四）
 
 ## 11. 待澄清点
 - ⚠04§8-4 保证金金额（A3b 承接，本模块仅在 PASSED 后触发 A3b 流程）。
