@@ -49,6 +49,7 @@
     "payment.inbox": "V20__payment.sql",
     "payment.lawyer_deposits": "V22__payment.sql",
     "payment.payment_orders": "V20__payment.sql",
+    "payment.refunds": "V25__payment.sql",
     "payment.split_ledgers": "V20__payment.sql",
     "platform.outbox": "V2__outbox.sql",
     "platform.outbox_dead_letter": "V2__outbox.sql",
