@@ -828,15 +828,35 @@ describe('G1 信用体系（REST 契约 + R-01~R-03 + §8.8 矩阵 + 窗口/限�
     expect(statuses).toEqual(['SENT']); // 重投后仍 SENT（消费幂等）
   });
 
-  it('消费 LawyerRejected（C2B 拒绝/超时桩）→ lawyer_reject_timeout -5', async () => {
-    const payload: LawyerRejectedPayload = { group_id: 21, lawyer_id: 7101 };
-    await recordSynthetic(LAWYER_REJECTED_TOPIC, payload);
+  it('消费 LawyerRejected：M-1 定型前后载荷形状兼容（W1 旧形状无 via_timeout / M1-W3 T5 新形状 via_timeout）都入账 lawyer_reject_timeout -5', async () => {
+    // 旧形状（M-1 定型前在途载荷；类型定型后编译期不再产出，运行时兼容性用本例钉住——
+    // 消费端只读 group_id/lawyer_id，不读取判别字段，两档同 -5）
+    const legacy = { group_id: 21, lawyer_id: 7101 } as unknown as LawyerRejectedPayload;
+    await recordSynthetic(LAWYER_REJECTED_TOPIC, legacy);
     await drain();
     expect((await eventRows('lawyer', 7101))[0]).toMatchObject({
       action: 'lawyer_reject_timeout',
       delta: -5,
       ref_type: 'group',
       ref_id: '21',
+    });
+
+    // 新形状（M1-W3 T5 定型）：12h 超时自动拒（C2 生产，via_timeout=true）与显式拒绝
+    //（C4=M2 生产，via_timeout=false）同档入账——判别字段供审计/归因，不改变分值语义
+    const timedOut: LawyerRejectedPayload = { group_id: 22, lawyer_id: 7102, via_timeout: true };
+    const explicit: LawyerRejectedPayload = { group_id: 23, lawyer_id: 7103, via_timeout: false };
+    await recordSynthetic(LAWYER_REJECTED_TOPIC, timedOut);
+    await recordSynthetic(LAWYER_REJECTED_TOPIC, explicit);
+    await drain();
+    expect((await eventRows('lawyer', 7102))[0]).toMatchObject({
+      action: 'lawyer_reject_timeout',
+      delta: -5,
+      ref_type: 'group',
+    });
+    expect((await eventRows('lawyer', 7103))[0]).toMatchObject({
+      action: 'lawyer_reject_timeout',
+      delta: -5,
+      ref_type: 'group',
     });
   });
 
