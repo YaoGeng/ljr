@@ -3,6 +3,8 @@
  * 事件流是模块协作唯一通道（架构 §2.1 Outbox），具名清单以 docs/04 §6 为准，M0-4 起逐批充实。
  * topic 命名 = `<schema>.<entity>.<过去式动词>`（W1 起惯例，如 identity.user.registered）。
  */
+import type { Money } from './money';
+
 export interface DomainEvent {
   /** 事件类型（具名以 docs/04 §6 领域事件清单为准） */
   readonly type: string;
@@ -468,4 +470,34 @@ export interface GroupBuyExpiredPayload {
   /** 子范围下限（F2 差额/台账语义参考） */
   readonly sub_min: number;
   readonly reason: GroupBuyExpiredReason;
+}
+
+// ---------------------------------------------------------------------------
+// F2 退款处理（M1-W3 T6）：2 生产契约。消费位：RefundCompleted → C3 状态推进（T7）、
+// I1 通知、H4 指标（F2 §6；I1 消费接线=M2 联调，T6 出箱即止）；RefundFailed → H3 工单
+// （M2 接线）。金额一律 Money 字符串（NUMERIC 禁 float）。
+// ---------------------------------------------------------------------------
+
+/** 退款完成（F2 §6 生产 → C3 状态推进、I1、H4）。REFUND_SUCCESS 回调推进 PROCESSING→DONE 同事务出箱。 */
+export const REFUND_COMPLETED_TOPIC = 'payment.refund.completed';
+
+export interface RefundCompletedPayload {
+  readonly refund_id: number;
+  readonly order_id: number;
+  /** 退款金额拆分（cash=原路退现金 Money 字符串；points=还原积分额，R-03 不退现） */
+  readonly amounts: { readonly cash: Money; readonly points: number };
+}
+
+/** 退款失败（F2 §6 生产 → H3 工单，M2 接线；本批断言到事件出箱为止）。下发重试 3 次耗尽时出箱。 */
+export const REFUND_FAILED_TOPIC = 'payment.refund.failed';
+
+export interface RefundFailedPayload {
+  readonly refund_id: number;
+  readonly order_id: number;
+  /** F2 §2 退款原因枚举（受理原值透传） */
+  readonly reason: string;
+  /** 实际下发尝试次数（耗尽值=3） */
+  readonly attempts: number;
+  /** 最近一次失败摘要（H3 工单记账锚点） */
+  readonly last_error: string;
 }
