@@ -25,6 +25,7 @@ import { IdentityAuthModule } from '../identity/identity-auth.module';
 import { LawyerQualificationModule } from '../identity/lawyer-qualification.module';
 import { TRADE_SESSION_CONFIG, tradeSessionConfigFromEnv } from './session.config';
 import { SessionListCache } from './session.cache';
+import { SessionController } from './session.controller';
 import { SessionJobExecutors } from './session.executors';
 import { SessionService } from './session.service';
 import { SessionTerminalProvider } from './session.terminal-provider';
@@ -39,7 +40,7 @@ import { SessionTerminalProvider } from './session.terminal-provider';
     IdentityAuthModule,
     LawyerQualificationModule,
   ],
-  controllers: [],
+  controllers: [SessionController],
   providers: [
     // 配置装配（LJR_TRADE_* env > 代码默认；⚠04§8-3 截止缺省 24h 在此配置化）
     { provide: TRADE_SESSION_CONFIG, useFactory: () => tradeSessionConfigFromEnv(process.env) },
