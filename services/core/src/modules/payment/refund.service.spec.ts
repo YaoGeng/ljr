@@ -662,4 +662,26 @@ describe('F2 退款受理（需 PG）', () => {
     expect(dead.rows).toHaveLength(1);
     expect(dead.rows[0]!.payload).toMatchObject({ attempts: 1, reason: 'GROUP_FAIL' });
   });
+
+  // ---------- listByOrderId（M1-W3 T7 C3 导出加法扩展：mine 视图 refund_status 按单取数面） ----------
+
+  it('listByOrderId：按支付单列退款单（新在前）；无退款单返空数组（加法扩展不改既有契约）', async () => {
+    const order1 = await createPaidOrder();
+    const order2 = await createPaidOrder();
+    await accept(order1, '40.00', 0, 'refund/po-l1/group-fail');
+    await accept(order1, '30.00', 0, 'refund/po-l2/group-fail');
+    await accept(order2, '100.00', 0, 'refund/po-l3/group-fail');
+
+    const forOrder1 = await svc.listByOrderId(order1.id);
+    expect(forOrder1).toHaveLength(2);
+    expect(forOrder1[0]!.idempotency_key).toBe('refund/po-l2/group-fail'); // 新在前
+    expect(forOrder1.every((r) => r.order_id === order1.id)).toBe(true);
+
+    const forOrder2 = await svc.listByOrderId(order2.id);
+    expect(forOrder2).toHaveLength(1);
+    expect(forOrder2[0]!.cash_amount).toBe('100.00');
+
+    const freshOrder = await createPaidOrder();
+    expect(await svc.listByOrderId(freshOrder.id)).toEqual([]); // 无退款单 → 空数组（refund_status=NONE 判定源）
+  });
 });

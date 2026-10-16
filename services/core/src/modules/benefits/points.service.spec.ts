@@ -643,4 +643,85 @@ describe('F4 ①切片积分服务（授予/冻结核销解冻/退款还原/过�
       pool.query('DELETE FROM benefits.points_txns WHERE user_id = $1', [USER]),
     ).rejects.toMatchObject({ code: 'P0001' });
   });
+
+  // ---------- in-tx 变体（M1-W3 T7 C3 同事务编排地基：调用方事务参与，任一失败全回滚含冻结） ----------
+
+  it('freezeInTx/settleInTx/unfreezeInTx：外层事务回滚 → 冻结零残留（self-tx freeze 做不到的同事务原子性）', async () => {
+    await rawGrant(USER, 1_000, 'interval \'180 days\'');
+    const poolSvc = app.get(PgPoolService);
+
+    // 外层事务内冻结后回滚：FREEZE 留痕/账户列移动必须一并消失
+    await expect(
+      poolSvc.withTransaction(async (uow) => {
+        await points.freezeInTx(uow, {
+          user_id: USER,
+          payment_order_id: 9001,
+          points_to_use: 300,
+          order_payable_cents: 1_000,
+        });
+        throw new Error('force-rollback');
+      }),
+    ).rejects.toThrow('force-rollback');
+    expect(await accountOf(USER)).toEqual({ balance: 1_000, frozen: 0 });
+    expect((await txnsOf(USER)).filter((t) => t.kind === 'FREEZE')).toHaveLength(0);
+
+    // 正路径：同事务内 冻结→核销 编排（C3 回调守卫事务形态），提交后状态与流水自洽
+    await poolSvc.withTransaction(async (uow) => {
+      await points.freezeInTx(uow, {
+        user_id: USER,
+        payment_order_id: 9001,
+        points_to_use: 300,
+        order_payable_cents: 1_000,
+      });
+      await points.settleInTx(uow, { user_id: USER, payment_order_id: 9001 });
+    });
+    expect(await accountOf(USER)).toEqual({ balance: 700, frozen: 0 }); // 1000-300 冻结再核销
+
+    // 解冻变体（C3 自动退款分支形态）：冻结后同事务解冻 → 原额回摆
+    await poolSvc.withTransaction(async (uow) => {
+      await points.freezeInTx(uow, {
+        user_id: USER,
+        payment_order_id: 9002,
+        points_to_use: 200,
+        order_payable_cents: 1_000,
+      });
+      await points.unfreezeInTx(uow, { user_id: USER, payment_order_id: 9002 });
+    });
+    expect(await accountOf(USER)).toEqual({ balance: 700, frozen: 0 });
+    const kinds = (await txnsOf(USER)).map((t) => `${t.kind}:${t.source_ref}`);
+    expect(kinds).toContain('FREEZE:order:9001');
+    expect(kinds).toContain('REDEEM:order:9001');
+    expect(kinds).toContain('FREEZE:order:9002');
+    expect(kinds).toContain('UNFREEZE:order:9002');
+  });
+
+  it('freezeInTx 同一外层事务内重放短路 + R-01 50% 上限同样生效（与 self-tx freeze 同口径）', async () => {
+    await rawGrant(USER, 1_000, 'interval \'180 days\'');
+    const poolSvc = app.get(PgPoolService);
+    await poolSvc.withTransaction(async (uow) => {
+      const first = await points.freezeInTx(uow, {
+        user_id: USER,
+        payment_order_id: 9101,
+        points_to_use: 500, // 恰 50%（1000 分应付上限 500）
+        order_payable_cents: 1_000,
+      });
+      expect(first.deduplicated).toBe(false);
+      const replay = await points.freezeInTx(uow, {
+        user_id: USER,
+        payment_order_id: 9101,
+        points_to_use: 500,
+        order_payable_cents: 1_000,
+      });
+      expect(replay.deduplicated).toBe(true); // 同 order 幂等短路（同事务内同样生效）
+      await expect(
+        points.freezeInTx(uow, {
+          user_id: USER,
+          payment_order_id: 9102,
+          points_to_use: 501, // >50% → 拒绝
+          order_payable_cents: 1_000,
+        }),
+      ).rejects.toMatchObject({ code: ErrorCode.InvalidArgument });
+    });
+    expect(await accountOf(USER)).toEqual({ balance: 500, frozen: 500 });
+  });
 });

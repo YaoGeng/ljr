@@ -606,6 +606,20 @@ export class RefundService {
     }));
   }
 
+  /**
+   * 按支付单列退款单（M1-W3 T7 导出加法扩展，findOrderById 同形先例——加法不改既有契约）：
+   * C3 GET /enrollments/mine 的 refund_status 取数面（订单维度；新在前）。无退款单=空数组
+   * （调用方语义化 NONE）。
+   */
+  async listByOrderId(orderId: number): Promise<readonly RefundView[]> {
+    assertPositiveInt(orderId, 'order_id');
+    const rows = await this.pool.query<RefundRow>(
+      `SELECT ${REFUND_COLS} FROM payment.refunds WHERE payment_order_id = $1 ORDER BY id DESC`,
+      [orderId],
+    );
+    return rows.rows.map(toView);
+  }
+
   // ===========================================================================
   // 内部件
   // ===========================================================================

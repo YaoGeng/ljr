@@ -182,6 +182,23 @@ export class PointsService {
   // ===========================================================================
 
   async freeze(input: FreezeInput): Promise<PointsMutationResult> {
+    return this.freezeRun(input, (fn) => this.pool.withTransaction(fn));
+  }
+
+  /**
+   * freeze 的同事务变体（M1-W3 T7 C3 消费位）：调用方在自己的业务事务内以 uow 调用——
+   * C3 报名下单「enrollment+冻结+F1 下单同事务，任一失败全回滚（含冻结）」（T5
+   * createOrderInTx 先例同形：校验/幂等/余额预检与 self-tx freeze 全同口径）。
+   */
+  async freezeInTx(uow: SqlExecutor, input: FreezeInput): Promise<PointsMutationResult> {
+    return this.freezeRun(input, (fn) => fn(uow));
+  }
+
+  /** freeze 共用体（校验+冻结逻辑单点；事务边界由 run 承载——self-tx=池事务，InTx=调用方事务） */
+  private freezeRun(
+    input: FreezeInput,
+    run: (fn: (uow: SqlExecutor) => Promise<PointsMutationResult>) => Promise<PointsMutationResult>,
+  ): Promise<PointsMutationResult> {
     assertPositiveInt(input.user_id, 'user_id');
     assertPositiveInt(input.payment_order_id, 'payment_order_id');
     const points = assertPoints(input.points_to_use, 'points_to_use');
@@ -196,7 +213,7 @@ export class PointsService {
     }
     const ref = orderSourceRef(input.payment_order_id);
 
-    return this.pool.withTransaction(async (uow) => {
+    return run(async (uow) => {
       const account = await this.lockAccount(uow, input.user_id);
       if (!account) {
         // lockAccount 已 upsert，此处缺失即基座异常，显性化（TS 收窄用显式守卫）
@@ -250,11 +267,24 @@ export class PointsService {
   // ===========================================================================
 
   async settle(input: OrderOpInput): Promise<PointsMutationResult> {
+    return this.settleRun(input, (fn) => this.pool.withTransaction(fn));
+  }
+
+  /** settle 的同事务变体（M1-W3 T7 C3 消费位）：成团守卫事务内核销（报名 PAID 与积分核销原子） */
+  async settleInTx(uow: SqlExecutor, input: OrderOpInput): Promise<PointsMutationResult> {
+    return this.settleRun(input, (fn) => fn(uow));
+  }
+
+  /** settle 共用体（事务边界由 run 承载，freezeRun 同形） */
+  private settleRun(
+    input: OrderOpInput,
+    run: (fn: (uow: SqlExecutor) => Promise<PointsMutationResult>) => Promise<PointsMutationResult>,
+  ): Promise<PointsMutationResult> {
     assertPositiveInt(input.user_id, 'user_id');
     assertPositiveInt(input.payment_order_id, 'payment_order_id');
     const ref = orderSourceRef(input.payment_order_id);
 
-    return this.pool.withTransaction(async (uow) => {
+    return run(async (uow) => {
       const account = await this.lockAccount(uow, input.user_id);
       const freezeRow = await this.requireOrderTxn(
         uow,
@@ -325,11 +355,27 @@ export class PointsService {
   // ===========================================================================
 
   async unfreeze(input: OrderOpInput): Promise<PointsMutationResult> {
+    return this.unfreezeRun(input, (fn) => this.pool.withTransaction(fn));
+  }
+
+  /**
+   * unfreeze 的同事务变体（M1-W3 T7 C3 消费位）：自动退款分支/流标清场事务内解冻——幂等
+   * （同 order 已解冻即 deduplicated 短路）正是「流标已解冻 + 晚到回调再解冻不双计」的守恒锚。
+   */
+  async unfreezeInTx(uow: SqlExecutor, input: OrderOpInput): Promise<PointsMutationResult> {
+    return this.unfreezeRun(input, (fn) => fn(uow));
+  }
+
+  /** unfreeze 共用体（事务边界由 run 承载，freezeRun 同形） */
+  private unfreezeRun(
+    input: OrderOpInput,
+    run: (fn: (uow: SqlExecutor) => Promise<PointsMutationResult>) => Promise<PointsMutationResult>,
+  ): Promise<PointsMutationResult> {
     assertPositiveInt(input.user_id, 'user_id');
     assertPositiveInt(input.payment_order_id, 'payment_order_id');
     const ref = orderSourceRef(input.payment_order_id);
 
-    return this.pool.withTransaction(async (uow) => {
+    return run(async (uow) => {
       const account = await this.lockAccount(uow, input.user_id);
       const freezeRow = await this.requireOrderTxn(
         uow,
