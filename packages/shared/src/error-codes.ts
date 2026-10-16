@@ -84,6 +84,12 @@ export const ErrorCode = {
   MerchantDuplicate: 'E_DUPLICATE',
   /** A3b R-01 分账前置不满足：firm_merchants 非 ACTIVE（CHANGING 变更期同拒，R-W3-C2）不可作为分账接收方（§5/§10；F3 经查询面消费，默认 409） */
   MerchantNotActive: 'E_MERCHANT_NOT_ACTIVE',
+  /** C1 开团时段已被占用：B2 占用锁唯一索引冲突（ux_slot_active 物理防线，B2 SLOT_TAKEN 映射；§5 409，默认 409） */
+  SlotTaken: 'E_SLOT_TAKEN',
+  /** C1 R-05 停接限制令生效：G1 活跃 BAN_PUBLISH 限制令在身，开团入口拦截（§5 403 RESTRICTED） */
+  Restricted: 'E_RESTRICTED',
+  /** C1 幂等键同键异载荷：同 lawyer+slot_start 已有进行中场次但载荷不一致（F1 R-02 口径先例：同键同载荷=幂等重放原单；§5 409） */
+  SessionDuplicateKey: 'E_SESSION_DUP_KEY',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -235,6 +241,19 @@ const ERROR_CODE_META: Readonly<Record<ErrorCode, ErrorCodeMeta>> = {
     httpStatus: 409,
     defaultMessage:
       '律所商户未生效（R-01 分账前置）：仅 ACTIVE 状态可接收分账指令（变更期 CHANGING 同拒）',
+  },
+  [ErrorCode.SlotTaken]: {
+    httpStatus: 409,
+    defaultMessage: '开团时段已被占用：该律师同一时间段的场次已在进行中（B2 占用锁唯一防线）',
+  },
+  [ErrorCode.Restricted]: {
+    httpStatus: 403,
+    defaultMessage: '停接限制令生效中（G1 R-05）：当前不可开团，请联系平台或待限制期满',
+  },
+  [ErrorCode.SessionDuplicateKey]: {
+    httpStatus: 409,
+    defaultMessage:
+      '开团幂等键冲突：同律师同开始时刻已有进行中场次且载荷不一致（同载荷请走幂等重放，返回原单）',
   },
 };
 

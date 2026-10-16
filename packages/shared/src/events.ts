@@ -363,3 +363,49 @@ export interface FirmMerchantReverifiedDuePayload {
   /** 复验到期时刻（ISO 8601 UTC；=firm_merchants.reverify_due 快照） */
   readonly due_at: string;
 }
+
+// ---------------------------------------------------------------------------
+// C1 B2C 开团（M1-W3 T4）：3 生产契约（交易域 trade 首件）。消费位：SessionCreated →
+// I2 预写 job 由 C1 同事务直写 registerJob 承接（事件本身=审计/通知扇出位）；SessionFull →
+// C3（T7 接线）；SessionFailed → F2 批量退款（T6 接线，本批断言出箱）。
+// 金额一律 Money 字符串（NUMERIC 禁 float）；时间一律 ISO 8601 UTC。
+// ---------------------------------------------------------------------------
+
+/** B2C 场次创建完成（C1 §6 生产；§6 载荷逐字 → I2 预写 ENROLL_DEADLINE、REMIND 系列、ROOM_OPEN job）。 */
+export const SESSION_CREATED_TOPIC = 'trade.session.created';
+
+export interface SessionCreatedPayload {
+  /** 场次 id（trade.sessions.id） */
+  readonly id: number;
+  readonly lawyer_id: number;
+  /** 约定开始时刻（ISO 8601；REMIND_* 锚 slot_start、ROOM_OPEN 锚 slot_start） */
+  readonly slot_start: string;
+  /** 报名截止时刻（ISO 8601；ENROLL_DEADLINE job 锚点） */
+  readonly enroll_deadline: string;
+}
+
+/** 价格快照公共切面（SessionFull/SessionFailed 载荷共用：下游退款/违约金计算所需 ref 最小集，简报裁量） */
+export interface SessionPriceRefPayload {
+  readonly id: number;
+  readonly lawyer_id: number;
+  readonly slot_start: string;
+  /** per_head | session_total */
+  readonly price_mode: 'per_head' | 'session_total';
+  /** 快照单价（per_head 单价 或 total÷capacity 分摊；Money 字符串） */
+  readonly unit_price: string;
+  /** R-04 场次总价基数（违约金计算锚点；Money 字符串） */
+  readonly session_total: string;
+}
+
+/** 满员成团（C1 §6 生产 → C3 消费位=T7；FULL 推进在 C3 守卫路径，事件由 C1 markFull 出箱）。 */
+export const SESSION_FULL_TOPIC = 'trade.session.full';
+
+export type SessionFullPayload = SessionPriceRefPayload;
+
+/** 流标（C1 §6 生产 → F2 批量退款=T6 接线；ENROLL_DEADLINE 执行器判 CREATED 且 joined<capacity）。 */
+export const SESSION_FAILED_TOPIC = 'trade.session.failed';
+
+export interface SessionFailedPayload extends SessionPriceRefPayload {
+  /** 流标事由（本批唯一值：ENROLL_DEADLINE_PASSED=截止未满；后续档位随 D4/M2 扩展） */
+  readonly reason: 'ENROLL_DEADLINE_PASSED';
+}

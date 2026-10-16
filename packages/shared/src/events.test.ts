@@ -43,6 +43,12 @@ import {
   ReviewSubmittedPayload,
   SESSION_CANCELLED_TOPIC,
   SessionCancelledPayload,
+  SESSION_CREATED_TOPIC,
+  SessionCreatedPayload,
+  SESSION_FAILED_TOPIC,
+  SessionFailedPayload,
+  SESSION_FULL_TOPIC,
+  SessionFullPayload,
   TRAINING_CONSENT_GRANTED_TOPIC,
   TRAINING_CONSENT_REVOKED_TOPIC,
   TrainingConsentGrantedPayload,
@@ -330,5 +336,51 @@ describe('A3b 律所进件事件契约（M1-W3 T3）：生产 3（消费：F3 �
       due_at: '2027-10-16T00:00:00.000Z',
     };
     expect(payload.due_at).toBe('2027-10-16T00:00:00.000Z');
+  });
+});
+
+describe('C1 B2C 开团事件契约（M1-W3 T4）：3 生产契约（Full→C3=T7 消费位、Failed→F2 批量退款=T6 接线）', () => {
+  it('SessionCreated：topic=trade.session.created，{id, lawyer_id, slot_start, enroll_deadline}（C1 §6 逐字）', () => {
+    expect(SESSION_CREATED_TOPIC).toBe('trade.session.created');
+    const payload: SessionCreatedPayload = {
+      id: 61,
+      lawyer_id: 9101,
+      slot_start: '2026-10-18T12:00:00.000Z',
+      enroll_deadline: '2026-10-17T12:00:00.000Z',
+    };
+    expect(payload).toEqual({
+      id: 61,
+      lawyer_id: 9101,
+      slot_start: '2026-10-18T12:00:00.000Z',
+      enroll_deadline: '2026-10-17T12:00:00.000Z',
+    });
+  });
+
+  it('SessionFull：topic=trade.session.full，退款所需 ref 最小集（价格快照 Money 字符串禁 float）', () => {
+    expect(SESSION_FULL_TOPIC).toBe('trade.session.full');
+    const payload: SessionFullPayload = {
+      id: 61,
+      lawyer_id: 9101,
+      slot_start: '2026-10-18T12:00:00.000Z',
+      price_mode: 'per_head',
+      unit_price: '50.00',
+      session_total: '300.00',
+    };
+    expect(payload.unit_price).toBe('50.00');
+    expect(payload.session_total).toBe('300.00');
+  });
+
+  it('SessionFailed：topic=trade.session.failed，同一 ref 最小集（流标全额退款 T6 F2 消费）', () => {
+    expect(SESSION_FAILED_TOPIC).toBe('trade.session.failed');
+    const payload: SessionFailedPayload = {
+      id: 61,
+      lawyer_id: 9101,
+      slot_start: '2026-10-18T12:00:00.000Z',
+      price_mode: 'session_total',
+      unit_price: '33.34',
+      session_total: '100.01',
+      reason: 'ENROLL_DEADLINE_PASSED',
+    };
+    expect(payload.reason).toBe('ENROLL_DEADLINE_PASSED');
   });
 });

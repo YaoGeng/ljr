@@ -91,6 +91,15 @@ describe('错误码契约（ErrorCode 常量表 + AppError{code,httpStatus}）',
     expect(new AppError(ErrorCode.MerchantNotActive).httpStatus).toBe(409);
   });
 
+  it('C1 开团错误码（M1-W3 T4 §5）：时段已被占用 409 SLOT_TAKEN / 停接限制令 403 RESTRICTED / 幂等键同键异载荷 409（F1 R-02 口径先例）', () => {
+    expect(ErrorCode.SlotTaken).toBe('E_SLOT_TAKEN');
+    expect(new AppError(ErrorCode.SlotTaken).httpStatus).toBe(409);
+    expect(ErrorCode.Restricted).toBe('E_RESTRICTED');
+    expect(new AppError(ErrorCode.Restricted).httpStatus).toBe(403);
+    expect(ErrorCode.SessionDuplicateKey).toBe('E_SESSION_DUP_KEY');
+    expect(new AppError(ErrorCode.SessionDuplicateKey).httpStatus).toBe(409);
+  });
+
   it('isAppError 类型收窄', () => {
     expect(isAppError(new AppError(ErrorCode.Conflict))).toBe(true);
     expect(isAppError(new Error('plain'))).toBe(false);
