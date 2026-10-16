@@ -23,14 +23,17 @@
  * 降级切换（§8）：指令经 ChannelRouter 主→备执行；degradedNow=true 时 ChannelDegraded 与
  * 业务写同事务出箱（恰首次翻动一条）。
  */
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import {
   AppError,
   ErrorCode,
   CHANNEL_DEGRADED_TOPIC,
+  PAYMENT_CALLBACK_INBOXED_TOPIC,
   isValidIdempotencyKey,
   type ChannelDegradedPayload,
   type Money,
+  type PaymentCallbackInboxedPayload,
 } from '@ljr/shared';
 import type { SqlExecutor } from '../../infrastructure/sql';
 import { PgPoolService } from '../../infrastructure/sql';
@@ -43,7 +46,11 @@ import {
 } from './payment.channels';
 import type { PaymentConfig } from './payment.config';
 import { PaymentAlertService } from './payment.alerts';
-import { PAYMENT_ORDER_MACHINE, type PaymentOrderStatus } from './payment.machine';
+import {
+  PAYMENT_ORDER_MACHINE,
+  PAYMENT_INBOX_MACHINE,
+  type PaymentOrderStatus,
+} from './payment.machine';
 import {
   BIZ_TYPES,
   DEDUCT_FROM,
@@ -635,6 +642,150 @@ export class PaymentGatewayService {
   }
 
   // ===========================================================================
+  // 回调验签 → Inbox（§4/§5 POST /callbacks/{channel}；R-02 双唯一；403 SIGN_FAIL）
+  // ===========================================================================
+
+  /**
+   * 回调入站：验签（HMAC-SHA256 over 原始报文字节，通道密钥）→ Inbox 插入（双唯一 ON CONFLICT
+   * DO NOTHING 去重）→ 同事务出箱 PaymentCallbackInboxed → 返回 inboxed（HTTP 面 200；重复
+   * 回调 inboxed=false 仍 200——通道侧重试语义「已受理」）。验签失败 403 E_SIGN_FAIL（不落任何痕）。
+   *
+   * biz_idempotency_key 构成（§3 口径归一）：{订单幂等键}:{channel_event_type}——同单不同事件
+   * 互不误杀、同类型重复去重；订单幂等键经 shared 契约校验（§3 例 'enroll-123' 为示意形态）。
+   * 本模块无事件消费（§6）：消费推进与 DEAD 标记由下游（Core/C3）经 markInbox* 调用。
+   */
+  async ingestCallback(
+    channel: string,
+    rawBody: Buffer | string,
+    signature: string | null,
+  ): Promise<{ inboxed: boolean; inbox_id: number | null }> {
+    const secret =
+      channel === this.config.primary.channel
+        ? this.config.primary.secret
+        : channel === this.config.backup.channel
+          ? this.config.backup.secret
+          : null;
+    if (secret === null) {
+      throw new AppError(ErrorCode.NotFound, `未知支付通道：${channel}`);
+    }
+    // 验签：原始字节级（rawBody 原文，非重序列化）；长度与十六进制形态先验，再常数时间比对
+    const raw = typeof rawBody === 'string' ? Buffer.from(rawBody, 'utf8') : rawBody;
+    const provided = (signature ?? '').toLowerCase();
+    const expected = createHmac('sha256', secret).update(raw).digest('hex');
+    const signatureOk =
+      /^[0-9a-f]{64}$/.test(provided) &&
+      timingSafeEqual(Buffer.from(expected, 'utf8'), Buffer.from(provided, 'utf8'));
+    if (!signatureOk) {
+      throw new AppError(ErrorCode.SignVerificationFailed, `回调验签失败：channel=${channel}`);
+    }
+
+    // 报文形态（验签通过后才解析）：{order_id, event_type, channel_txn_no, ...通道原文}
+    let body: Record<string, unknown>;
+    try {
+      const parsed: unknown = JSON.parse(raw.toString('utf8'));
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        throw new Error('not an object');
+      }
+      body = parsed as Record<string, unknown>;
+    } catch {
+      throw new AppError(ErrorCode.InvalidArgument, '回调报文须为 JSON 对象');
+    }
+    const orderId = assertPositiveInt(body['order_id'], '回调 order_id');
+    const eventType = body['event_type'];
+    const channelTxnNo = body['channel_txn_no'];
+    if (typeof eventType !== 'string' || eventType.length === 0 || eventType.length > 32) {
+      throw new AppError(ErrorCode.InvalidArgument, `回调 event_type 须为 1-32 字符：${JSON.stringify(eventType)}`);
+    }
+    if (typeof channelTxnNo !== 'string' || channelTxnNo.length === 0 || channelTxnNo.length > 64) {
+      throw new AppError(ErrorCode.InvalidArgument, `回调 channel_txn_no 须为 1-64 字符：${JSON.stringify(channelTxnNo)}`);
+    }
+
+    const order = await this.findOrderById(orderId); // 无事务读：幂等键只读定位
+    const bizIdempotencyKey = `${order.idempotency_key}:${eventType}`;
+
+    return this.pool.withTransaction(async (uow) => {
+      const claim = await uow.query<{ id: string }>(
+        // 无目标 ON CONFLICT DO NOTHING 覆盖双唯一两方向（PG 每语句仅一个 ON CONFLICT 子句）
+        `INSERT INTO payment.inbox (channel_txn_no, biz_idempotency_key, payload, status)
+         VALUES ($1, $2, $3::jsonb, 'RECEIVED')
+         ON CONFLICT DO NOTHING
+         RETURNING id`,
+        [channelTxnNo, bizIdempotencyKey, JSON.stringify({ ...body, channel })],
+      );
+      if (claim.rows.length === 0) {
+        // R-02 去重：重复回调不重复出箱（消费幂等由唯一约束承担）
+        return { inboxed: false, inbox_id: null };
+      }
+      const inboxId = Number(claim.rows[0]!.id);
+      await this.outbox.recordOutbox(uow, {
+        type: PAYMENT_CALLBACK_INBOXED_TOPIC,
+        payload: { biz_idempotency_key: bizIdempotencyKey, event: eventType } satisfies PaymentCallbackInboxedPayload,
+      });
+      return { inboxed: true, inbox_id: inboxId };
+    });
+  }
+
+  /** Inbox 消费成功标记（RECEIVED→CONSUMED，落 consumed_at；下游消费推进完成后调用） */
+  async markInboxConsumed(inboxId: number): Promise<void> {
+    assertPositiveInt(inboxId, 'inbox_id');
+    await this.markInbox(inboxId, 'CONSUMED', 'consumed');
+  }
+
+  /**
+   * Inbox 死信标记（RECEIVED→DEAD，死信语义）+ 告警位：乱序/毒消息——业务推进被守卫拒后由
+   * 消费侧调用；告警经 mock sink（M2+ 换装真实通道，工单位=H3）。
+   */
+  async markInboxDead(inboxId: number, reason: string): Promise<void> {
+    assertPositiveInt(inboxId, 'inbox_id');
+    assertReason(reason);
+    const row = await this.markInbox(inboxId, 'DEAD', `dead:${reason}`);
+    await this.alerts.alertCallbackDead({
+      kind: 'CALLBACK_DEAD',
+      inboxId,
+      channel: row.channel,
+      bizIdempotencyKey: row.biz_idempotency_key,
+      reason,
+    });
+  }
+
+  private async markInbox(
+    inboxId: number,
+    to: 'CONSUMED' | 'DEAD',
+    reason: string,
+  ): Promise<{ channel: string; biz_idempotency_key: string }> {
+    return this.pool.withTransaction(async (uow) => {
+      const res = await uow.query<{
+        id: string;
+        status: string;
+        channel: string;
+        biz_idempotency_key: string;
+      }>(`SELECT id, status, payload ->> 'channel' AS channel, biz_idempotency_key
+           FROM payment.inbox WHERE id = $1 FOR UPDATE`, [inboxId]);
+      const row = res.rows[0];
+      if (!row) throw new AppError(ErrorCode.NotFound, `Inbox 行 ${inboxId} 不存在`);
+
+      await this.guard.assertTransition(PAYMENT_INBOX_MACHINE, {
+        entityId: inboxId,
+        from: row.status as 'RECEIVED' | 'CONSUMED' | 'DEAD',
+        to,
+        reason,
+        uow,
+      });
+
+      const updated = await uow.query<{ id: string }>(
+        `UPDATE payment.inbox SET status = $3::varchar,
+           consumed_at = CASE WHEN $3::varchar = 'CONSUMED' THEN now() ELSE consumed_at END
+         WHERE id = $1 AND status = $2 RETURNING id`,
+        [inboxId, row.status, to],
+      );
+      if (updated.rows.length === 0) {
+        throw new AppError(ErrorCode.StateStaleEntity, `Inbox 行 ${inboxId} 已被并发迁移`);
+      }
+      return { channel: row.channel, biz_idempotency_key: row.biz_idempotency_key };
+    });
+  }
+
+  // ===========================================================================
   // 内部件
   // ===========================================================================
 
@@ -652,6 +803,16 @@ export class PaymentGatewayService {
       [key],
     );
     return res.rows[0] ?? null;
+  }
+
+  private async findOrderById(id: number): Promise<OrderRow> {
+    const res = await this.pool.query<OrderRow>(
+      `SELECT ${ORDER_COLS} FROM payment.payment_orders WHERE id = $1`,
+      [id],
+    );
+    const row = res.rows[0];
+    if (!row) throw new AppError(ErrorCode.NotFound, `支付单 ${id} 不存在`);
+    return row;
   }
 
   private async findOrderByIdInTx(uow: SqlExecutor, id: number): Promise<OrderRow> {
