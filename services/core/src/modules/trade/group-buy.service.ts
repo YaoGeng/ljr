@@ -62,6 +62,7 @@ import { PaymentGatewayService } from '../payment/payment.gateway.service';
 import type { PaymentOrderView } from '../payment/payment.types';
 import { SchedulerService } from '../schedule/scheduler.service';
 import { SlotLockService } from '../schedule/slot-lock.service';
+import { EnrollmentQueryService } from './enrollment.query';
 import { GROUP_BUY_MACHINE, type GroupBuyStatus } from './group-buy.machine';
 import { GroupBuyListCache } from './group-buy.cache';
 import { TRADE_GROUP_BUY_CONFIG, type TradeGroupBuyConfig } from './group-buy.config';
@@ -198,6 +199,9 @@ export class GroupBuyService {
     private readonly audit: LawyerQualificationService,
     private readonly payment: PaymentGatewayService,
     private readonly cache: GroupBuyListCache,
+    // T7 检查点扩展（T5 评审 F1 交接）：cancel「无已支付加入者」判定的 PAID 计数取数缝
+    // （同域只读查询件，只依赖 pool——查询件独立于 EnrollmentService 存在即为此斩断循环依赖）
+    private readonly enrollments: EnrollmentQueryService,
     // Symbol token（纯 interface 无运行时类型）：module useFactory 装配，测试构造直传
     @Inject(TRADE_GROUP_BUY_CONFIG) private readonly config: TradeGroupBuyConfig,
   ) {}
@@ -378,6 +382,11 @@ export class GroupBuyService {
    * 退款路径规格未定义，不发明部分退款，⚠04§8-14 备查）。取消→锁同事务释放+EXPIRED（状态机
    * 无 PUBLISHED→CANCELLED 边：EXPIRED+cancel 来源注记=STL reason=initiator_cancelled+
    * GroupBuyExpired.reason=INITIATOR_CANCELLED，偏差节记录）。
+   *
+   * **T7 检查点扩展（T5 评审 F1 交接，必修）**：「无任何已支付加入者」判定从「发起人锁态」
+   * 扩展为「发起人锁态 + 该 group_buy 活跃 PAID enrollment 计数=0」（经 EnrollmentQueryService
+   * 取数——同域服务面，禁跨 schema join）——锁 TTL 释放/发起人未付而**他人已支付**的窗口
+   * （发布锁只锚发起人单，不锚加入者单）由计数位兜住：>0 → 409 E_HAS_JOINED。
    */
   async cancel(groupBuyId: number, initiatorUserId: number): Promise<{ status: 'EXPIRED' }> {
     const id = assertPositiveInt(groupBuyId, 'group_buy_id');
@@ -398,6 +407,14 @@ export class GroupBuyService {
         throw new AppError(
           ErrorCode.HasJoined,
           `拼团 ${id} 已有已支付加入者，发起人不可单方取消（R-W3-L；走协商/客服 ⚠04§8-14）`,
+        );
+      }
+      // T7 扩展位：锁态之外按活跃 PAID 报名计数兜底（他人已支付窗口；行锁在本事务内一致读）
+      const paidJoiners = await this.enrollments.countPaid(uow, 'groupbuy', id);
+      if (paidJoiners > 0) {
+        throw new AppError(
+          ErrorCode.HasJoined,
+          `拼团 ${id} 已有 ${paidJoiners} 名已支付加入者，发起人不可单方取消（R-W3-L；走协商/客服 ⚠04§8-14）`,
         );
       }
       await this.guard.assertTransition(GROUP_BUY_MACHINE, {

@@ -223,6 +223,17 @@ export class PaymentGatewayService {
     return row ? toOrderView(row) : null;
   }
 
+  /**
+   * 支付参数确定性重建（导出只读面，M1-W3 T7 扩展——同加法先例）：C3 报名幂等重放回带原
+   * pay_params（端上唤起支付必需；与 buildOrderResult/replayOrder 同一 router 口径）。
+   */
+  payParamsFor(order: PaymentOrderView): PayParamsView {
+    return {
+      ...this.router.payParamsFor(order.channel as PaymentChannelName, order.id, order.biz_type),
+      channel: order.channel,
+    };
+  }
+
   /** 入参校验收口（createOrder/createOrderInTx 共用） */
   private assertCreateOrderInput(input: CreateOrderInput): void {
     assertBizType(input.biz_type);
