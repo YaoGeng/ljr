@@ -14,10 +14,13 @@
  *
  * 幂等键=user+slot_start（§5，F1 R-02 口径先例）：同键同载荷幂等返回原单、异载荷 409
  * E_GROUP_BUY_DUP_KEY；进行中（非终态）才参与幂等——终态拼团同段重发是新任务（终态不再占用锁，
- * B2 唯一防线已放行）。发起人支付单的 F1 幂等键=groupbuy/g{id}/pay（per-instance）：§5 的
- * user+slot_start 承载在 POST /group-buys 层（本服务幂等查先于 F1 调用）；F1 键若用 user+slot，
- * 「EXPIRED 后同段重新发起/recreate」会同键异载荷撞 E_DUP_KEY 409，破坏 §5 cancel/recreate
- * 契约——口径取舍见任务报告偏差节。
+ * B2 唯一防线已放行）。**同载荷比较域=原始入参字段（评审 F2①：lawyer/specialty/sub 范围/问题
+ * 标签/deadline），不含派生 share_price**——重放先于 B3/G1 解算（快路径 readRowByKey+事务内
+ * FOR UPDATE 权威判定双层），律师改价/清空接受范围/发起人事后受限都不改变「首访已受理」事实。
+ * 发起人支付单的 F1 幂等键=groupbuy/g{id}/pay（per-instance）：§5 的 user+slot_start 承载在
+ * POST /group-buys 层（本服务幂等查先于 F1 调用）；F1 键若用 user+slot，「EXPIRED 后同段重新
+ * 发起/recreate」会同键异载荷撞 E_DUP_KEY 409，破坏 §5 cancel/recreate 契约——口径取舍见任务
+ * 报告偏差节。recreate 幂等键=source_id：重放检查同样前移到 B3/G1 现值解算之前（评审 F2②）。
  *
  * 价格（R-01/R-02）：⚠W3-5 裁决=B3 accept_min/accept_max 两字段 NULL（未配置）→ 400
  * E_ACCEPT_RANGE_UNSET（律师须先配置）；越界（含边界矩阵 min-1/min/max/max+1）→ 400
@@ -69,7 +72,6 @@ import {
   assertSpecialty,
   assertSubRange,
   centsToMoney,
-  dbNumericToCents,
   moneyToCents,
   splitShareCents,
   type CreateGroupBuyInput,
@@ -164,8 +166,8 @@ function toOrderRef(order: PaymentOrderView): PaymentOrderRefView {
   };
 }
 
-/** 发布计划（事务外解算产物：校验+G1+B3 读+价格固化） */
-interface PublishPlan {
+/** 发布原始入参（纯校验产物——B3/G1 外部读之前定形；幂等比较域=评审 F2 口径） */
+interface RawPublishInput {
   readonly initiatorId: number;
   readonly lawyerId: number;
   readonly specialty: string;
@@ -174,6 +176,10 @@ interface PublishPlan {
   readonly subMax: number;
   readonly tags: string[];
   readonly deadline: Date;
+}
+
+/** 发布计划（事务外解算产物：校验+G1+B3 读+价格固化） */
+interface PublishPlan extends RawPublishInput {
   readonly sharePrice: string;
   readonly shareCents: number;
 }
@@ -201,8 +207,22 @@ export class GroupBuyService {
   // ===========================================================================
 
   async create(input: CreateGroupBuyInput): Promise<PublishGroupBuyResult> {
-    const plan = await this.resolvePublishPlan(input);
-    return this.publish(plan);
+    // 原始入参纯校验先于幂等快路径（F1 assertCreateOrderInput 同口径：零外部读）
+    const raw = this.assertRawPublishInput(input);
+    // 幂等快路径（F1 R-02 口径，评审 F2①）：同键（user+slot_start，非终态）同原始载荷→重放
+    // 原单，不重验 B3/G1 现配置——律师改价/清空接受范围/发起人事后受限不改变「首访已受理」事实；
+    // 并发同键由发布事务内权威判定兜底（快路径无锁读存在 TOCTOU 窗）
+    const existing = await this.readRowByKey(raw.initiatorId, raw.slotStart);
+    if (existing) {
+      if (this.sameRawPayload(existing, raw)) return this.replayResult(existing);
+      throw new AppError(
+        ErrorCode.GroupBuyDuplicateKey,
+        `发起拼团幂等键冲突：用户 ${raw.initiatorId} 在 ${raw.slotStart.toISOString()} 已有进行中拼团（id=${existing.id}）且载荷不一致`,
+      );
+    }
+    // B3/G1 解算仅新任务路径触达
+    const plan = await this.resolvePublishPlan(raw);
+    return this.publish(plan, raw);
   }
 
   // ===========================================================================
@@ -431,7 +451,16 @@ export class GroupBuyService {
     if (!source || Number(source.initiator_id) !== uid) {
       throw new AppError(ErrorCode.NotFound, `拼团任务不存在：${gid}`); // 非发起人不暴露他人物
     }
-    const plan = await this.resolvePublishPlan({
+    // 幂等键=source_id 快路径（F1 R-02 口径，评审 F2②）：同 source 重放先于 B3/G1 现值解算——
+    // B3 配置事后变化（改价/清空接受范围）不改变「同 source 已建」事实；载荷全由不可变源派生，
+    // 无异载荷分叉；并发同键由事务内权威重查+ux_group_buys_source 唯一兜底
+    const replayed = await this.pool.query<{ id: string }>(
+      `SELECT id FROM trade.group_buys WHERE source_id = $1 ORDER BY id DESC LIMIT 1`,
+      [gid],
+    );
+    if (replayed.rows[0]) return { group_buy_id: Number(replayed.rows[0].id) };
+    // 复制参数重定形（纯校验：R-W3-G 对新任务同样生效——临期源 400 显性化）后走外部解算
+    const raw = this.assertRawPublishInput({
       initiator_id: uid,
       lawyer_id: Number(source.lawyer_id),
       specialty: source.specialty,
@@ -441,6 +470,7 @@ export class GroupBuyService {
       question_tags: toTags(source.question_tags),
       // deadline 不复制：重发按缺省重算（类注）；临期源经 R-W3-G 400 显性化
     });
+    const plan = await this.resolvePublishPlan(raw);
 
     return this.pool.withTransaction(async (uow) => {
       const res = await uow.query<GroupBuyRow>(
@@ -617,11 +647,10 @@ export class GroupBuyService {
   // ===========================================================================
 
   /**
-   * 发布前解算（事务外）：入参校验 → R-W3-G 时序校验（同 C1 口径）→ G1 BAN_JOIN 入口校验
-   * （⚠口径：发起拼团含发起人本人加入=BAN_JOIN 语义；律师 SUSPEND_TAKE_*=接单侧闸口，锚定
-   * C4 确认时点=M2，本批不拦截，报告注明）→ B3 接受范围+默认价解算（R-01/R-02）。
+   * 原始入参纯校验（零外部读，幂等快路径之前）：入参形态 → R-W3-G 时序校验（同 C1 口径）→
+   * deadline 缺省解算（⚠04§8-3，config 可调——确定性派生，属比较域内）。
    */
-  private async resolvePublishPlan(input: CreateGroupBuyInput): Promise<PublishPlan> {
+  private assertRawPublishInput(input: CreateGroupBuyInput): RawPublishInput {
     const initiatorId = assertPositiveInt(input.initiator_id, 'initiator_id');
     const lawyerId = assertPositiveInt(input.lawyer_id, 'lawyer_id');
     const specialty = assertSpecialty(input.specialty);
@@ -660,99 +689,119 @@ export class GroupBuyService {
         );
       }
     }
+    return { initiatorId, lawyerId, specialty, slotStart, subMin, subMax, tags, deadline };
+  }
 
+  /**
+   * 发布前外部解算（新任务路径，事务外）：G1 BAN_JOIN 入口校验（⚠口径：发起拼团含发起人本人
+   * 加入=BAN_JOIN 语义；律师 SUSPEND_TAKE_*=接单侧闸口，锚定 C4 确认时点=M2，本批不拦截，
+   * 报告注明）→ B3 接受范围+默认价解算（R-01/R-02）。幂等重放路径不触达本方法（评审 F2：
+   * 重放不重验 B3/G1 现配置）。
+   */
+  private async resolvePublishPlan(raw: RawPublishInput): Promise<PublishPlan> {
     // G1 限制令入口校验（/credit/restrictions 查询面缓存适配位 30s）：BAN_JOIN 拦截发起拼团
-    const restrictions = await this.credit.listActiveRestrictions('user', initiatorId);
+    const restrictions = await this.credit.listActiveRestrictions('user', raw.initiatorId);
     if (restrictions.some((r) => r.kind === 'BAN_JOIN')) {
       throw new AppError(
         ErrorCode.Restricted,
-        `用户 ${initiatorId} 限制拼单令生效中（G1 R-05），不可发起拼团`,
+        `用户 ${raw.initiatorId} 限制拼单令生效中（G1 R-05），不可发起拼团`,
       );
     }
 
     // B3 默认配置解算（R-01 接受范围 / R-02 默认场次总价）
-    const current = await this.pricing.getCurrentPricing(lawyerId);
+    const current = await this.pricing.getCurrentPricing(raw.lawyerId);
     const cfg = current.pricing;
     if (cfg === null || cfg.session_total === null || cfg.session_total === undefined) {
       throw new AppError(
         ErrorCode.InvalidArgument,
-        `律师 ${lawyerId} 未配置 B3 默认场次总价（R-02 分摊额解算源缺失）`,
+        `律师 ${raw.lawyerId} 未配置 B3 默认场次总价（R-02 分摊额解算源缺失）`,
       );
     }
     // ⚠W3-5 裁决：两字段 NULL（未配置）→ 400 E_ACCEPT_RANGE_UNSET（律师须先在 B3 配置）
     if (cfg.accept_min === null || cfg.accept_max === null) {
       throw new AppError(
         ErrorCode.AcceptRangeUnset,
-        `律师 ${lawyerId} 未配置接受拼团人数范围（B3 accept_min/accept_max），须先配置后再发起（R-01）`,
+        `律师 ${raw.lawyerId} 未配置接受拼团人数范围（B3 accept_min/accept_max），须先配置后再发起（R-01）`,
       );
     }
     // R-01 子范围 ⊆ B3 接受范围：越界（含边界 min-1/max+1）→ 400 E_OUT_OF_RANGE（§5 契约码）
-    if (subMin < cfg.accept_min || subMax > cfg.accept_max) {
+    if (raw.subMin < cfg.accept_min || raw.subMax > cfg.accept_max) {
       throw new AppError(
         ErrorCode.PriceOutOfRange,
-        `子范围越界：${subMin}-${subMax} 超出律师接受拼团范围 ${cfg.accept_min}-${cfg.accept_max}（R-01）`,
+        `子范围越界：${raw.subMin}-${raw.subMax} 超出律师接受拼团范围 ${cfg.accept_min}-${cfg.accept_max}（R-01）`,
       );
     }
     // R-02 分摊额=默认场次总价÷sub_min HALF_UP（发布时固化）；share_price 列宽 numeric(10,2) 先行 400
     const totalCents = moneyToCents(cfg.session_total);
-    const shareCents = splitShareCents(totalCents, subMin);
+    const shareCents = splitShareCents(totalCents, raw.subMin);
     if (shareCents > SHARE_PRICE_MAX_CENTS) {
       throw new AppError(
         ErrorCode.InvalidArgument,
         '分摊额超出 share_price 列宽上限（numeric(10,2)）',
       );
     }
+    return { ...raw, sharePrice: centsToMoney(shareCents), shareCents };
+  }
+
+  /** 幂等键定位（user+slot_start 非终态；快路径无锁读——权威判定在发布事务 FOR UPDATE 内） */
+  private async readRowByKey(initiatorId: number, slotStart: Date): Promise<GroupBuyRow | null> {
+    const res = await this.pool.query<GroupBuyRow>(
+      `SELECT ${GB_COLS} FROM trade.group_buys
+        WHERE initiator_id = $1 AND slot_start = $2
+          AND status NOT IN (${TERMINAL_STATUSES_SQL})
+        ORDER BY id DESC LIMIT 1`,
+      [initiatorId, slotStart],
+    );
+    return res.rows[0] ?? null;
+  }
+
+  /**
+   * 同原始载荷口径（评审 F2①）：比较域=原始入参字段（lawyer/specialty/sub 范围/问题标签/
+   * deadline）——**不含派生 share_price**：律师改价后原样重发=幂等返回原任务（快照不受现价
+   * 影响），非 409。deadline 为确定性派生（入参或 slot_start−24h），属比较域内。
+   */
+  private sameRawPayload(row: GroupBuyRow, raw: RawPublishInput): boolean {
+    return (
+      Number(row.lawyer_id) === raw.lawyerId &&
+      row.specialty === raw.specialty &&
+      row.sub_min === raw.subMin &&
+      row.sub_max === raw.subMax &&
+      sameTags(row.question_tags, raw.tags) &&
+      new Date(row.deadline).getTime() === raw.deadline.getTime()
+    );
+  }
+
+  /** 幂等重放出参（原单+原支付单；不重复加锁/出事件/预写 job） */
+  private async replayResult(row: GroupBuyRow): Promise<PublishGroupBuyResult> {
+    const order = await this.payment.findOrderByIdempotencyKey(paymentOrderKey(Number(row.id)));
+    if (!order) {
+      throw new AppError(ErrorCode.InternalError, '幂等重放原单支付单不可读（不应触达）');
+    }
     return {
-      initiatorId,
-      lawyerId,
-      specialty,
-      slotStart,
-      subMin,
-      subMax,
-      tags,
-      deadline,
-      sharePrice: centsToMoney(shareCents),
-      shareCents,
+      group_buy: toView(row),
+      share_price: row.share_price,
+      payment_order: toOrderRef(order),
     };
   }
 
-  /** 发布事务（POST /group-buys 主路径）：幂等查→INSERT→支付单→发布锁→截止 job→出箱 */
-  private async publish(plan: PublishPlan): Promise<PublishGroupBuyResult> {
+  /** 发布事务（POST /group-buys 主路径）：幂等权威查→INSERT→支付单→发布锁→截止 job→出箱 */
+  private async publish(plan: PublishPlan, raw: RawPublishInput): Promise<PublishGroupBuyResult> {
     const result = await this.pool.withTransaction(async (uow) => {
-      // 幂等（F1 R-02 口径先例）：同键（initiator+slot_start，非终态）同载荷重放原单
+      // 幂等权威判定（F1 R-02 口径）：并发同键第二笔在此败退（快路径无锁读有 TOCTOU 窗）；
+      // 比较域=原始入参（评审 F2①），同载荷重放原单
       const existing = await uow.query<GroupBuyRow>(
         `SELECT ${GB_COLS} FROM trade.group_buys
           WHERE initiator_id = $1 AND slot_start = $2
             AND status NOT IN (${TERMINAL_STATUSES_SQL})
           ORDER BY id DESC LIMIT 1 FOR UPDATE`,
-        [plan.initiatorId, plan.slotStart],
+        [raw.initiatorId, raw.slotStart],
       );
       const prev = existing.rows[0];
       if (prev) {
-        const samePayload =
-          Number(prev.lawyer_id) === plan.lawyerId &&
-          prev.specialty === plan.specialty &&
-          prev.sub_min === plan.subMin &&
-          prev.sub_max === plan.subMax &&
-          sameTags(prev.question_tags, plan.tags) &&
-          new Date(prev.deadline).getTime() === plan.deadline.getTime() &&
-          dbNumericToCents(prev.share_price) === plan.shareCents;
-        if (samePayload) {
-          const order = await this.payment.findOrderByIdempotencyKey(
-            paymentOrderKey(Number(prev.id)),
-          );
-          if (!order) {
-            throw new AppError(ErrorCode.InternalError, '幂等重放原单支付单不可读（不应触达）');
-          }
-          return {
-            group_buy: toView(prev),
-            share_price: prev.share_price,
-            payment_order: toOrderRef(order),
-          }; // 幂等重放（不重复加锁/出事件/预写 job）
-        }
+        if (this.sameRawPayload(prev, raw)) return this.replayResult(prev);
         throw new AppError(
           ErrorCode.GroupBuyDuplicateKey,
-          `发起拼团幂等键冲突：用户 ${plan.initiatorId} 在 ${plan.slotStart.toISOString()} 已有进行中拼团（id=${prev.id}）且载荷不一致`,
+          `发起拼团幂等键冲突：用户 ${raw.initiatorId} 在 ${raw.slotStart.toISOString()} 已有进行中拼团（id=${prev.id}）且载荷不一致`,
         );
       }
 

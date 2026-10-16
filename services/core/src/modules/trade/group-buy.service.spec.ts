@@ -306,6 +306,62 @@ describe('C2 领域层（发布事务/幂等/R-01/R-02/R-04/R-05/流标/超时�
     expect(other.group_buy.id).not.toBe(first.group_buy.id);
   });
 
+  it('F2① 幂等重放比较原始入参（评审 F2）：发布后律师改价且清空接受范围 → 原样重发幂等返回原任务（非 409、不重验 B3 现值、share_price 保持原快照）', async () => {
+    await seedPricing(9101, { session_total: '100.00', accept_min: 2, accept_max: 8 });
+    const slotStart = hourAfter(25);
+    const first = await groupBuys.create(createInput({ slot_start: slotStart }));
+    expect(first.group_buy.share_price).toBe('33.33');
+
+    // 律师改价（100→200）且清空接受范围——B3 现值已不满足 R-01（若重放落入解算路径会 400）
+    await pricing.putPricing(9101, {
+      base_version: 1,
+      per_head: null,
+      session_total: '200.00',
+      group_size: null,
+      accept_min: null,
+      accept_max: null,
+      room_modes: null,
+      one_on_one_prices: {
+        text: { per_round: '50.00' },
+        voice: { per_15min: '100.00' },
+        video: { per_15min: '100.00' },
+      },
+    });
+
+    const replay = await groupBuys.create(createInput({ slot_start: slotStart }));
+    expect(replay.group_buy.id).toBe(first.group_buy.id); // 幂等返回原任务
+    expect(replay.group_buy.share_price).toBe('33.33'); // 原快照，非现值解算
+    expect(replay.payment_order.id).toBe(first.payment_order.id);
+    expect(await countOutbox(GROUP_BUY_PUBLISHED_TOPIC)).toBe(1); // 不重复出事件
+  });
+
+  it('F2② recreate 同 source 重放先于 B3/G1 解算（评审 F2）：recreate 后清空接受范围 → 同 source 重放=幂等返回已建任务（非 400）', async () => {
+    await seedPricing(9101, { session_total: '100.00', accept_min: 2, accept_max: 8 });
+    const source = await groupBuys.create(createInput({ sub_min: 3, sub_max: 6 }));
+    await groupBuys.cancel(source.group_buy.id, 6101); // EXPIRED 源（锁已释放）
+    const recreated = await groupBuys.recreate(source.group_buy.id, 6101);
+
+    // B3 现值清空接受范围（若重放落入解算路径会 400 E_ACCEPT_RANGE_UNSET）
+    await pricing.putPricing(9101, {
+      base_version: 1,
+      per_head: null,
+      session_total: '200.00',
+      group_size: null,
+      accept_min: null,
+      accept_max: null,
+      room_modes: null,
+      one_on_one_prices: {
+        text: { per_round: '50.00' },
+        voice: { per_15min: '100.00' },
+        video: { per_15min: '100.00' },
+      },
+    });
+
+    const replay = await groupBuys.recreate(source.group_buy.id, 6101);
+    expect(replay.group_buy_id).toBe(recreated.group_buy_id); // 幂等返回已建任务
+    expect(await countOutbox(GROUP_BUY_PUBLISHED_TOPIC)).toBe(2); // 源发布+重发恰好各一
+  });
+
   it('R-W3-G 对齐：过期 slot_start 400；临期（缺省截止已过）缺省被拒 E_ENROLL_DEADLINE_INVALID；显式未来 deadline 放行', async () => {
     await seedPricing(9101, { session_total: '100.00', accept_min: 2, accept_max: 8 });
     await expect(
@@ -670,6 +726,37 @@ describe('C2 领域层（发布事务/幂等/R-01/R-02/R-04/R-05/流标/超时�
     await expect(groupBuys.cancel(987654, 6101)).rejects.toMatchObject({
       code: ErrorCode.NotFound,
     });
+  });
+
+  it('F3 cancel（评审 F3）：锁已被 TTL 释放（activeStatusOf=null，无活跃锁行）→ 放行取消=EXPIRED+GroupBuyExpired(INITIATOR_CANCELLED)，锁 ALREADY_RELEASED 良性', async () => {
+    await seedPricing(9101, { session_total: '100.00', accept_min: 2, accept_max: 8 });
+    const result = await groupBuys.create(createInput({ sub_min: 2, sub_max: 4 }));
+    const gbId = result.group_buy.id;
+
+    // TTL 真路径释放（activeStatusOf 探针证无活跃锁——cancel 判定入参=null）
+    const lockId = await getActiveLockId(pool, 'groupbuy', gbId);
+    expect(lockId).not.toBeNull();
+    await backdateLockTtl(pool, lockId!);
+    await backdateJobDue(pool, 'SLOT_TTL', 'slot_lock', lockId!);
+    await scheduler.tick('normal');
+    const pg = app.get(PgPoolService);
+    expect(
+      await pg.withTransaction((uow) => locks.activeStatusOf(uow, 'groupbuy', gbId)),
+    ).toBeNull();
+
+    // 取消放行：无活跃锁=「无任何已支付加入者」成立 → EXPIRED（releaseSlot ALREADY_RELEASED 良性容错）
+    const cancelled = await groupBuys.cancel(gbId, 6101);
+    expect(cancelled).toEqual({ status: 'EXPIRED' });
+    const row = await pool.query<{ status: string }>(
+      `SELECT status FROM trade.group_buys WHERE id = $1`,
+      [gbId],
+    );
+    expect(row.rows[0]!.status).toBe('EXPIRED');
+    const evt = await pool.query<{ payload: Record<string, unknown> }>(
+      `SELECT payload FROM platform.outbox WHERE topic = $1`,
+      [GROUP_BUY_EXPIRED_TOPIC],
+    );
+    expect(evt.rows[0]!.payload).toMatchObject({ id: gbId, reason: 'INITIATOR_CANCELLED' });
   });
 
   it('recreate（§10④）：复制参数新任务+原任务状态不变+source_id 落列；同 source 重放=幂等返回已建任务；PUBLISHED 源重发=B2 R-W3-F 计数 429；他人/缺失源 404', async () => {
