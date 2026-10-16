@@ -81,6 +81,12 @@ export interface PaymentChannelAdapter {
   readonly channel: PaymentChannelName;
   /** 健康检查（mock=故障标志取反；真实通道=M2 探活实现） */
   healthy(): boolean;
+  /** 确定性支付参数构造（幂等重放「原 pay_params」的载体——同 (orderId, bizType) 恒同 URL，
+   *  与 preorder 报文同构，不产生通道副作用） */
+  payParamsFor(
+    orderId: number,
+    bizType: string,
+  ): { readonly mock_pay_url: string; readonly order_id: number };
   preorder(req: ChannelPreorderRequest): Promise<ChannelResult>;
   /** 冻结（§4 下单即冻结托管） */
   freeze(req: ChannelInstructionRequest): Promise<ChannelResult>;
@@ -138,6 +144,19 @@ export class MockChannelAdapter implements PaymentChannelAdapter {
 
   healthy(): boolean {
     return this.fault?.kind !== 'CHANNEL_ERROR';
+  }
+
+  /** 确定性支付参数（与 preorder 同构；同 (orderId, bizType) 恒同 URL——幂等重放口径） */
+  payParamsFor(
+    orderId: number,
+    bizType: string,
+  ): { readonly mock_pay_url: string; readonly order_id: number } {
+    return {
+      mock_pay_url:
+        `mockpay://${this.channel}/pay?order_id=${orderId}` +
+        `&mch=${encodeURIComponent(this.merchantId)}&biz=${encodeURIComponent(bizType)}`,
+      order_id: orderId,
+    };
   }
 
   /** 观测位（测试断言备用通道未沾流量等） */
@@ -242,8 +261,10 @@ export interface ChannelRouterOutcome<T> {
   readonly result: T;
   /** 实际承载本次指令的适配器（落单 channel 列的事实源） */
   readonly adapter: PaymentChannelAdapter;
-  /** 本次调用是否恰好把该通道打入降级——true 时调用方须在同一事务出箱 ChannelDegraded */
+  /** 本次调用是否恰好把某通道打入降级——true 时调用方须在同一事务出箱 ChannelDegraded */
   readonly degradedNow: boolean;
+  /** 被打入降级的通道（degradedNow 的事件载荷口径——降级的是故障方，非接管方） */
+  readonly degradedChannel: string | null;
 }
 
 export class ChannelRouter {
@@ -267,18 +288,22 @@ export class ChannelRouter {
    */
   async execute<S>(op: (adapter: PaymentChannelAdapter) => Promise<S>): Promise<ChannelRouterOutcome<S>> {
     let degradedNow = false;
+    let degradedChannel: string | null = null;
     let lastFault: ChannelFaultError | null = null;
 
     for (const candidate of [this.primary, this.backup]) {
       if (this.isInDegradedWindow(candidate.channel)) continue;
       try {
         const result = await op(candidate);
-        return { result, adapter: candidate, degradedNow };
+        return { result, adapter: candidate, degradedNow, degradedChannel };
       } catch (e) {
         if (e instanceof ChannelFaultError && e.kind === 'INSUFFICIENT') throw e;
         if (!(e instanceof ChannelFaultError)) throw e;
         // 通道故障：翻降级（degradedNow 恰首次 flip 为 true）后试下一通道
-        if (this.markDegraded(candidate.channel)) degradedNow = true;
+        if (this.markDegraded(candidate.channel)) {
+          degradedNow = true;
+          degradedChannel = candidate.channel;
+        }
         lastFault = e;
       }
     }
@@ -295,6 +320,19 @@ export class ChannelRouter {
       throw new AppError(ErrorCode.NotFound, `未知支付通道：${channel}`);
     }
     return adapter.statement(period);
+  }
+
+  /** 确定性支付参数重放（幂等重放「原 pay_params」：按单上存续通道构造，无通道副作用） */
+  payParamsFor(
+    channel: PaymentChannelName,
+    orderId: number,
+    bizType: string,
+  ): { readonly mock_pay_url: string; readonly order_id: number } {
+    const adapter = channel === this.primary.channel ? this.primary : this.backup;
+    if (adapter.channel !== channel) {
+      throw new AppError(ErrorCode.NotFound, `未知支付通道：${channel}`);
+    }
+    return adapter.payParamsFor(orderId, bizType);
   }
 
   /** 观测位（测试/运维：通道当前是否处于降级窗口） */
