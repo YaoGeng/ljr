@@ -129,6 +129,10 @@ export class PointsService {
   ): Promise<PointsMutationResult> {
     return this.pool.withTransaction(async (uow) => {
       const account = await this.lockAccount(uow, userId);
+      if (!account) {
+        // lockAccount 已 upsert，此处缺失即基座异常，显性化（TS 收窄用显式守卫）
+        throw new AppError(ErrorCode.InternalError, `账户 ${userId} upsert 后不可读（不应触达）`);
+      }
       const inserted = await uow.query<TxnRow>(
         `INSERT INTO benefits.points_txns (user_id, delta, kind, source_ref, expires_at)
          VALUES ($1, $2, $3, $4, now() + make_interval(days => $5))
@@ -194,6 +198,13 @@ export class PointsService {
 
     return this.pool.withTransaction(async (uow) => {
       const account = await this.lockAccount(uow, input.user_id);
+      if (!account) {
+        // lockAccount 已 upsert，此处缺失即基座异常，显性化（TS 收窄用显式守卫）
+        throw new AppError(
+          ErrorCode.InternalError,
+          `账户 ${input.user_id} upsert 后不可读（不应触达）`,
+        );
+      }
 
       // 幂等重放：同 order 留痕行在册 → 同额短路 / 异额冲突（T1 DUP 语义同源，错误码取通用冲突）
       const freezeRow = await this.findOrderTxn(uow, input.user_id, 'FREEZE', ref);
@@ -252,6 +263,13 @@ export class PointsService {
         ref,
         input.payment_order_id,
       );
+      if (!account) {
+        // FREEZE 留痕在册而账户行缺失：不变量失守，显性化（TS 收窄用显式守卫）
+        throw new AppError(
+          ErrorCode.InternalError,
+          `order=${input.payment_order_id} 有 FREEZE 留痕但账户行缺失（不应触达）`,
+        );
+      }
 
       // 结局互斥（先到先定）：已解冻（支付失败已定）→ 核销冲突
       await this.rejectIfOrderTxn(uow, input.user_id, 'UNFREEZE', ref, input.payment_order_id);
@@ -320,6 +338,13 @@ export class PointsService {
         ref,
         input.payment_order_id,
       );
+      if (!account) {
+        // FREEZE 留痕在册而账户行缺失：不变量失守，显性化（TS 收窄用显式守卫）
+        throw new AppError(
+          ErrorCode.InternalError,
+          `order=${input.payment_order_id} 有 FREEZE 留痕但账户行缺失（不应触达）`,
+        );
+      }
 
       // 结局互斥：已核销（支付成功已定）→ 解冻冲突
       await this.rejectIfOrderTxn(uow, input.user_id, 'REDEEM', ref, input.payment_order_id);
