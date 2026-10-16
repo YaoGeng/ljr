@@ -126,6 +126,12 @@ export function createSessionFailedHandler(
   };
 }
 
+/**
+ * 已知回调事件允许清单（评审 Minor-4）：REFUND_SUCCESS=本域收敛；PAY_SUCCESS=C3=T7 消费位。
+ * 清单外值=通道/上游漂移信号 → warn 显性化（不抛防毒丸；M2 扩展事件时同步本清单）。
+ */
+const KNOWN_CALLBACK_EVENTS: ReadonlySet<string> = new Set(['PAY_SUCCESS', 'REFUND_SUCCESS']);
+
 /** 独立可测的 REFUND_SUCCESS 回调 handler（F1 Inbox 既有出口） */
 export function createRefundCallbackHandler(
   refunds: RefundService,
@@ -138,8 +144,16 @@ export function createRefundCallbackHandler(
     }
     const payload = (event.payload ?? {}) as { biz_idempotency_key?: string; event?: string };
     if (payload.event !== 'REFUND_SUCCESS') {
-      // PAY_SUCCESS 等其余通道事件：C3=T7 消费位（noop 不动 inbox——消费权归 C3）
-      logger.log(`回调事件 ${payload.event ?? '<unknown>'} 非退款链，跳过（C3=T7 消费位）`);
+      const eventName = payload.event ?? '<unknown>';
+      if (!KNOWN_CALLBACK_EVENTS.has(eventName)) {
+        // 清单外未知事件：warn 显性化可观测（不抛——防毒消息重投循环）；事件将按 SENT 归档
+        logger.warn(
+          `未知回调事件 ${JSON.stringify(eventName)}（允许清单外：${[...KNOWN_CALLBACK_EVENTS].join('|')}；不抛防毒丸，biz=${payload.biz_idempotency_key ?? '<none>'}）`,
+        );
+      } else {
+        // PAY_SUCCESS：C3=T7 消费位（noop 不动 inbox——消费权归 C3）
+        logger.log(`回调事件 ${eventName} 非退款链，跳过（C3=T7 消费位）`);
+      }
       return;
     }
     const bizKey = payload.biz_idempotency_key;

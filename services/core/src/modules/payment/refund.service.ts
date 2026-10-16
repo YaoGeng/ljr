@@ -46,6 +46,7 @@ import {
   MAX_DISPATCH_ATTEMPTS,
   REFUND_REASONS,
   RETRY_BACKOFF_SECONDS,
+  STUCK_PROCESSING_AFTER_MINUTES,
   assertPointsLike,
   type IssueRefundInput,
   type RefundMineItem,
@@ -74,6 +75,12 @@ const REFUND_COLS = `id, payment_order_id, user_id, cash_amount::text AS cash_am
 const ETA_TEXT_PENDING = '退款已受理，将在 1-3 个工作日内原路退回';
 const ETA_TEXT_DONE = '已原路退回';
 const ETA_TEXT_FAILED = '退款失败，请联系客服处理';
+
+/**
+ * 非重试类错误码（评审 Minor-3）：确定性拒绝（入参/守恒/存在性）重试无意义——bookFailure
+ * 对此类一次即终局 FAILED+RefundFailed，跳过退避（retryable=通道类/状态类故障走退避重试）。
+ */
+const NON_RETRYABLE_CODES: readonly string[] = [ErrorCode.InvalidArgument, ErrorCode.NotFound];
 
 function assertIdempotencyKey(key: string): void {
   if (!isValidIdempotencyKey(key)) {
@@ -235,8 +242,13 @@ export class RefundService {
   // 下发（REQUESTED→PROCESSING → F1 refund 指令面；失败记账/退避/耗尽 FAILED）
   // ===========================================================================
 
-  /** 首发与重入续发共用：启动下发轨道（attempt_count 同事务 +1）→ 指令面调用 → 失败记账 */
-  private async dispatch(refundId: number, task: IssueRefundInput): Promise<void> {
+  /**
+   * 首发与重入续发共用：启动下发轨道（attempt_count 同事务 +1）→ 指令面调用 → 失败记账。
+   * 返回哨兵（评审 Minor-2）：true=本调用赢得轨道并真实下发；false=行已被并发迁移
+   * （PROCESSING/DONE/FAILED）→ 早退跳过 F1 调用（并发同键败者不重发指令）。
+   */
+  private async dispatch(refundId: number, task: IssueRefundInput): Promise<boolean> {
+    let started = false;
     await this.pool.withTransaction(async (uow) => {
       const cur = await uow.query<{ status: string }>(
         `SELECT status FROM payment.refunds WHERE id = $1 FOR UPDATE`,
@@ -246,7 +258,7 @@ export class RefundService {
       if (from === undefined) {
         throw new AppError(ErrorCode.InternalError, `退款单 ${refundId} 不可读（不应触达）`);
       }
-      if (from !== 'REQUESTED') return; // 并发已入轨/终局：无操作（重投幂等）
+      if (from !== 'REQUESTED') return false; // 并发已入轨/终局：早退（哨兵），跳过后续指令面调用
       await this.guard.assertTransition(REFUND_MACHINE, {
         entityId: refundId,
         from: 'REQUESTED',
@@ -259,8 +271,10 @@ export class RefundService {
           WHERE id = $1 AND status = 'REQUESTED'`,
         [refundId],
       );
+      started = true;
     });
 
+    if (!started) return false; // Minor-2：早退路径零 F1 调用
     try {
       await this.payment.refund({
         order_id: task.order_id,
@@ -276,11 +290,13 @@ export class RefundService {
     await this.pool.query(`UPDATE payment.refunds SET next_retry_at = NULL WHERE id = $1`, [
       refundId,
     ]);
+    return true;
   }
 
   /**
-   * 失败记账：attempt_count 已含本次；未耗尽=退避时点（dispatchDue 驱动重入）；
-   * 耗尽（≥3）→ PROCESSING→FAILED + RefundFailed 出箱（工单面=H3 M2，本批出箱即止）。
+   * 失败记账：attempt_count 已含本次。确定性拒绝（InvalidArgument/NotFound——F1 400 守恒超限
+   * 等，Minor-3）重试无意义 → 一次即终局 FAILED；通道类/状态类故障未耗尽=退避时点
+   * （dispatchDue 驱动重入）；耗尽（≥3）→ PROCESSING→FAILED + RefundFailed 出箱（工单面=H3 M2）。
    */
   private async bookFailure(
     refundId: number,
@@ -291,6 +307,7 @@ export class RefundService {
     const message = (
       error instanceof Error ? `${error.name}: ${error.message}` : String(error)
     ).slice(0, 500);
+    const deterministic = error instanceof AppError && NON_RETRYABLE_CODES.includes(error.code);
     await this.pool.withTransaction(async (uow) => {
       const cur = await uow.query<{ status: string; attempt_count: number }>(
         `SELECT status, attempt_count FROM payment.refunds WHERE id = $1 FOR UPDATE`,
@@ -300,28 +317,18 @@ export class RefundService {
       if (!row)
         throw new AppError(ErrorCode.InternalError, `退款单 ${refundId} 不可读（不应触达）`);
       if (row.status !== 'PROCESSING') return; // 并发已终局（重投幂等）
-      if (row.attempt_count >= MAX_DISPATCH_ATTEMPTS) {
-        await this.guard.assertTransition(REFUND_MACHINE, {
-          entityId: refundId,
-          from: 'PROCESSING',
-          to: 'FAILED',
-          reason: `dispatch_exhausted:${reason}`,
-          uow,
-        });
-        await uow.query(
-          `UPDATE payment.refunds SET status = 'FAILED', next_retry_at = NULL, last_error = $3
-            WHERE id = $1 AND status = $2`,
-          [refundId, row.status, message],
-        );
-        const payload: RefundFailedPayload = {
-          refund_id: refundId,
-          order_id: orderId,
-          reason,
+      if (deterministic || row.attempt_count >= MAX_DISPATCH_ATTEMPTS) {
+        await this.finalizeFailed(uow, {
+          refundId,
+          from: row.status,
           attempts: row.attempt_count,
-          last_error: message,
-        };
-        await this.outbox.recordOutbox(uow, { type: REFUND_FAILED_TOPIC, payload });
-        this.logger.warn(`退款下发耗尽 FAILED：refund=${refundId} order=${orderId} ${message}`);
+          orderId,
+          reason,
+          message,
+          guardReason: deterministic
+            ? `dispatch_deterministic_reject:${reason}`
+            : `dispatch_exhausted:${reason}`,
+        });
       } else {
         const delay =
           RETRY_BACKOFF_SECONDS[Math.min(row.attempt_count, RETRY_BACKOFF_SECONDS.length) - 1] ?? 8;
@@ -335,12 +342,56 @@ export class RefundService {
     });
   }
 
+  /** FAILED 终局共用体（守卫迁移+落库+RefundFailed 出箱）：bookFailure 与 dispatchDue 卡死终局共用 */
+  private async finalizeFailed(
+    uow: Parameters<Parameters<PgPoolService['withTransaction']>[0]>[0],
+    arg: {
+      readonly refundId: number;
+      readonly from: string;
+      readonly attempts: number;
+      readonly orderId: number;
+      readonly reason: string;
+      readonly message: string;
+      readonly guardReason: string;
+    },
+  ): Promise<void> {
+    const { refundId, from, attempts, orderId, reason, message, guardReason } = arg;
+    await this.guard.assertTransition(REFUND_MACHINE, {
+      entityId: refundId,
+      from: 'PROCESSING',
+      to: 'FAILED',
+      reason: guardReason,
+      uow,
+    });
+    await uow.query(
+      `UPDATE payment.refunds SET status = 'FAILED', next_retry_at = NULL, last_error = $3
+        WHERE id = $1 AND status = $2`,
+      [refundId, from, message],
+    );
+    const payload: RefundFailedPayload = {
+      refund_id: refundId,
+      order_id: orderId,
+      reason,
+      attempts,
+      last_error: message,
+    };
+    await this.outbox.recordOutbox(uow, { type: REFUND_FAILED_TOPIC, payload });
+    this.logger.warn(`退款下发终局 FAILED：refund=${refundId} order=${orderId} ${message}`);
+  }
+
   /**
-   * 重试驱动（测试/后台手动 tick，语义同 relay.tick/dispatch worker）：拾取到期在途单重发
-   * 指令面（同幂等键——通道侧重放短路）；成功清退避位等回调，失败再记账。DB 列
-   * （status/next_retry_at/attempt_count）为到期事实源（platform.outbox 同形）。
+   * 重试驱动（测试/后台手动 tick，语义同 relay.tick/dispatch worker）。DB 列（status/
+   * next_retry_at/attempt_count/requested_at）为到期事实源（platform.outbox 同形）。拾取三类：
+   *   a) 到期重试行：有退避位且到期、attempt 未达上限 → 重发指令面（同幂等键——通道侧重放短路）；
+   *   b) 卡死①（评审 Important-1）：无退避位且受理超龄（首发事务提交后、F1 调用前崩溃窗口；
+   *      ⚠§3 无 updated_at 列，受理时点作超龄锚）——**重发前先查 F1 同键 REFUND 台账**：
+   *      已 CONFIRMED=指令已落地（权威）→ 直接收敛 DONE 路径（healed，回调丢失同窗自愈）；
+   *      未 CONFIRMED → 安全重发（F1 同键幂等兜底）；
+   *   c) 卡死②（评审 Important-1）：attempt_count 已达上限未进 FAILED（bookFailure 前崩溃）
+   *      ——台账已 CONFIRMED=「第 3 次实际成功」防误杀 → 收敛 DONE；未 CONFIRMED → 直接终局
+   *      FAILED+RefundFailed（无资金移动证据，不再重发）。
    */
-  async dispatchDue(limit = 100): Promise<{ attempted: number; failed: number }> {
+  async dispatchDue(limit = 100): Promise<{ attempted: number; failed: number; healed: number }> {
     const due = await this.pool.query<{
       id: string;
       payment_order_id: string;
@@ -349,26 +400,66 @@ export class RefundService {
       reason: string;
       idempotency_key: string;
       user_id: string;
+      attempt_count: number;
     }>(
-      `SELECT ${REFUND_COLS} FROM payment.refunds
-        WHERE status = 'PROCESSING' AND next_retry_at IS NOT NULL
-          AND next_retry_at <= now() AND attempt_count < $2
+      `SELECT ${REFUND_COLS}, attempt_count FROM payment.refunds
+        WHERE status = 'PROCESSING' AND (
+          (next_retry_at IS NOT NULL AND next_retry_at <= now() AND attempt_count < $2)
+          OR (next_retry_at IS NULL
+              AND requested_at < now() - make_interval(mins => $3::int))
+          OR attempt_count >= $2
+        )
         ORDER BY id LIMIT $1`,
-      [limit, MAX_DISPATCH_ATTEMPTS],
+      [limit, MAX_DISPATCH_ATTEMPTS, STUCK_PROCESSING_AFTER_MINUTES],
     );
     let attempted = 0;
     let failed = 0;
+    let healed = 0;
     for (const row of due.rows) {
       const refundId = Number(row.id);
+      const orderId = Number(row.payment_order_id);
+      const reason = row.reason as RefundReason;
+
+      // 台账权威判定（重发前必查）：F1 同键 REFUND 台账已 CONFIRMED=指令已落地
+      if (await this.isRefundLedgerConfirmed(row.idempotency_key)) {
+        await this.convergeForOrder(orderId);
+        healed += 1;
+        continue;
+      }
+      // 卡死②：attempt 已耗尽未终局（bookFailure 前崩溃）且指令未落地 → 直接终局
+      if (row.attempt_count >= MAX_DISPATCH_ATTEMPTS) {
+        const message = `自愈终局：attempt_count=${row.attempt_count} 而 PROCESSING 卡死（bookFailure 前崩溃窗口），台账未 CONFIRMED 直接终局`;
+        await this.pool.withTransaction(async (uow) => {
+          const cur = await uow.query<{ status: string }>(
+            `SELECT status FROM payment.refunds WHERE id = $1 FOR UPDATE`,
+            [refundId],
+          );
+          const from = cur.rows[0]?.status;
+          if (from !== 'PROCESSING') return; // 并发已终局（重投幂等）
+          await this.finalizeFailed(uow, {
+            refundId,
+            from,
+            attempts: row.attempt_count,
+            orderId,
+            reason,
+            message,
+            guardReason: `dispatch_exhausted_stuck:${reason}`,
+          });
+        });
+        failed += 1;
+        continue;
+      }
+
+      // a)/卡死①未落地：安全重发（F1 同键幂等兜底）——尝试计数先行（首发在 dispatch 事务内
+      // +1，重试路径在此 +1——两路同口径）
       const task: IssueRefundInput = {
-        order_id: Number(row.payment_order_id),
+        order_id: orderId,
         user_id: Number(row.user_id),
         cash: row.cash_amount,
         points: row.points_amount,
-        reason: row.reason as RefundReason,
+        reason,
         idempotency_key: row.idempotency_key,
       };
-      // 尝试计数先行（首发路径在 dispatch 事务内 +1，重试路径在此 +1——两路同口径）
       await this.pool.query(
         `UPDATE payment.refunds SET attempt_count = attempt_count + 1
           WHERE id = $1 AND status = 'PROCESSING'`,
@@ -391,7 +482,18 @@ export class RefundService {
         failed += 1;
       }
     }
-    return { attempted, failed };
+    return { attempted, failed, healed };
+  }
+
+  /** F1 同键 REFUND 台账是否已 CONFIRMED（同 schema 同模块 F1 表；指令落地的权威信号） */
+  private async isRefundLedgerConfirmed(idempotencyKey: string): Promise<boolean> {
+    const res = await this.pool.query<{ ok: number }>(
+      `SELECT 1 AS ok FROM payment.split_ledgers
+        WHERE idempotency_key = $1 AND direction = 'REFUND' AND status = 'CONFIRMED'
+        LIMIT 1`,
+      [idempotencyKey],
+    );
+    return res.rows.length > 0;
   }
 
   // ===========================================================================
@@ -412,12 +514,21 @@ export class RefundService {
         `REFUND_SUCCESS 回调定位不到支付单：幂等键 ${JSON.stringify(orderIdempotencyKey)}`,
       );
     }
+    return this.convergeForOrder(order.id);
+  }
+
+  /**
+   * 按支付单收敛（convergeRefundSuccess 与 dispatchDue 卡死自愈共用核）：该单全部 PROCESSING
+   * 退款单推进 DONE（同事务 RefundCompleted 出箱），再对全部 DONE 单做 R-03 积分还原（F4
+   * 唯一约束幂等短路——收敛式：重投/崩溃窗口重放不丢还原、不重复入账）。
+   */
+  private async convergeForOrder(orderId: number): Promise<{ completed: number[] }> {
     const completed: number[] = [];
     await this.pool.withTransaction(async (uow) => {
       const rows = await uow.query<RefundRow>(
         `SELECT ${REFUND_COLS} FROM payment.refunds
           WHERE payment_order_id = $1 AND status = 'PROCESSING' ORDER BY id FOR UPDATE`,
-        [order.id],
+        [orderId],
       );
       for (const row of rows.rows) {
         const refundId = Number(row.id);
@@ -435,7 +546,7 @@ export class RefundService {
         );
         const payload: RefundCompletedPayload = {
           refund_id: refundId,
-          order_id: order.id,
+          order_id: orderId,
           amounts: { cash: row.cash_amount, points: row.points_amount },
         };
         await this.outbox.recordOutbox(uow, { type: REFUND_COMPLETED_TOPIC, payload });
@@ -446,7 +557,7 @@ export class RefundService {
     // R-03 积分还原（DONE 后；ref=refund:{id} 幂等——F4 唯一约束短路重放；F4 不可用抛错进重试，
     // 重投时上方 DONE 迁移已收敛为空、还原重放短路，恰一次入账）
     if (this.points) {
-      await this.restorePoints(order.id);
+      await this.restorePoints(orderId);
     }
     return { completed };
   }

@@ -41,6 +41,13 @@ export type RefundReason = (typeof REFUND_REASONS)[number];
 /** §4「失败重试 3 次」：总尝试上限（含首次）；耗尽 → PROCESSING→FAILED + RefundFailed 出箱 */
 export const MAX_DISPATCH_ATTEMPTS = 3;
 
+/**
+ * 卡死判定阈值（评审 Important-1）：PROCESSING 且无退避位（next_retry_at IS NULL）的行，
+ * 受理时点超龄即视为「首发事务提交后崩溃」候选——dispatchDue 拾取后按 F1 台账权威判定
+ * 重发或收敛。5 分钟远大于正常下发路径耗时（指令面同步确认），常态在途单不误触。
+ */
+export const STUCK_PROCESSING_AFTER_MINUTES = 5;
+
 /** 退避秒表（第 n 次失败后的重试间隔；n 从 1 起，耗尽前最后一次失败无退避位） */
 export const RETRY_BACKOFF_SECONDS = [2, 8] as const;
 

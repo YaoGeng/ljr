@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { randomBytes } from 'node:crypto';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Logger } from '@nestjs/common';
 import type { Pool } from 'pg';
 import {
   PAYMENT_CALLBACK_INBOXED_TOPIC,
@@ -386,6 +387,54 @@ describe('F2 批量退款消费端（需 PG）', () => {
       `SELECT count(*)::int AS n FROM payment.inbox WHERE status = 'RECEIVED'`,
     );
     expect(after.rows[0]!.n).toBe(before.rows[0]!.n); // RECEIVED 原样（消费权归 C3）
+    const refundsN = await pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM payment.refunds`,
+    );
+    expect(refundsN.rows[0]!.n).toBe(0);
+  });
+
+  it('Minor-4：回调未知事件（允许清单外）→ warn 显性化不抛（防毒丸），REFUND_SUCCESS 路径不受影响', async () => {
+    const handler = createRefundCallbackHandler(refunds, gateway);
+    const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    try {
+      // 允许清单外事件：warn + 正常返回（不抛→relay 不会重投毒消息）
+      await expect(
+        handler(
+          {
+            id: 5,
+            eventId: 'e5',
+            topic: PAYMENT_CALLBACK_INBOXED_TOPIC,
+            payload: {
+              biz_idempotency_key: 'payment/unknown-1/pay:WEIRD_HOOK',
+              event: 'WEIRD_HOOK',
+            },
+            retryCount: 0,
+          },
+          stubUow,
+        ),
+      ).resolves.toBeUndefined();
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(String(warnSpy.mock.calls[0]?.[0])).toContain('未知回调事件');
+
+      // 已知允许集（PAY_SUCCESS）保持 log 级 noop，不走 warn
+      warnSpy.mockClear();
+      await handler(
+        {
+          id: 6,
+          eventId: 'e6',
+          topic: PAYMENT_CALLBACK_INBOXED_TOPIC,
+          payload: {
+            biz_idempotency_key: 'payment/unknown-2/pay:PAY_SUCCESS',
+            event: 'PAY_SUCCESS',
+          },
+          retryCount: 0,
+        },
+        stubUow,
+      );
+      expect(warnSpy).not.toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
     const refundsN = await pool.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM payment.refunds`,
     );
