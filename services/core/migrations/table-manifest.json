@@ -60,6 +60,7 @@
     "schedule.schedule_jobs": "V5__schedule.sql",
     "schedule.slot_locks": "V6__schedule.sql",
     "schedule.time_slot_templates": "V16__schedule.sql",
+    "trade.enrollments": "V26__trade.sql",
     "trade.group_buys": "V24__trade.sql",
     "trade.sessions": "V23__trade.sql"
   }
