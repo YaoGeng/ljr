@@ -49,6 +49,12 @@ import {
   SessionFailedPayload,
   SESSION_FULL_TOPIC,
   SessionFullPayload,
+  GROUP_BUY_PUBLISHED_TOPIC,
+  GroupBuyPublishedPayload,
+  GROUP_BUY_REACHED_TOPIC,
+  GroupBuyReachedPayload,
+  GROUP_BUY_EXPIRED_TOPIC,
+  GroupBuyExpiredPayload,
   TRAINING_CONSENT_GRANTED_TOPIC,
   TRAINING_CONSENT_REVOKED_TOPIC,
   TrainingConsentGrantedPayload,
@@ -142,10 +148,14 @@ describe('G1 信用体系事件契约（M1-W2）：生产 2 + 消费 5（消费�
     expect(payload.until).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
-  it('LawyerRejected：topic=trade.group_buy.lawyer_rejected，{group_id, lawyer_id}', () => {
+  it('LawyerRejected：topic=trade.group_buy.lawyer_rejected，{group_id, lawyer_id, via_timeout}（M-1 定型：via_timeout 判别字段，docs/04 §6 LawyerRejected(Timeout) 变体注记的载荷承载）', () => {
     expect(LAWYER_REJECTED_TOPIC).toBe('trade.group_buy.lawyer_rejected');
-    const payload: LawyerRejectedPayload = { group_id: 11, lawyer_id: 9101 };
-    expect(payload).toEqual({ group_id: 11, lawyer_id: 9101 });
+    // 显式拒绝（C4=M2 生产）：via_timeout=false
+    const explicit: LawyerRejectedPayload = { group_id: 11, lawyer_id: 9101, via_timeout: false };
+    expect(explicit).toEqual({ group_id: 11, lawyer_id: 9101, via_timeout: false });
+    // 12h 超时自动拒（C2 C2B_CONFIRM_TIMEOUT 生产）：via_timeout=true
+    const timedOut: LawyerRejectedPayload = { group_id: 12, lawyer_id: 9101, via_timeout: true };
+    expect(timedOut.via_timeout).toBe(true);
   });
 
   it('PriceChangeApproved：topic=pricing.price_change.approved，{price_change_id, lawyer_id, kind 三档}', () => {
@@ -382,5 +392,53 @@ describe('C1 B2C 开团事件契约（M1-W3 T4）：3 生产契约（Full→C3=T
       reason: 'ENROLL_DEADLINE_PASSED',
     };
     expect(payload.reason).toBe('ENROLL_DEADLINE_PASSED');
+  });
+});
+
+describe('C2 C2B 发起拼团事件契约（M1-W3 T5）：3 生产契约（Expired→F2 退款指令面=T6 接线，本批断言出箱；Reached 消费位=I2 12h job 由 C2 同事务直写承接）', () => {
+  it('GroupBuyPublished：topic=trade.group_buy.published，{id, lawyer_id, slot_start, sub_min, share_price}（C2 §6 逐字）', () => {
+    expect(GROUP_BUY_PUBLISHED_TOPIC).toBe('trade.group_buy.published');
+    const payload: GroupBuyPublishedPayload = {
+      id: 71,
+      lawyer_id: 9101,
+      slot_start: '2026-10-18T12:00:00.000Z',
+      sub_min: 3,
+      share_price: '33.34', // R-02 分摊额快照（Money 字符串禁 float）
+    };
+    expect(payload).toEqual({
+      id: 71,
+      lawyer_id: 9101,
+      slot_start: '2026-10-18T12:00:00.000Z',
+      sub_min: 3,
+      share_price: '33.34',
+    });
+  });
+
+  it('GroupBuyReached：topic=trade.group_buy.reached，{id}（C2 §6 逐字最小集；12h 确认 job 由 C2 守卫同事务预写）', () => {
+    expect(GROUP_BUY_REACHED_TOPIC).toBe('trade.group_buy.reached');
+    const payload: GroupBuyReachedPayload = { id: 71 };
+    expect(payload).toEqual({ id: 71 });
+  });
+
+  it('GroupBuyExpired：topic=trade.group_buy.expired，{id, lawyer_id, initiator_id, share_price, sub_min, reason}（退款指令面=T6 F2；reason 两值词汇表）', () => {
+    expect(GROUP_BUY_EXPIRED_TOPIC).toBe('trade.group_buy.expired');
+    const byDeadline: GroupBuyExpiredPayload = {
+      id: 71,
+      lawyer_id: 9101,
+      initiator_id: 601,
+      share_price: '33.34',
+      sub_min: 3,
+      reason: 'DEADLINE_PASSED',
+    };
+    expect(byDeadline.reason).toBe('DEADLINE_PASSED');
+    const byCancel: GroupBuyExpiredPayload = {
+      id: 72,
+      lawyer_id: 9101,
+      initiator_id: 601,
+      share_price: '50.00',
+      sub_min: 2,
+      reason: 'INITIATOR_CANCELLED',
+    };
+    expect(byCancel.reason).toBe('INITIATOR_CANCELLED');
   });
 });

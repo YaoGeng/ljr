@@ -139,12 +139,21 @@ export interface RestrictionIssuedPayload {
   readonly until: string;
 }
 
-/** C2B 律师拒绝/超时（C2/C4 §6 生产 → G1 消费扣分 -5 档；docs/04 §6 LawyerRejected(Timeout)）。 */
+/**
+ * C2B 律师拒绝/超时（C2/C4 §6 生产 → G1 消费扣分 -5 档；docs/04 §6 LawyerRejected(Timeout)）。
+ * M-1 定型（W2 G-C 交接欠账，M1-W3 T5 简报裁决）：补 via_timeout 判别字段——docs/04 §6 以
+ * 「LawyerRejected(Timeout)」括注区分超时变体，载荷以 boolean 承载该变体标记（命名最贴文档口径，
+ * 任务报告注明）。生产方：C2 C2B_CONFIRM_TIMEOUT 超时自动拒=via_timeout=true（M1-W3 T5 落位）；
+ * C4 显式拒绝=via_timeout=false（M2 落位）。G1 消费端兼容性：现按 topic 消费两档同 -5，
+ * 不读取该字段——W1 旧载荷形状（无 via_timeout）运行时照常入账（credit.spec 兼容性用例钉住）。
+ */
 export const LAWYER_REJECTED_TOPIC = 'trade.group_buy.lawyer_rejected';
 
 export interface LawyerRejectedPayload {
   readonly group_id: number;
   readonly lawyer_id: number;
+  /** true=12h 确认超时自动拒（C2 生产）；false=律师显式拒绝（C4=M2 生产） */
+  readonly via_timeout: boolean;
 }
 
 /** 改价审批通过（C6 §6 生产 → G1 消费按档扣分/停接）。kind 由 C6 按 §8.8 档位归类（G1 只承载机制）。 */
@@ -408,4 +417,55 @@ export const SESSION_FAILED_TOPIC = 'trade.session.failed';
 export interface SessionFailedPayload extends SessionPriceRefPayload {
   /** 流标事由（本批唯一值：ENROLL_DEADLINE_PASSED=截止未满；后续档位随 D4/M2 扩展） */
   readonly reason: 'ENROLL_DEADLINE_PASSED';
+}
+
+// ---------------------------------------------------------------------------
+// C2 C2B 发起拼团（M1-W3 T5）：3 生产契约。消费位：GroupBuyPublished → I2 截止 job 与
+// B2 PENDING_PAYMENT 发布锁由 C2 同事务直写承接（事件本身=审计/通知扇出位）；GroupBuyReached
+// → I2 12h 确认 job 由 C2 守卫同事务直写承接（C2 §6）；GroupBuyExpired → F2 批量退款=T6
+// 接线（本批断言出箱）。金额一律 Money 字符串（NUMERIC 禁 float）；时间一律 ISO 8601 UTC。
+// ---------------------------------------------------------------------------
+
+/** C2B 拼团发布完成（C2 §6 生产；载荷逐字 → I2 截止 job + B2 PENDING_PAYMENT 发布锁）。 */
+export const GROUP_BUY_PUBLISHED_TOPIC = 'trade.group_buy.published';
+
+export interface GroupBuyPublishedPayload {
+  /** 拼团任务 id（trade.group_buys.id） */
+  readonly id: number;
+  readonly lawyer_id: number;
+  /** 约定开始时刻（ISO 8601；B2 发布锁 slot 锚） */
+  readonly slot_start: string;
+  /** 子范围下限（达此人数即锁人，R-05） */
+  readonly sub_min: number;
+  /** R-02 分摊额快照（发布时固化；Money 字符串） */
+  readonly share_price: string;
+}
+
+/** 达 sub_min 锁人（C2 §6 生产；载荷逐字 {id}；12h 确认 job 与锁人同事务由 C2 直写预写）。 */
+export const GROUP_BUY_REACHED_TOPIC = 'trade.group_buy.reached';
+
+export interface GroupBuyReachedPayload {
+  readonly id: number;
+}
+
+/**
+ * 拼团终止·退款指令锚（C2 §4 EXPIRED 终态迁移同事务出箱 → F2 批量退款=T6 接线，本批断言出箱）。
+ * reason 词汇表：DEADLINE_PASSED=截止未成（ENROLL_DEADLINE 执行器）；INITIATOR_CANCELLED=发起人
+ * 取消（R-W3-L：仅无任何已支付加入者可取消，状态机无 PUBLISHED→CANCELLED 边——EXPIRED+来源
+ * 注记口径，任务报告偏差节注明）。已支付加入者按 share_price 快照原路退（F2/T6 语义）。
+ */
+export const GROUP_BUY_EXPIRED_TOPIC = 'trade.group_buy.expired';
+
+export type GroupBuyExpiredReason = 'DEADLINE_PASSED' | 'INITIATOR_CANCELLED';
+
+export interface GroupBuyExpiredPayload {
+  readonly id: number;
+  readonly lawyer_id: number;
+  /** 发起人（identity 侧用户 id；F2 退款定位第一支付人） */
+  readonly initiator_id: number;
+  /** R-02 分摊额快照（退款金额锚；Money 字符串） */
+  readonly share_price: string;
+  /** 子范围下限（F2 差额/台账语义参考） */
+  readonly sub_min: number;
+  readonly reason: GroupBuyExpiredReason;
 }

@@ -92,6 +92,14 @@ export const ErrorCode = {
   SessionDuplicateKey: 'E_SESSION_DUP_KEY',
   /** C1 临期开团缺省截止无效：slot_start 已过，或临期（缺省截止=开始前 24h 已过）未显式传未来 enroll_deadline（R-W3-G ⚠W3-11；400） */
   EnrollDeadlineInvalid: 'E_ENROLL_DEADLINE_INVALID',
+  /** C2 R-01 律师接受拼团范围未配置：B3 accept_min/accept_max 未配置（NULL），用户须先由律师在 B3 配置（⚠W3-5 裁决；400） */
+  AcceptRangeUnset: 'E_ACCEPT_RANGE_UNSET',
+  /** C2 发布幂等键同键异载荷：同 user+slot_start 已有进行中拼团但载荷不一致（F1 R-02 口径先例：同键同载荷=幂等重放原单；409） */
+  GroupBuyDuplicateKey: 'E_GROUP_BUY_DUP_KEY',
+  /** C2 R-05 达 sub_min 锁人：拼团已 REACHED 及之后链路，新加入被拒（成团后不补不进；409） */
+  ReachedLocked: 'E_REACHED_LOCKED',
+  /** C2 发起人取消被拒：已有已支付加入者（R-W3-L 保守裁决：无任何已支付加入者才可取消；409 HAS_JOINED） */
+  HasJoined: 'E_HAS_JOINED',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -261,6 +269,24 @@ const ERROR_CODE_META: Readonly<Record<ErrorCode, ErrorCodeMeta>> = {
     httpStatus: 400,
     defaultMessage:
       '报名截止无效：临期场次（缺省截止已过）须显式传晚于当前时刻且早于开始时刻的 enroll_deadline（R-W3-G）',
+  },
+  [ErrorCode.AcceptRangeUnset]: {
+    httpStatus: 400,
+    defaultMessage:
+      '该律师尚未配置接受拼团人数范围（B3 accept_min/accept_max），须先由律师配置后再发起拼团（R-01）',
+  },
+  [ErrorCode.GroupBuyDuplicateKey]: {
+    httpStatus: 409,
+    defaultMessage:
+      '发起拼团幂等键冲突：同用户同开始时刻已有进行中拼团且载荷不一致（同载荷请走幂等重放，返回原单）',
+  },
+  [ErrorCode.ReachedLocked]: {
+    httpStatus: 409,
+    defaultMessage: '该拼团已达最低成团人数锁人（R-05），不再接受新加入',
+  },
+  [ErrorCode.HasJoined]: {
+    httpStatus: 409,
+    defaultMessage: '该拼团已有已支付加入者，发起人不可单方取消（R-W3-L；走协商/客服 ⚠04§8-14）',
   },
 };
 

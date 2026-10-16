@@ -102,6 +102,17 @@ describe('错误码契约（ErrorCode 常量表 + AppError{code,httpStatus}）',
     expect(new AppError(ErrorCode.EnrollDeadlineInvalid).httpStatus).toBe(400);
   });
 
+  it('C2 C2B 拼团错误码（M1-W3 T5）：B3 接受范围未配置 400 / 发布幂等键同键异载荷 409 / 达 sub_min 锁人后加入 409 / 有已支付加入者取消 409', () => {
+    expect(ErrorCode.AcceptRangeUnset).toBe('E_ACCEPT_RANGE_UNSET');
+    expect(new AppError(ErrorCode.AcceptRangeUnset).httpStatus).toBe(400);
+    expect(ErrorCode.GroupBuyDuplicateKey).toBe('E_GROUP_BUY_DUP_KEY');
+    expect(new AppError(ErrorCode.GroupBuyDuplicateKey).httpStatus).toBe(409);
+    expect(ErrorCode.ReachedLocked).toBe('E_REACHED_LOCKED');
+    expect(new AppError(ErrorCode.ReachedLocked).httpStatus).toBe(409);
+    expect(ErrorCode.HasJoined).toBe('E_HAS_JOINED');
+    expect(new AppError(ErrorCode.HasJoined).httpStatus).toBe(409);
+  });
+
   it('isAppError 类型收窄', () => {
     expect(isAppError(new AppError(ErrorCode.Conflict))).toBe(true);
     expect(isAppError(new Error('plain'))).toBe(false);
