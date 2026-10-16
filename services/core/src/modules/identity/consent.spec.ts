@@ -375,6 +375,31 @@ describe('A2 同意领域层（训练授权/撤回/幂等/版本闸，需 PG）'
       client.release();
     }
   });
+
+  it('M-4（G-B 做项6）：outbox 写入自身的 23505 不得被误捕为授权唯一败退——原样上抛且整事务回滚', async () => {
+    // 注毒 outbox：recordOutbox 抛 23505（event_id 撞键的并发形态）——try 块含 outbox 写入时
+    // 会被 isActiveUniqueViolation 误捕，走「幂等读回」分支掩盖事件写入失败（M-4 理论误捕路径）
+    const poisoned = new ConsentService(
+      app.get(PgPoolService),
+      {
+        recordOutbox: async () => {
+          const err = new Error(
+            'duplicate key value violates unique constraint "ux_outbox_event_id"',
+          ) as Error & { code?: string };
+          err.code = '23505';
+          throw err;
+        },
+      } as unknown as OutboxService,
+      guard,
+      { trainingPolicyVersion: CURRENT_POLICY } satisfies ConsentConfig,
+    );
+    await expect(
+      poisoned.grantTraining(801, { policyVersion: CURRENT_POLICY, accept: true }),
+    ).rejects.toMatchObject({ code: '23505' });
+    // 事件写入失败 ⇒ 整事务回滚：授权行不落库、守卫不留痕（无半提交状态）
+    expect(await consentRows(801)).toHaveLength(0);
+    expect(await stlRows(801)).toHaveLength(0);
+  });
 });
 
 /** 确定性交错原语：轮询 pg_stat_activity 等 service 的 INSERT 阻塞在锁上（最长 5s，条件等待） */

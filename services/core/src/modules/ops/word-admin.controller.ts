@@ -6,12 +6,12 @@
  */
 import { Body, Controller, Get, Put, Query, UseFilters } from '@nestjs/common';
 import type { DictionaryView, PutDictionaryResult } from './word-dict.types';
-import { RuleHttpExceptionFilter } from './rule.http';
+import { AppHttpExceptionFilter } from '../../infrastructure/app-error.filter';
 import { WordDictService } from './word-dict.service';
 import { parseDictTypeFilter, parsePutDictionaryBody } from './word-dict.http';
 
 @Controller('admin/risk/dictionaries')
-@UseFilters(RuleHttpExceptionFilter)
+@UseFilters(AppHttpExceptionFilter)
 export class WordAdminController {
   constructor(private readonly dicts: WordDictService) {}
 

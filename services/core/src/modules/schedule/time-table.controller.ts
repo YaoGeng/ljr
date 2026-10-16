@@ -8,6 +8,7 @@
  * 响应字段用 §5 契约词汇（snake_case）；slot_start 为 ISO 8601（B2 事件出站同口径）。
  */
 import { Body, Controller, Get, Param, Put, Query, UseFilters, UseGuards } from '@nestjs/common';
+import { AppHttpExceptionFilter } from '../../infrastructure/app-error.filter';
 import {
   CurrentIdentity,
   IdentityAuthGuard,
@@ -15,12 +16,7 @@ import {
   RequireRole,
   type IdentityClaims,
 } from '../identity/identity.guards';
-import {
-  parseLawyerId,
-  parseReplaceScheduleBody,
-  parseSlotRangeQuery,
-  TimeTableHttpExceptionFilter,
-} from './time-table.http';
+import { parseLawyerId, parseReplaceScheduleBody, parseSlotRangeQuery } from './time-table.http';
 import { TimeTableService } from './time-table.service';
 import type { ScheduleView, SlotViewRow } from './time-table.types';
 
@@ -60,7 +56,7 @@ function toSlotViewPayload(rows: SlotViewRow[]): SlotViewPayload[] {
 }
 
 @Controller('lawyer')
-@UseFilters(TimeTableHttpExceptionFilter)
+@UseFilters(AppHttpExceptionFilter)
 export class TimeTableController {
   constructor(private readonly timeTable: TimeTableService) {}
 

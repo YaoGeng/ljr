@@ -233,6 +233,14 @@ describe('B3 默认价格与1对1价格配置（REST 契约 + R-01~R-04 + 缓存
     expect(badId.body.code).toBe(ErrorCode.InvalidArgument);
   });
 
+  it('路径 id 严格化（G-B 做项4）：0x10/1e2/超长数字三形态 → 400（拒 Number 宽解析与精度丢失）', async () => {
+    for (const id of ['0x10', '1e2', '99999999999999999999']) {
+      const res = await request(app.getHttpServer()).get(`/lawyer/${id}/pricing`);
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ErrorCode.InvalidArgument);
+    }
+  });
+
   // ---------- 乐观锁：PUT 幂等键=lawyer+base_version（409 E_CONFLICT，H5 先例口径） ----------
 
   it('base_version 过期 → 409 E_CONFLICT；匹配 → version+1；并发双 PUT 同 base_version 恰一成功', async () => {

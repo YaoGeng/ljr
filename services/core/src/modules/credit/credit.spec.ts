@@ -352,6 +352,16 @@ describe('G1 信用体系（REST 契约 + R-01~R-03 + §8.8 矩阵 + 窗口/限�
     expect(badId.body.code).toBe(ErrorCode.InvalidArgument);
   });
 
+  it('owner_id 严格化（G-B 做项4）：0x10/1e2/超长数字三形态 → 400（拒 Number 宽解析与精度丢失）', async () => {
+    for (const id of ['0x10', '1e2', '99999999999999999999']) {
+      const res = await request(app.getHttpServer()).get(
+        `/credit/restrictions?owner_type=lawyer&owner_id=${id}`,
+      );
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ErrorCode.InvalidArgument);
+    }
+  });
+
   // ---------- PRD §8.8 全表矩阵（EMIT 内部接口；规则表驱动 R-W2-10） ----------
 
   it('§8.8 全表矩阵：13 分值行 + review_received 经 credit.rules 种子入账，rule_version 落流水', async () => {

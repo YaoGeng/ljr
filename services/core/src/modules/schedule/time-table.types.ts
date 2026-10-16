@@ -31,7 +31,7 @@ export interface ScheduleView {
 export interface ReplaceScheduleInput {
   /**
    * 乐观并发令牌（version 语义最小化，简报裁决）：与服务端当前一致才接受，否则 409
-   * E_VERSION_MISMATCH；无行=0。成功替换后服务端 +1，同 version 重放即 409。
+   * E_CONFLICT（G-B 做项2：乐观锁错误码全仓统一）；无行=0。成功替换后服务端 +1，同 version 重放即 409。
    */
   readonly version: number;
   readonly templates: readonly TemplateWrite[];

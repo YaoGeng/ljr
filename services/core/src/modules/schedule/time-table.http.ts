@@ -1,32 +1,17 @@
 /**
- * B1 HTTP 面共用件：AppError → HTTP 错误体的模块内过滤器 + 请求形状解析（§5 契约词汇）。
- * 错误体形态与 identity/notify 同口径：{code, message}；域规则校验（R-03 双层等）在 service
- * ——本层只做形状/路径参数提取（parseSwitchRoleBody 薄形态先例）。
+ * B1 HTTP 面共用件：请求形状解析（§5 契约词汇）。
+ * 错误体过滤器已收敛至 infrastructure 的 AppHttpExceptionFilter（G-B 做项1，6→1）；
+ * 域规则校验（R-03 双层等）在 service——本层只做形状/路径参数提取（parseSwitchRoleBody
+ * 薄形态先例）；模板元素对象形态闸在 parseReplaceScheduleBody（G-B 做项5：malformed 元素
+ * 不再漏成 500）；路径 id 严格解析统一走 infrastructure/parse-positive-int（G-B 做项4）。
  */
-import { Catch, type ArgumentsHost, type ExceptionFilter } from '@nestjs/common';
 import { AppError, ErrorCode } from '@ljr/shared';
+import { parsePositiveInt } from '../../infrastructure/parse-positive-int';
 import type { ReplaceScheduleInput, TemplateWrite } from './time-table.types';
 
-/** 结构化最小响应口（不引 express 类型依赖，identity.http 同口径） */
-interface HttpResponse {
-  status(code: number): { json(body: unknown): unknown };
-}
-
-@Catch(AppError)
-export class TimeTableHttpExceptionFilter implements ExceptionFilter {
-  catch(exception: AppError, host: ArgumentsHost): void {
-    const res = host.switchToHttp().getResponse<HttpResponse>();
-    res.status(exception.httpStatus).json({ code: exception.code, message: exception.message });
-  }
-}
-
-/** 路径参数 {id}：正整数（lawyer_id=identity 侧用户 id） */
+/** 路径参数 {id}：十进制正整数（lawyer_id=identity 侧用户 id；拒 0x10/1e2/超长形态） */
 export function parseLawyerId(raw: string): number {
-  const id = Number(raw);
-  if (!Number.isInteger(id) || id <= 0) {
-    throw new AppError(ErrorCode.InvalidArgument, `路径参数 id 须为正整数：${raw}`);
-  }
-  return id;
+  return parsePositiveInt(raw, '路径参数 id');
 }
 
 /** PUT /lawyer/schedule 体形状：{version, templates[]}（域校验在 service——R-03 应用校验层） */
@@ -41,10 +26,18 @@ export function parseReplaceScheduleBody(body: unknown): ReplaceScheduleInput {
       'templates 须为数组（全量替换语义，空数组=清空时间表）',
     );
   }
-  return {
-    version: raw.version as number,
-    templates: raw.templates as readonly TemplateWrite[],
-  };
+  // 元素级对象形态闸（G-B 做项5）：null/标量元素原会漏进 service 在属性访问处 TypeError→500，
+  // 本层显性 400；元素内字段域校验（缺字段/错型/越界）仍归 service（R-03 应用校验层，同 400）。
+  const templates = raw.templates.map((item) => {
+    if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `templates 元素须为对象 {weekday, start_time, duration_small, enabled?}：${JSON.stringify(item)}`,
+      );
+    }
+    return item as TemplateWrite;
+  });
+  return { version: raw.version as number, templates };
 }
 
 /** GET /lawyer/{id}/slots query 形状：from/to（YYYY-MM-DD 合法性在 service） */

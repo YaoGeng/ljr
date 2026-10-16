@@ -150,7 +150,7 @@ describe('B1 时间表管理（REST 契约 + R-01/R-02/R-03 + 状态视图缓存
 
   // ---------- §5 PUT /lawyer/schedule：幂等键=lawyer+version（乐观并发） + 鉴权 ----------
 
-  it('PUT：未认证 401 / user 角色 403 E_ROLE_FORBIDDEN / lawyer 本人成功 {version:1, templates 归一}；同 version 重放 409 E_VERSION_MISMATCH', async () => {
+  it('PUT：未认证 401 / user 角色 403 E_ROLE_FORBIDDEN / lawyer 本人成功 {version:1, templates 归一}；同 version 重放 409 E_CONFLICT', async () => {
     const body = {
       version: 0,
       templates: [{ weekday: 1, start_time: '10:00', duration_small: 60 }],
@@ -179,10 +179,11 @@ describe('B1 时间表管理（REST 契约 + R-01/R-02/R-03 + 状态视图缓存
       },
     ]);
 
-    // 幂等键=lawyer+version：同 version 重放 → 409（version 语义最小化口径，成功后服务端 +1）
+    // 幂等键=lawyer+version：同 version 重放 → 409（version 语义最小化口径，成功后服务端 +1；
+    // 乐观锁错误码全仓统一 E_CONFLICT，G-B 做项2）
     const replay = await putSchedule(LAWYER_A, body);
     expect(replay.status).toBe(409);
-    expect(replay.body.code).toBe(ErrorCode.VersionMismatch);
+    expect(replay.body.code).toBe(ErrorCode.Conflict);
   });
 
   it('PUT 全量替换：version=1 换新模板集 → 旧集删除；GET /lawyer/{id}/schedule 公开回读（无 token 200）', async () => {
@@ -225,6 +226,14 @@ describe('B1 时间表管理（REST 契约 + R-01/R-02/R-03 + 状态视图缓存
     expect(badId.body.code).toBe(ErrorCode.InvalidArgument);
   });
 
+  it('路径 id 严格化（G-B 做项4）：0x10/1e2/超长数字三形态 → 400（拒 Number 宽解析与精度丢失）', async () => {
+    for (const id of ['0x10', '1e2', '99999999999999999999']) {
+      const res = await request(app.getHttpServer()).get(`/lawyer/${id}/schedule`);
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ErrorCode.InvalidArgument);
+    }
+  });
+
   // ---------- R-03：时长三档 DB CHECK + 应用校验双层 ----------
 
   it('R-03 应用层：duration_small=45 / weekday=7 / start_time=25:00 / version=-1 / templates 非数组 → 400 E_INVALID_ARGUMENT', async () => {
@@ -234,6 +243,22 @@ describe('B1 时间表管理（REST 契约 + R-01/R-02/R-03 + 状态视图缓存
       { version: 0, templates: [{ weekday: 1, start_time: '25:00', duration_small: 60 }] },
       { version: -1, templates: [] },
       { version: 0, templates: 'nope' },
+    ];
+    for (const body of cases) {
+      const res = await putSchedule(LAWYER_A, body);
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ErrorCode.InvalidArgument);
+    }
+    expect(await templateCount(LAWYER_A)).toBe(0);
+  });
+
+  it('G-B 做项5：malformed 模板元素 → 400 不再 500（null/标量元素/缺字段/错型）', async () => {
+    const cases: unknown[] = [
+      { version: 0, templates: [null] }, // 原 500 形态：service 属性访问 TypeError
+      { version: 0, templates: ['10:00'] }, // 标量元素
+      { version: 0, templates: [{}] }, // 缺字段
+      { version: 0, templates: [{ weekday: '1', start_time: '10:00', duration_small: 60 }] }, // 错型
+      { version: 0, templates: [{ weekday: 9, start_time: '10:00', duration_small: 60 }] }, // 越界
     ];
     for (const body of cases) {
       const res = await putSchedule(LAWYER_A, body);

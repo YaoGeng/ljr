@@ -4,13 +4,13 @@
  * R-05：一切对外出参不含实名信息本体（仅 status/verified_at；解密面除外=合规双人复核出口）。
  */
 import { Body, Controller, Get, Post, Query, UseFilters, UseGuards } from '@nestjs/common';
+import { AppHttpExceptionFilter } from '../../infrastructure/app-error.filter';
 import { CurrentIdentity, IdentityAuthGuard, type IdentityClaims } from './identity.guards';
-import { IdentityHttpExceptionFilter } from './identity.http';
 import { parseDecryptQuery, parseRealnameBody } from './realname.http';
 import { RealnameService } from './realname.service';
 
 @Controller('realname')
-@UseFilters(IdentityHttpExceptionFilter)
+@UseFilters(AppHttpExceptionFilter)
 export class RealnameController {
   constructor(private readonly realname: RealnameService) {}
 
@@ -47,7 +47,7 @@ export class RealnameController {
  * 完整性（approved_by≠reviewed_by），无/不完整 → 403 NOT_APPROVED。
  */
 @Controller('admin/realname')
-@UseFilters(IdentityHttpExceptionFilter)
+@UseFilters(AppHttpExceptionFilter)
 export class RealnameAdminController {
   constructor(private readonly realname: RealnameService) {}
 

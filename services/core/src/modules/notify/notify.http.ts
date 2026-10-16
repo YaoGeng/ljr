@@ -1,24 +1,12 @@
 /**
- * I1 HTTP 面共用件：AppError → HTTP 错误体的模块内过滤器 + 入参解析。
+ * I1 HTTP 面共用件：入参解析（§5）。
+ * 错误体过滤器已收敛至 infrastructure 的 AppHttpExceptionFilter（G-B 做项1，6→1；
+ * 错误体形态 {code, message} 不变）。
  * 身份接线（W2 交接 4-B，A1 落地）：用户面 user_id 改由 JWT claims 注入
  * （identity 模块的 IdentityAuthGuard/IdentityRoleGuard/CurrentIdentity 承接），
  * 本文件不再做 user_id 解析；admin 面控制器不动（鉴权占位延续 W1 共性）。
  */
-import { Catch, type ArgumentsHost, type ExceptionFilter } from '@nestjs/common';
 import { AppError, ErrorCode } from '@ljr/shared';
-
-/** 结构化最小响应口（不引 express 类型依赖） */
-interface HttpResponse {
-  status(code: number): { json(body: unknown): unknown };
-}
-
-@Catch(AppError)
-export class NotifyHttpExceptionFilter implements ExceptionFilter {
-  catch(exception: AppError, host: ArgumentsHost): void {
-    const res = host.switchToHttp().getResponse<HttpResponse>();
-    res.status(exception.httpStatus).json({ code: exception.code, message: exception.message });
-  }
-}
 
 export interface PrefsPutItem {
   readonly templateCode: string;

@@ -1,7 +1,7 @@
 /**
  * A2 HTTP 面请求解析（§5 契约词汇 snake_case）：只做「形状→领域入参」的搬运与防呆，
- * 错误映射复用 IdentityHttpExceptionFilter（identity.http，A1 同模块共用件——第三面不再
- * 复制过滤器，T1 评审 minor-5 口径在本模块先行）。
+ * 错误映射经 infrastructure 的 AppHttpExceptionFilter（G-B 做项1 全仓唯一过滤器——不再
+ * 复制过滤器，T1 评审 minor-5 口径延续）。
  */
 import { AppError, ErrorCode } from '@ljr/shared';
 import { assertRealnameIdNoFormat, assertRealnameName } from './realname.provider';

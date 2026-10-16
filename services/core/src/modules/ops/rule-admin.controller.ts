@@ -16,11 +16,11 @@ import {
   parseRuleLimit,
   parseRuleStatus,
   parseRuleVersionBody,
-  RuleHttpExceptionFilter,
 } from './rule.http';
+import { AppHttpExceptionFilter } from '../../infrastructure/app-error.filter';
 
 @Controller('admin/rules')
-@UseFilters(RuleHttpExceptionFilter)
+@UseFilters(AppHttpExceptionFilter)
 export class RuleAdminController {
   constructor(private readonly rules: RuleCenterService) {}
 

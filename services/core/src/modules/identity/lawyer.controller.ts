@@ -6,13 +6,13 @@
  * 响应字段用 §5 契约词汇（snake_case）；一切出参不含 license_no 明文（PII 红线 §9）。
  */
 import { Body, Controller, Get, Param, Post, UseFilters, UseGuards } from '@nestjs/common';
+import { AppHttpExceptionFilter } from '../../infrastructure/app-error.filter';
 import { CurrentIdentity, IdentityAuthGuard, type IdentityClaims } from './identity.guards';
-import { IdentityHttpExceptionFilter } from './identity.http';
 import { parseAuditActionBody, parseProfileId, parseQualificationBody } from './lawyer.http';
 import { LawyerQualificationService } from './lawyer.service';
 
 @Controller('lawyer')
-@UseFilters(IdentityHttpExceptionFilter)
+@UseFilters(AppHttpExceptionFilter)
 export class LawyerQualificationController {
   constructor(private readonly qualification: LawyerQualificationService) {}
 
@@ -47,7 +47,7 @@ export class LawyerQualificationController {
  * admin 鉴权占位（W1 共性裁决 R-W2-F）：接入 H1/H2 后统一接线，接线前禁上 staging 共网。
  */
 @Controller('admin/lawyers')
-@UseFilters(IdentityHttpExceptionFilter)
+@UseFilters(AppHttpExceptionFilter)
 export class LawyerAuditAdminController {
   constructor(private readonly qualification: LawyerQualificationService) {}
 

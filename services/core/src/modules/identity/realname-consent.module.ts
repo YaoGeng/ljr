@@ -3,7 +3,7 @@
  *
  * 边界：只写 identity.* 表（real_name_infos/consents/decrypt_approvals），横切经基座
  * （OutboxService/StateTransitionGuardService），认证件复用 IdentityAuthModule（JWT 守卫/
- * 列加密），错误映射复用 IdentityHttpExceptionFilter——不新增过滤器副本（T1 评审 minor-5）。
+ * 列加密），错误映射经 infrastructure 的 AppHttpExceptionFilter——不新增过滤器副本（T1 评审 minor-5）。
  *
  * 消费依赖（单向）：IdentityModule 不依赖本模块；W3 C3/F1 实名闸口（R-01）反向 import
  * 本模块取 isRealnameVerified（同 schema 内服务导出，非跨 schema 取数）。

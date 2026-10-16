@@ -1,6 +1,6 @@
 /**
  * H5 词库管理 HTTP 面共用件：入参解析（§5 /admin/risk/dictionaries）。
- * 错误映射复用 H7 的 RuleHttpExceptionFilter（AppError → {code, message}，模块内同款先例）。
+ * 错误映射经 infrastructure 的 AppHttpExceptionFilter（AppError → {code, message}，全仓唯一）。
  * 后台鉴权 ⚠决策位：admin 角色鉴权随 H1/H2（W2+）接入后替换，本批次只交付接口形态
  * （rule-admin/scheduler-admin 同口径）。
  */

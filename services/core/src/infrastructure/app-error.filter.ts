@@ -1,9 +1,10 @@
 /**
- * AppError → HTTP 错误体通用过滤器：{code, message}。
+ * AppError → HTTP 错误体通用过滤器：{code, message}——全仓唯一 ExceptionFilter（G-B 做项1，6→1）。
  *
- * identity.http / notify.http / time-table.http 各有一份同形模块内过滤器（已成终审 triage 项：
- * 「下沉 infrastructure 或明确保留三份」）；B3 起新模块直用本件，既有三份由终审裁决统一收敛，
- * 本文件不改动既有模块。
+ * 曾有 6 份同形模块内过滤器（identity/notify/time-table + W1 遗留 specialty/rule/scheduler），
+ * 行为逐字相同（无独有字段/日志差异），已全部删除并统一注册本件；pricing/credit 自 B3/G1 起
+ * 即直用本件。行为口径：AppError → 其 httpStatus + {code, message}；非 AppError 不在本过滤器
+ * 捕获面（@Catch(AppError)），走 Nest 内建兜底（500 通用体 + 框架日志），与收敛前一致。
  */
 import { Catch, type ArgumentsHost, type ExceptionFilter } from '@nestjs/common';
 import { AppError } from '@ljr/shared';

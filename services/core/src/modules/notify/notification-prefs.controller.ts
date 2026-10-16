@@ -11,11 +11,12 @@ import {
   RequireRole,
   type IdentityClaims,
 } from '../identity/identity.guards';
-import { NotifyHttpExceptionFilter, parsePrefsBody } from './notify.http';
+import { AppHttpExceptionFilter } from '../../infrastructure/app-error.filter';
+import { parsePrefsBody } from './notify.http';
 import { NotifyPrefsService } from './notify-prefs.service';
 
 @Controller('notification-prefs')
-@UseFilters(NotifyHttpExceptionFilter)
+@UseFilters(AppHttpExceptionFilter)
 export class NotificationPrefsController {
   constructor(private readonly prefs: NotifyPrefsService) {}
 

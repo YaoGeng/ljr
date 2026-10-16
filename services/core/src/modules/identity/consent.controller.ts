@@ -4,13 +4,13 @@
  * 未列——文档缺口回写项）。user_id 一律取 JWT claims；R-02：拒绝路径不降级其余功能。
  */
 import { Body, Controller, Get, Post, UseFilters, UseGuards } from '@nestjs/common';
+import { AppHttpExceptionFilter } from '../../infrastructure/app-error.filter';
 import { CurrentIdentity, IdentityAuthGuard, type IdentityClaims } from './identity.guards';
-import { IdentityHttpExceptionFilter } from './identity.http';
 import { parseTrainingConsentBody } from './realname.http';
 import { ConsentService } from './consent.service';
 
 @Controller('consents/training')
-@UseFilters(IdentityHttpExceptionFilter)
+@UseFilters(AppHttpExceptionFilter)
 export class ConsentController {
   constructor(private readonly consent: ConsentService) {}
 

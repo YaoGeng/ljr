@@ -11,11 +11,11 @@ import {
   RequireRole,
   type IdentityClaims,
 } from '../identity/identity.guards';
-import { NotifyHttpExceptionFilter } from './notify.http';
+import { AppHttpExceptionFilter } from '../../infrastructure/app-error.filter';
 import { NotifyDispatcherService } from './notify-dispatcher.service';
 
 @Controller('notifications')
-@UseFilters(NotifyHttpExceptionFilter)
+@UseFilters(AppHttpExceptionFilter)
 export class NotificationsController {
   constructor(private readonly dispatcher: NotifyDispatcherService) {}
 

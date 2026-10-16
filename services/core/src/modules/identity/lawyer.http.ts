@@ -1,6 +1,6 @@
 /**
  * A3a HTTP 面请求解析与形态防呆（§5 契约词汇 snake_case）：只做「形状→领域入参」的搬运，
- * 错误映射复用 IdentityHttpExceptionFilter（identity.http，A1/A2 同模块共用件——不新增
+ * 错误映射经 infrastructure 的 AppHttpExceptionFilter（G-B 做项1 全仓唯一过滤器——不新增
  * 过滤器副本，T1 评审 minor-5 口径延续）。
  * 形态校验函数（assertLicenseNo/parseQualificationFiles）同时供领域服务直调入口复用
  * （realname.provider 同口径：REST 与服务层共用同一防呆事实源）。

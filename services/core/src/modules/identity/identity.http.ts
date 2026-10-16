@@ -1,23 +1,10 @@
 /**
- * A1 HTTP 面共用件：AppError → HTTP 错误体的模块内过滤器 + 请求体解析（§5 契约词汇）。
- * 错误体形态与 notify.http 同口径：{code, message}。
+ * A1 HTTP 面共用件：请求体解析（§5 契约词汇）。
+ * 错误体过滤器已收敛至 infrastructure 的 AppHttpExceptionFilter（G-B 做项1，6→1；
+ * 错误体形态 {code, message} 不变）。
  */
-import { Catch, type ArgumentsHost, type ExceptionFilter } from '@nestjs/common';
 import { AppError, ErrorCode } from '@ljr/shared';
 import { assertMainlandPhone } from './identity.crypto';
-
-/** 结构化最小响应口（不引 express 类型依赖） */
-interface HttpResponse {
-  status(code: number): { json(body: unknown): unknown };
-}
-
-@Catch(AppError)
-export class IdentityHttpExceptionFilter implements ExceptionFilter {
-  catch(exception: AppError, host: ArgumentsHost): void {
-    const res = host.switchToHttp().getResponse<HttpResponse>();
-    res.status(exception.httpStatus).json({ code: exception.code, message: exception.message });
-  }
-}
 
 /** POST /auth/sms 体：{phone} */
 export function parseSmsBody(body: unknown): { phone: string } {

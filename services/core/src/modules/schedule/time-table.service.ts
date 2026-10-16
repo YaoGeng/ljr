@@ -1,7 +1,8 @@
 /**
  * B1 时间表服务（§2/§4/§5 + Task 4 简报裁决）：
  *   - 模板全量替换（PUT，幂等键=lawyer+version 乐观并发：入参 version 与服务端当前一致才接受，
- *     否则 409 E_VERSION_MISMATCH——version 语义最小化自定口径，报告注明）；
+ *     否则 409 E_CONFLICT——乐观锁错误码全仓统一 E_CONFLICT（G-B 做项2 裁决：version mismatch
+ *     是冲突的种；A2 训练授权的 E_VERSION_MISMATCH 是 policy 闸语义，不属于乐观锁，不受此裁决影响）；
  *   - 物化入口 materializeSlots(lawyerId, date)：候选 timestamptz + 各候选当前状态（实时），
  *     不落库（R-02：具体时刻由 B2 slot_locks 承载）、不代锁（C1/C2 选段后自己调 B2 lockSlot）；
  *   - 状态视图 slotViews(lawyerId, from, to)：实时 join slot_locks（活跃=PENDING_PAYMENT/LOCKED/
@@ -94,7 +95,7 @@ export class TimeTableService {
       }
       if (serverVersion !== input.version) {
         throw new AppError(
-          ErrorCode.VersionMismatch,
+          ErrorCode.Conflict,
           `时间表版本不一致（服务端 ${serverVersion}，入参 ${input.version}），请刷新后重试`,
         );
       }

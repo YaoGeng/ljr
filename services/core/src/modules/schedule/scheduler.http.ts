@@ -1,24 +1,12 @@
 /**
- * I2 HTTP 面共用件：AppError → HTTP 错误体的模块内过滤器 + 运维视图入参解析（§5）。
+ * I2 HTTP 面共用件：运维视图入参解析（§5）。
+ * 错误体过滤器已收敛至 infrastructure 的 AppHttpExceptionFilter（G-B 做项1，6→1；
+ * 错误体形态 {code, message} 不变）。
  * 后台鉴权 ⚠决策位：admin 角色鉴权随 H1/H2（W2+）接入后替换，本批次只交付接口形态。
  */
-import { Catch, type ArgumentsHost, type ExceptionFilter } from '@nestjs/common';
 import { AppError, ErrorCode } from '@ljr/shared';
 import { isScheduleJobType, type ScheduleJobType } from './scheduler.catalog';
 import type { ScheduleJobStatus } from './scheduler.types';
-
-/** 结构化最小响应口（不引 express 类型依赖，notify.http 同口径） */
-interface HttpResponse {
-  status(code: number): { json(body: unknown): unknown };
-}
-
-@Catch(AppError)
-export class SchedulerHttpExceptionFilter implements ExceptionFilter {
-  catch(exception: AppError, host: ArgumentsHost): void {
-    const res = host.switchToHttp().getResponse<HttpResponse>();
-    res.status(exception.httpStatus).json({ code: exception.code, message: exception.message });
-  }
-}
 
 const JOB_STATUSES: readonly ScheduleJobStatus[] = [
   'PENDING',

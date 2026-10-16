@@ -6,10 +6,11 @@
 import { Controller, Get, Query, UseFilters } from '@nestjs/common';
 import type { RoomNoticeView } from './rule-center.types';
 import { RuleCenterService } from './rule-center.service';
-import { parseRuleKey, RuleHttpExceptionFilter } from './rule.http';
+import { parseRuleKey } from './rule.http';
+import { AppHttpExceptionFilter } from '../../infrastructure/app-error.filter';
 
 @Controller('rooms')
-@UseFilters(RuleHttpExceptionFilter)
+@UseFilters(AppHttpExceptionFilter)
 export class RoomNoticeController {
   constructor(private readonly rules: RuleCenterService) {}
 

@@ -4,9 +4,9 @@
  * IdentityAuthGuard，身份取自 JWT claims（不收 query 注入）。
  */
 import { Body, Controller, Get, Post, UseFilters, UseGuards } from '@nestjs/common';
+import { AppHttpExceptionFilter } from '../../infrastructure/app-error.filter';
 import { CurrentIdentity, IdentityAuthGuard, type IdentityClaims } from './identity.guards';
 import {
-  IdentityHttpExceptionFilter,
   parseRefreshTokenBody,
   parseSmsBody,
   parseSwitchRoleBody,
@@ -15,7 +15,7 @@ import {
 import { IdentityService } from './identity.service';
 
 @Controller('auth')
-@UseFilters(IdentityHttpExceptionFilter)
+@UseFilters(AppHttpExceptionFilter)
 export class AuthController {
   constructor(private readonly identity: IdentityService) {}
 
@@ -63,7 +63,7 @@ export class AuthController {
 }
 
 @Controller()
-@UseFilters(IdentityHttpExceptionFilter)
+@UseFilters(AppHttpExceptionFilter)
 export class MeController {
   constructor(private readonly identity: IdentityService) {}
 

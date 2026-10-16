@@ -2,6 +2,10 @@
  * B1 状态视图缓存（§8/R-W2-8 决策位）：60s 进程内 TTL 适配位（无 Redis——W2-8：dev 环境无
  * Redis，prod 换装 Redis 同接口的适配位）。失效双通道：Slot* 事件消费主动失效（time-table.consumer）
  * + TTL 过期兜底（§10-3 最终一致 ≤60s 语义的实现载体）。纯内存键值：键=(lawyerId, from, to)。
+ *
+ * 形态对齐 pricing.cache/credit.cache（G-B 做项3，M-3）：
+ *   ① set() 顺带清扫全部过期条目（防进程内存活期无界累积）；
+ *   ② get() 返回 structuredClone 深拷贝（服务级调用者改写返回值不污染缓存）。
  */
 import { Inject, Injectable, type InjectionToken, Optional } from '@nestjs/common';
 
@@ -53,7 +57,12 @@ export class SlotViewCache {
     return `${lawyerId}|${from}|${to}`;
   }
 
-  /** TTL 内命中返回缓存值；过期惰性清除返回 null */
+  /** 观测位/测试口：当前条目数（含未过期） */
+  get size(): number {
+    return this.entries.size;
+  }
+
+  /** TTL 内命中返回深拷贝（防调用者污染缓存）；过期惰性清除返回 null */
   get<T>(lawyerId: number, from: string, to: string): T | null {
     const key = this.key(lawyerId, from, to);
     const hit = this.entries.get(key);
@@ -62,10 +71,11 @@ export class SlotViewCache {
       this.entries.delete(key);
       return null;
     }
-    return hit.value as T;
+    return structuredClone(hit.value) as T;
   }
 
   set(lawyerId: number, from: string, to: string, value: unknown): void {
+    this.sweepExpired(); // 顺带清扫（G-B 做项3①防累积；条目量=被查询过的律师区间数，遍历代价可忽略）
     this.entries.set(this.key(lawyerId, from, to), {
       lawyerId,
       from,
@@ -88,5 +98,12 @@ export class SlotViewCache {
       }
     }
     return evicted;
+  }
+
+  private sweepExpired(): void {
+    const now = this.clock();
+    for (const [key, entry] of this.entries) {
+      if (now >= entry.expiresAt) this.entries.delete(key);
+    }
   }
 }

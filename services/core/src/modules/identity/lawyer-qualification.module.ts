@@ -3,7 +3,7 @@
  *
  * 边界：只写 identity.* 表（lawyer_profiles/qualification_files），横切经基座
  * （OutboxService/StateTransitionGuardService），认证件复用 IdentityAuthModule（JWT 守卫/
- * 列加密/盲索引 pepper），错误映射复用 IdentityHttpExceptionFilter——不新增过滤器副本。
+ * 列加密/盲索引 pepper），错误映射经 infrastructure 的 AppHttpExceptionFilter——不新增过滤器副本。
  *
  * 生产事件（§6）：LawyerAuditPassed（approve 同事务）→ A1 消费授 lawyer role；
  * LawyerSuspended（suspend 同事务）→ 预留 C3/H1 订阅位。消费：无。

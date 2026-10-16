@@ -3,24 +3,18 @@
  *
  * 台账顺延项修正（T4 minor ①/④形态）：解析器做元素级类型占位透传——域校验全部收敛在
  * pricing.validate（每字段显性 typeof/形态检查 → AppError 400/422），畸形元素不再漏成 500；
- * parseLawyerId 用 ^\d+$ 严格整数（拒 0x10/1e2 形态）。
- * 错误体形态：infrastructure 的 AppHttpExceptionFilter（{code, message}，既有三份模块内
- * 过滤器的下沉位，B3 起新模块直用）。
+ * parseLawyerId 严格十进制整数+安全上限，统一收口 infrastructure/parse-positive-int（G-B 做项4，
+ * 补 MAX_SAFE_INTEGER 上限——超长数字不再静默精度丢失后 22003→500）。
+ * 错误体形态：infrastructure 的 AppHttpExceptionFilter（{code, message}，G-B 做项1 全仓唯一过滤器）。
  */
 import { AppError, ErrorCode } from '@ljr/shared';
 import type { Money } from '@ljr/shared';
+import { parsePositiveInt } from '../../infrastructure/parse-positive-int';
 import type { OneOnOnePrices, PutPricingInput, RoomMode } from './pricing.types';
 
-/** 路径参数 {id}：十进制正整数（lawyer_id=identity 侧用户 id；拒 0x10/1e2/负号形态） */
+/** 路径参数 {id}：十进制正整数（lawyer_id=identity 侧用户 id；严格解析收口 G-B 做项4） */
 export function parseLawyerId(raw: string): number {
-  if (!/^\d+$/.test(raw)) {
-    throw new AppError(ErrorCode.InvalidArgument, `路径参数 id 须为正整数：${raw}`);
-  }
-  const id = Number(raw);
-  if (id <= 0) {
-    throw new AppError(ErrorCode.InvalidArgument, `路径参数 id 须为正整数：${raw}`);
-  }
-  return id;
+  return parsePositiveInt(raw, '路径参数 id');
 }
 
 /** PUT /lawyer/pricing 体形状：{base_version, one_on_one_prices, ...可空列}（域校验在 validate 层） */

@@ -5,10 +5,11 @@
 import { Controller, Get, Query, UseFilters } from '@nestjs/common';
 import { SpecialtyConfigService } from './specialty.service';
 import type { SpecialtyQuestionTreeView } from './specialty.types';
-import { SpecialtyHttpExceptionFilter, parsePublicSpecialtyKey } from './specialty.http';
+import { parsePublicSpecialtyKey } from './specialty.http';
+import { AppHttpExceptionFilter } from '../../infrastructure/app-error.filter';
 
 @Controller('specialty')
-@UseFilters(SpecialtyHttpExceptionFilter)
+@UseFilters(AppHttpExceptionFilter)
 export class SpecialtyPublicController {
   constructor(private readonly configs: SpecialtyConfigService) {}
 

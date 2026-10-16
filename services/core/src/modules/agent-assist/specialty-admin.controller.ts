@@ -9,15 +9,15 @@ import { SpecialtyConfigService } from './specialty.service';
 import { KnowledgeService } from './knowledge.service';
 import type { UploadKnowledgeDocResult } from './knowledge.types';
 import {
-  SpecialtyHttpExceptionFilter,
   parsePutPromptsBody,
   parsePutQuestionTreeBody,
   parseSpecialtyKey,
   parseUploadKnowledgeBody,
 } from './specialty.http';
+import { AppHttpExceptionFilter } from '../../infrastructure/app-error.filter';
 
 @Controller('admin/specialty')
-@UseFilters(SpecialtyHttpExceptionFilter)
+@UseFilters(AppHttpExceptionFilter)
 export class SpecialtyAdminController {
   constructor(
     private readonly configs: SpecialtyConfigService,

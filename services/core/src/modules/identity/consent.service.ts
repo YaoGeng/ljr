@@ -123,15 +123,12 @@ export class ConsentService {
         reason: `consent.grant:${TRAINING_SCOPE}:policy=${input.policyVersion}`,
         uow,
       });
-      await uow.query('SAVEPOINT consent_grant_insert');
-      try {
-        const inserted = await uow.query<{ granted_at: Date }>(
-          `INSERT INTO identity.consents (user_id, scope, status, policy_version, granted_at)
-           VALUES ($1, $2, 'GRANTED', $3, now()) RETURNING granted_at`,
-          [userId, TRAINING_SCOPE, input.policyVersion],
-        );
-        await uow.query('RELEASE SAVEPOINT consent_grant_insert');
-        const grantedAt = inserted.rows[0]!.granted_at;
+      // try 只包 INSERT+RELEASE（realname insertVerifiedRow 同形态收窄，M-4）：outbox 写入留在
+      // try 外——其自身的 23505（event_id 撞键）不得被 isActiveUniqueViolation 误捕成「授权
+      // 唯一败退」走幂等读回，否则事件写入失败会被静默吞掉且掩盖为授权成功。
+      const grantedAt = await this.insertGrantedRow(uow, userId, input.policyVersion);
+      if (grantedAt !== null) {
+        this.logger.log(`consent: training 授权 user_id=${userId} policy=${input.policyVersion}`);
         await this.outbox.recordOutbox(uow, {
           type: TRAINING_CONSENT_GRANTED_TOPIC,
           payload: {
@@ -139,24 +136,19 @@ export class ConsentService {
             policy_version: input.policyVersion,
           } satisfies TrainingConsentGrantedPayload,
         });
-        this.logger.log(`consent: training 授权 user_id=${userId} policy=${input.policyVersion}`);
         return { status: 'GRANTED', policyVersion: input.policyVersion, grantedAt };
-      } catch (e) {
-        if (!isActiveUniqueViolation(e)) throw e;
-        // 并发同版本双授权：活跃唯一索引败退。23505 后事务已 abort，同 uow 直接读回必 25P02
-        // （Important-1：原实现的「幂等读回」是死代码）——先 ROLLBACK TO SAVEPOINT 解除 abort
-        // 态，再同事务读回首访现值（败退方不发事件，事件归属首访事务）。
-        await uow.query('ROLLBACK TO SAVEPOINT consent_grant_insert');
-        const active = await this.activeRowOfVersion(uow, userId, input.policyVersion);
-        if (!active || active.granted_at === null) {
-          throw new AppError(ErrorCode.InternalError, '授权并发败退后无活跃行（不应触达）');
-        }
-        return {
-          status: 'GRANTED',
-          policyVersion: active.policy_version,
-          grantedAt: active.granted_at,
-        };
       }
+      // 并发同版本双授权：活跃唯一索引败退（insertGrantedRow 返回 null）。败退方不发事件
+      // （事件归属首访事务），同事务读回首访现值（Important-1：ROLLBACK TO 先解除 abort 态）。
+      const active = await this.activeRowOfVersion(uow, userId, input.policyVersion);
+      if (!active || active.granted_at === null) {
+        throw new AppError(ErrorCode.InternalError, '授权并发败退后无活跃行（不应触达）');
+      }
+      return {
+        status: 'GRANTED',
+        policyVersion: active.policy_version,
+        grantedAt: active.granted_at,
+      };
     });
   }
 
@@ -242,6 +234,34 @@ export class ConsentService {
       [userId, TRAINING_SCOPE, policyVersion],
     );
     return found.rows[0];
+  }
+
+  /**
+   * INSERT 新授权行（SAVEPOINT 兜并发；realname insertVerifiedRow 同形态）：成功返回 granted_at，
+   * 活跃唯一败退返回 null。try 只包 INSERT+RELEASE——后续写方（outbox 等）的 23505 不会被
+   * 误判成本表唯一败退（M-4）。
+   */
+  private async insertGrantedRow(
+    uow: SqlExecutor,
+    userId: number,
+    policyVersion: string,
+  ): Promise<Date | null> {
+    await uow.query('SAVEPOINT consent_grant_insert');
+    try {
+      const inserted = await uow.query<{ granted_at: Date }>(
+        `INSERT INTO identity.consents (user_id, scope, status, policy_version, granted_at)
+         VALUES ($1, $2, 'GRANTED', $3, now()) RETURNING granted_at`,
+        [userId, TRAINING_SCOPE, policyVersion],
+      );
+      await uow.query('RELEASE SAVEPOINT consent_grant_insert');
+      return inserted.rows[0]!.granted_at;
+    } catch (e) {
+      if (!isActiveUniqueViolation(e)) throw e;
+      // 23505 后事务已 abort，同 uow 直接读回必 25P02（Important-1）——先 ROLLBACK TO SAVEPOINT
+      // 解除 abort 态再返回；读回由调用方同事务完成。
+      await uow.query('ROLLBACK TO SAVEPOINT consent_grant_insert');
+      return null;
+    }
   }
 
   /** 同 user+scope 最新行（撤回目标：授权恒为最新插入的 GRANTED 行原位迁移） */

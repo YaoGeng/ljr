@@ -1,29 +1,16 @@
 /**
- * E3 HTTP 面共用件：AppError → HTTP 错误体的模块内过滤器 + 入参解析（§5 四接口）。
- * 形态沿 rule.http.ts（模块内同款先例，不跨模块复用其类——保持 agent-assist 自洽）。
+ * E3 HTTP 面共用件：入参解析（§5 四接口）。
+ * 错误体过滤器已收敛至 infrastructure 的 AppHttpExceptionFilter（G-B 做项1，6→1；
+ * 错误体形态 {code, message} 不变）。
  * 后台鉴权 ⚠决策位：admin 角色鉴权随 H1/H2（W2+）接入后替换，本批次只交付接口形态
  * （rule-admin/scheduler-admin/word-admin 同口径）；/specialty/question-tree 公开只读无鉴权。
  */
-import { Catch, type ArgumentsHost, type ExceptionFilter } from '@nestjs/common';
 import { AppError, ErrorCode } from '@ljr/shared';
 import {
   assertBaseVersionInt,
   assertDocTitle,
   assertSupportedSpecialty,
 } from './specialty.validate';
-
-/** 结构化最小响应口（不引 express 类型依赖，rule.http 同口径） */
-interface HttpResponse {
-  status(code: number): { json(body: unknown): unknown };
-}
-
-@Catch(AppError)
-export class SpecialtyHttpExceptionFilter implements ExceptionFilter {
-  catch(exception: AppError, host: ArgumentsHost): void {
-    const res = host.switchToHttp().getResponse<HttpResponse>();
-    res.status(exception.httpStatus).json({ code: exception.code, message: exception.message });
-  }
-}
 
 /** 管理面路径专项 key（R-04 门：不在册 400 E_SPECIALTY_UNSUPPORTED） */
 export function parseSpecialtyKey(raw: string): string {
