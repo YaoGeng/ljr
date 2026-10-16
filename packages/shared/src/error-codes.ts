@@ -228,11 +228,13 @@ const ERROR_CODE_META: Readonly<Record<ErrorCode, ErrorCodeMeta>> = {
   },
   [ErrorCode.MerchantDuplicate]: {
     httpStatus: 409,
-    defaultMessage: '律所进件重复提交：同律所同通道的商户进件已在流程中或已生效（幂等键=firm+channel）',
+    defaultMessage:
+      '律所进件重复提交：同律所同通道的商户进件已在流程中或已生效（幂等键=firm+channel）',
   },
   [ErrorCode.MerchantNotActive]: {
     httpStatus: 409,
-    defaultMessage: '律所商户未生效（R-01 分账前置）：仅 ACTIVE 状态可接收分账指令（变更期 CHANGING 同拒）',
+    defaultMessage:
+      '律所商户未生效（R-01 分账前置）：仅 ACTIVE 状态可接收分账指令（变更期 CHANGING 同拒）',
   },
 };
 

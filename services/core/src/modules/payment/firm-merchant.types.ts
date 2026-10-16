@@ -54,7 +54,10 @@ export interface ReverifyOverdueOutcome {
 /** channel 值域收口（wechat_ecom|alipay，§3 注释；缺省=主通道） */
 export function assertChannel(v: string): PaymentChannelName {
   if (v !== 'wechat_ecom' && v !== 'alipay') {
-    throw new AppError(ErrorCode.InvalidArgument, `channel 越域（wechat_ecom|alipay）：${String(v)}`);
+    throw new AppError(
+      ErrorCode.InvalidArgument,
+      `channel 越域（wechat_ecom|alipay）：${String(v)}`,
+    );
   }
   return v;
 }

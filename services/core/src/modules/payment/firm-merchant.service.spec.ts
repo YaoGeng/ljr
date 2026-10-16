@@ -16,7 +16,11 @@ import {
   PAYMENT_CHANNEL_ADAPTERS,
   type PaymentChannelAdapter,
 } from './payment.channels';
-import { PAYMENT_CONFIG, PAYMENT_SWITCH_WINDOW_MS_DEFAULT, type PaymentConfig } from './payment.config';
+import {
+  PAYMENT_CONFIG,
+  PAYMENT_SWITCH_WINDOW_MS_DEFAULT,
+  type PaymentConfig,
+} from './payment.config';
 import { FIRM_MERCHANT_CONFIG, type FirmMerchantConfig } from './firm-merchant.config';
 import { createFirmOnboardingHandler } from './firm-merchant.consumer';
 import { FirmMerchantService } from './firm-merchant.service';
@@ -112,9 +116,7 @@ describe('A3b 进件服务（§4/§5/§7，需 PG）', () => {
     );
     expect(job.rows).toHaveLength(1);
     expect(job.rows[0]!.status).toBe('PENDING');
-    expect(new Date(job.rows[0]!.due_at).getTime()).toBe(
-      new Date(view.reverify_due!).getTime(),
-    );
+    expect(new Date(job.rows[0]!.due_at).getTime()).toBe(new Date(view.reverify_due!).getTime());
 
     const events = await pool.query<{ topic: string; payload: Record<string, unknown> }>(
       `SELECT topic, payload FROM platform.outbox WHERE topic = $1`,
@@ -397,11 +399,9 @@ describe('A3b 进件服务（§4/§5/§7，需 PG）', () => {
         channel: 'wechat_ecom',
         materials: { bank_account_no: secret, license_key: 'secret-xyz-9876' },
       });
-      const logged = [
-        ...logSpy.mock.calls,
-        ...warnSpy.mock.calls,
-        ...errorSpy.mock.calls,
-      ].map((args) => args.map(String).join(' '));
+      const logged = [...logSpy.mock.calls, ...warnSpy.mock.calls, ...errorSpy.mock.calls].map(
+        (args) => args.map(String).join(' '),
+      );
       expect(logged.length).toBeGreaterThan(0); // 确有业务日志（摘要形态）
       for (const line of logged) {
         expect(line).not.toContain(secret);

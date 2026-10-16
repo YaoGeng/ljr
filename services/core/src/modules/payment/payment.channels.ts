@@ -254,7 +254,7 @@ export class MockChannelAdapter implements PaymentChannelAdapter {
     };
   }
 
-  async freeze(req: ChannelInstructionRequest): Promise<ChannelResult> {
+  async freeze(_req: ChannelInstructionRequest): Promise<ChannelResult> {
     if (this.fault?.kind === 'INSUFFICIENT') {
       // A3b 保证金冻结业务应答：资金来源不足（与 deduct 共用 INSUFFICIENT 词汇，不触发切换）
       throw new ChannelFaultError('INSUFFICIENT', this.channel, 'INSUFFICIENT：冻结资金来源不足');

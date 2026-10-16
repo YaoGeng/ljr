@@ -31,7 +31,11 @@ export function parseMerchantSubmitBody(body: unknown): {
   materials: Readonly<Record<string, unknown>>;
 } {
   const raw = asObject(body);
-  if (typeof raw['materials'] !== 'object' || raw['materials'] === null || Array.isArray(raw['materials'])) {
+  if (
+    typeof raw['materials'] !== 'object' ||
+    raw['materials'] === null ||
+    Array.isArray(raw['materials'])
+  ) {
     throw new AppError(ErrorCode.InvalidArgument, 'materials 须为 JSON 对象（键值不落日志）');
   }
   return {
@@ -45,7 +49,11 @@ export function parseMerchantChangeBody(body: unknown): {
   materials: Readonly<Record<string, unknown>>;
 } {
   const raw = asObject(body);
-  if (typeof raw['materials'] !== 'object' || raw['materials'] === null || Array.isArray(raw['materials'])) {
+  if (
+    typeof raw['materials'] !== 'object' ||
+    raw['materials'] === null ||
+    Array.isArray(raw['materials'])
+  ) {
     throw new AppError(ErrorCode.InvalidArgument, 'materials 须为 JSON 对象（键值不落日志）');
   }
   return { materials: raw['materials'] as Readonly<Record<string, unknown>> };
@@ -59,7 +67,10 @@ export function parseDepositFreezeBody(body: unknown): {
 } {
   const raw = asObject(body);
   if (typeof raw['batch'] !== 'string') {
-    throw new AppError(ErrorCode.InvalidArgument, `batch 须为字符串：${JSON.stringify(raw['batch'])}`);
+    throw new AppError(
+      ErrorCode.InvalidArgument,
+      `batch 须为字符串：${JSON.stringify(raw['batch'])}`,
+    );
   }
   let amount: Money | undefined;
   if (raw['amount'] !== undefined) {

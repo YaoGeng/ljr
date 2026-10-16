@@ -10,7 +10,11 @@ import {
   PAYMENT_CHANNEL_ADAPTERS,
   type PaymentChannelAdapter,
 } from './payment.channels';
-import { PAYMENT_CONFIG, PAYMENT_SWITCH_WINDOW_MS_DEFAULT, type PaymentConfig } from './payment.config';
+import {
+  PAYMENT_CONFIG,
+  PAYMENT_SWITCH_WINDOW_MS_DEFAULT,
+  type PaymentConfig,
+} from './payment.config';
 import { FIRM_MERCHANT_CONFIG, type FirmMerchantConfig } from './firm-merchant.config';
 import { PaymentModule } from './payment.module';
 import { SchedulerService } from '../schedule/scheduler.service';
@@ -144,7 +148,9 @@ describe('A3b HTTP 契约（§5，需 PG）', () => {
     expect(early.status).toBe(409);
     expect(early.body.code).toBe('E_STATE_ILLEGAL_TRANSITION');
 
-    const missing = await request(app.getHttpServer()).post('/firms/999999/merchant/reverify').send({});
+    const missing = await request(app.getHttpServer())
+      .post('/firms/999999/merchant/reverify')
+      .send({});
     expect(missing.status).toBe(404);
   });
 

@@ -31,7 +31,13 @@ import { StateTransitionGuardService } from '../../infrastructure/state-machine/
 import { ChannelFaultError, ChannelRouter } from './payment.channels';
 import { FIRM_MERCHANT_CONFIG, type FirmMerchantConfig } from './firm-merchant.config';
 import { LAWYER_DEPOSIT_MACHINE } from './firm-merchant.machine';
-import { assertMoney, assertPositiveInt, centsToMoney, dbNumericToCents, moneyToCents } from './payment.types';
+import {
+  assertMoney,
+  assertPositiveInt,
+  centsToMoney,
+  dbNumericToCents,
+  moneyToCents,
+} from './payment.types';
 
 interface DepositRow {
   readonly id: string;
@@ -120,7 +126,11 @@ export class DepositService {
           amount,
           input.batch,
           idempotencyKey,
-          JSON.stringify({ firm_id: firmId, lawyer_id: lawyerId, batch: input.batch } satisfies DepositDetail),
+          JSON.stringify({
+            firm_id: firmId,
+            lawyer_id: lawyerId,
+            batch: input.batch,
+          } satisfies DepositDetail),
         ],
       );
       if (claim.rows.length === 0) {
@@ -134,9 +144,7 @@ export class DepositService {
       // 通道指令（§4.4 持牌机构专户冻结；INSUFFICIENT=资金来源不足业务应答 → 400，不切换）
       let out;
       try {
-        out = await this.router.execute((a) =>
-          a.freeze({ orderId: null, amount, idempotencyKey }),
-        );
+        out = await this.router.execute((a) => a.freeze({ orderId: null, amount, idempotencyKey }));
       } catch (e) {
         if (e instanceof ChannelFaultError && e.kind === 'INSUFFICIENT') {
           throw new AppError(
@@ -218,7 +226,10 @@ export class DepositService {
     return res.rows[0] ?? null;
   }
 
-  private async findByIdempotencyKeyInTx(uow: SqlExecutor, key: string): Promise<DepositRow | null> {
+  private async findByIdempotencyKeyInTx(
+    uow: SqlExecutor,
+    key: string,
+  ): Promise<DepositRow | null> {
     const res = await uow.query<DepositRow>(
       `SELECT ${DEPOSIT_COLS} FROM payment.lawyer_deposits WHERE idempotency_key = $1`,
       [key],

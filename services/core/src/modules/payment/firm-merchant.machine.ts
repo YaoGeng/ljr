@@ -21,12 +21,7 @@
 import { createStateMachine } from '../../infrastructure/state-machine/state-machine';
 
 export type FirmMerchantStatus =
-  | 'SUBMITTING'
-  | 'IN_REVIEW'
-  | 'ACTIVE'
-  | 'CHANGING'
-  | 'SUSPENDED'
-  | 'STOPPED';
+  'SUBMITTING' | 'IN_REVIEW' | 'ACTIVE' | 'CHANGING' | 'SUSPENDED' | 'STOPPED';
 
 export type LawyerDepositStatus = 'ISSUED' | 'FROZEN';
 

@@ -11,7 +11,12 @@
  * 先例，at-least-once 语义内）。
  */
 import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
-import { AppError, ErrorCode, LAWYER_AUDIT_PASSED_TOPIC, type LawyerAuditPassedPayload } from '@ljr/shared';
+import {
+  AppError,
+  ErrorCode,
+  LAWYER_AUDIT_PASSED_TOPIC,
+  type LawyerAuditPassedPayload,
+} from '@ljr/shared';
 import type { OutboxHandler, RelayEvent } from '../../infrastructure/outbox/outbox-relay.service';
 import { OutboxRelayService } from '../../infrastructure/outbox/outbox-relay.service';
 import { FirmMerchantService } from './firm-merchant.service';
@@ -50,7 +55,9 @@ export function createFirmOnboardingHandler(service: FirmMerchantService): Outbo
     }
     const out = await service.startOnboarding({ firm_id: payload.firm_id });
     if (!out.started) {
-      logger.log(`律所进件已存在，幂等短路：firm_id=${payload.firm_id}（event_id=${event.eventId}）`);
+      logger.log(
+        `律所进件已存在，幂等短路：firm_id=${payload.firm_id}（event_id=${event.eventId}）`,
+      );
     }
   };
 }
@@ -66,6 +73,9 @@ export class FirmMerchantConsumer implements OnModuleInit {
 
   onModuleInit(): void {
     // 同 topic 多 handler：A1 授角色（identity.consumer）与本进件启动并存，relay 扇出承接
-    this.relay.registerHandler(LAWYER_AUDIT_PASSED_TOPIC, createFirmOnboardingHandler(this.merchants));
+    this.relay.registerHandler(
+      LAWYER_AUDIT_PASSED_TOPIC,
+      createFirmOnboardingHandler(this.merchants),
+    );
   }
 }

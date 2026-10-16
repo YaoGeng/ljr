@@ -35,6 +35,7 @@ export class FirmMerchantJobExecutors implements OnModuleInit {
         return res.rows[0]?.due === true;
       },
       execute: async ({ job, uow }) => {
+        if (job.refId === null) return { skipped: true }; // FIRM_REVERIFY 注册恒带 refId（防御位）
         const out = await this.merchants.suspendOverdueInTx(uow, job.refId);
         if (!out) return { skipped: true }; // 回查与执行间隙被并发推进（幂等兜底，job 仍 DONE）
         return { firm_id: out.firm_id, channel: out.channel, due_at: out.due_at };

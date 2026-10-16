@@ -26,11 +26,7 @@ import { MockPaymentAlertSink, PaymentAlertService } from './payment.alerts';
 import { PaymentController } from './payment.controller';
 import { PaymentGatewayService } from './payment.gateway.service';
 import { PaymentReconcileService } from './payment.reconcile.service';
-import {
-  FIRM_MERCHANT_CONFIG,
-  firmMerchantConfigFromEnv,
-  type FirmMerchantConfig,
-} from './firm-merchant.config';
+import { FIRM_MERCHANT_CONFIG, firmMerchantConfigFromEnv } from './firm-merchant.config';
 import { FirmMerchantConsumer } from './firm-merchant.consumer';
 import { FirmMerchantJobExecutors } from './firm-merchant.executors';
 import { FirmMerchantService } from './firm-merchant.service';

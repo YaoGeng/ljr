@@ -27,7 +27,8 @@
  * PII 红线（§9）：materials（对公账户/开户许可）不落日志不进事件载荷——日志只落 keys 数/
  * 字节数摘要（本文件 logMaterialsSafe 唯一出入口）；错误信息不内嵌材料值。
  */
-import { Inject, Injectable, Logger } from '@nestjs/common';import {
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
   AppError,
   ErrorCode,
   FIRM_MERCHANT_ACTIVATED_TOPIC,
@@ -35,7 +36,6 @@ import { Inject, Injectable, Logger } from '@nestjs/common';import {
   FIRM_MERCHANT_SUSPENDED_TOPIC,
   type FirmMerchantActivatedPayload,
   type FirmMerchantReverifiedDuePayload,
-  type FirmMerchantSuspensionReason,
   type FirmMerchantSuspendedPayload,
 } from '@ljr/shared';
 import type { SqlExecutor } from '../../infrastructure/sql';
@@ -93,7 +93,10 @@ function toView(row: MerchantRow): FirmMerchantView {
 }
 
 function summarizeMaterials(materials: Readonly<Record<string, unknown>>): MaterialsSummary {
-  return { keys: Object.keys(materials).length, bytes: Buffer.byteLength(JSON.stringify(materials), 'utf8') };
+  return {
+    keys: Object.keys(materials).length,
+    bytes: Buffer.byteLength(JSON.stringify(materials), 'utf8'),
+  };
 }
 
 @Injectable()
@@ -151,7 +154,10 @@ export class FirmMerchantService {
             throw new AppError(ErrorCode.InternalError, '进件行插入后不可读（不应触达）');
           })();
         if (row.status !== 'SUBMITTING') {
-          throw new AppError(ErrorCode.MerchantDuplicate, `并发进件已先行：firm=${firmId} channel=${channel}`);
+          throw new AppError(
+            ErrorCode.MerchantDuplicate,
+            `并发进件已先行：firm=${firmId} channel=${channel}`,
+          );
         }
       } else {
         // SUBMITTING 行材料补齐（LawyerAuditPassed 启动的开放行；SUBMITTING→IN_REVIEW 前落定）
@@ -217,7 +223,10 @@ export class FirmMerchantService {
   // 年度复验（R-03；复验完成路径=POST /firms/{id}/merchant/reverify → SUSPENDED→ACTIVE）
   // ===========================================================================
 
-  async reverify(input: { readonly firm_id: number; readonly channel?: string }): Promise<FirmMerchantView> {
+  async reverify(input: {
+    readonly firm_id: number;
+    readonly channel?: string;
+  }): Promise<FirmMerchantView> {
     const firmId = assertPositiveInt(input.firm_id, 'firm_id');
     const channel = assertChannel(input.channel ?? 'wechat_ecom');
     return this.pool.withTransaction(async (uow) => {
@@ -244,7 +253,8 @@ export class FirmMerchantService {
       if (row.status !== 'IN_REVIEW' && row.status !== 'CHANGING') {
         return toView(row); // 非在审态幂等无操作（不出事件不留痕）
       }
-      const review: MerchantReviewResult = await this.adapterFor(channel).queryMerchantStatus(firmId);
+      const review: MerchantReviewResult =
+        await this.adapterFor(channel).queryMerchantStatus(firmId);
       if (review !== 'APPROVED') return toView(row);
       const reason = row.status === 'CHANGING' ? 'change_completed' : 'channel_approved';
       // sub_mchid 缺位时补拉（mock 确定性可重取；真实通道 M2 审核回调载荷自带 mchid——适配点）
@@ -292,7 +302,10 @@ export class FirmMerchantService {
    * 提交」裁量）。行已在（重投/已在件）→ started=false 幂等短路，不抛（at-least-once 语义内）。
    * 不触发机构提交、不出事件——材料齐备的 POST submit 才是机构提交与生效的入口。
    */
-  async startOnboarding(input: { readonly firm_id: number; readonly channel?: string }): Promise<MerchantOnboardingStartResult> {
+  async startOnboarding(input: {
+    readonly firm_id: number;
+    readonly channel?: string;
+  }): Promise<MerchantOnboardingStartResult> {
     const firmId = assertPositiveInt(input.firm_id, 'firm_id');
     const channel = assertChannel(input.channel ?? 'wechat_ecom');
     return this.pool.withTransaction(async (uow) => {
@@ -320,7 +333,10 @@ export class FirmMerchantService {
    * Suspended(REVERIFY_OVERDUE)/ReverifiedDue（I1 通知律所复验、F3 暂停分账——§8「SUSPENDED
    * 期间 F3 待结算挂起可见」）。非 ACTIVE/未到期 → null（回查兜底，executor recheck 双保险）。
    */
-  async suspendOverdueInTx(uow: SqlExecutor, merchantId: number): Promise<ReverifyOverdueOutcome | null> {
+  async suspendOverdueInTx(
+    uow: SqlExecutor,
+    merchantId: number,
+  ): Promise<ReverifyOverdueOutcome | null> {
     const res = await uow.query<MerchantRow>(
       `SELECT ${MERCHANT_COLS} FROM payment.firm_merchants WHERE id = $1 FOR UPDATE`,
       [assertPositiveInt(merchantId, 'merchant_id')],
@@ -395,7 +411,8 @@ export class FirmMerchantService {
     channel: string,
   ): Promise<MerchantRow> {
     const row = await this.lockByFirmChannel(uow, firmId, channel);
-    if (!row) throw new AppError(ErrorCode.NotFound, `律所商户不存在：firm=${firmId} channel=${channel}`);
+    if (!row)
+      throw new AppError(ErrorCode.NotFound, `律所商户不存在：firm=${firmId} channel=${channel}`);
     return row;
   }
 

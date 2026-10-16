@@ -24,7 +24,9 @@ export const REVERIFY_DAYS_DEFAULT = 365;
 const REVERIFY_DAYS_MAX = 36_500;
 
 /** 装载入口（模块工厂调用一次） */
-export function firmMerchantConfigFromEnv(env: NodeJS.ProcessEnv = process.env): FirmMerchantConfig {
+export function firmMerchantConfigFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): FirmMerchantConfig {
   const envName = normalizeEnvName(env['LJR_ENV']);
   const rawAmount = env['LJR_PAYMENT_DEPOSIT_AMOUNT'];
   let depositAmount: Money = DEPOSIT_AMOUNT_DEV_DEFAULT;

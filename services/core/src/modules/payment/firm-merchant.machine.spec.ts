@@ -27,8 +27,16 @@ import {
 const FIRM_LEGAL: ReadonlyArray<readonly [FirmMerchantStatus, FirmMerchantStatus, string]> = [
   ['SUBMITTING', 'IN_REVIEW', '机构受理/材料提交完成'],
   ['IN_REVIEW', 'ACTIVE', '机构审核通过（生效；verified_at/reverify_due 落定+Activated 事件）'],
-  ['ACTIVE', 'CHANGING', '对公账户变更发起（R-02；R-W3-C2=分账暂停语义，Suspended(ACCOUNT_CHANGING) 同事务出箱）'],
-  ['CHANGING', 'ACTIVE', '变更重新进件完成（→ACTIVE 同生效口径：刷新 verified_at/reverify_due+job）'],
+  [
+    'ACTIVE',
+    'CHANGING',
+    '对公账户变更发起（R-02；R-W3-C2=分账暂停语义，Suspended(ACCOUNT_CHANGING) 同事务出箱）',
+  ],
+  [
+    'CHANGING',
+    'ACTIVE',
+    '变更重新进件完成（→ACTIVE 同生效口径：刷新 verified_at/reverify_due+job）',
+  ],
   ['CHANGING', 'SUSPENDED', '变更流程转暂停（§4 图出边）'],
   ['ACTIVE', 'SUSPENDED', '复验到期未复验（R-03，FIRM_REVERIFY 执行器）/运营暂停'],
   ['ACTIVE', 'STOPPED', '停用（合作终止）'],

@@ -10,7 +10,11 @@ import {
   PAYMENT_CHANNEL_ADAPTERS,
   type PaymentChannelAdapter,
 } from './payment.channels';
-import { PAYMENT_CONFIG, PAYMENT_SWITCH_WINDOW_MS_DEFAULT, type PaymentConfig } from './payment.config';
+import {
+  PAYMENT_CONFIG,
+  PAYMENT_SWITCH_WINDOW_MS_DEFAULT,
+  type PaymentConfig,
+} from './payment.config';
 import { FIRM_MERCHANT_CONFIG, type FirmMerchantConfig } from './firm-merchant.config';
 import { DepositService } from './deposit.service';
 import { PaymentModule } from './payment.module';
