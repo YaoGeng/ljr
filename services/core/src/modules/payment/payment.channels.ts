@@ -121,6 +121,8 @@ export class MockChannelAdapter implements PaymentChannelAdapter {
   fault: { readonly kind: 'CHANNEL_ERROR' | 'INSUFFICIENT' } | null = null;
 
   private seq = 0;
+  /** 账单金额漂移位（setStatementDiscrepancy 写入；statement 渲染时替换金额，AMOUNT_MISMATCH 构造） */
+  private readonly discrepancies = new Map<string, Money>();
   /** 账单日志（statement 数据源）；对账用例可直读/直改以构造差异场景 */
   private readonly journal: Array<{
     readonly period: string;
@@ -162,6 +164,32 @@ export class MockChannelAdapter implements PaymentChannelAdapter {
   /** 观测位（测试断言备用通道未沾流量等） */
   journalSize(): number {
     return this.journal.length;
+  }
+
+  /**
+   * 差异场景构造位（mock 能力，对账用）：模拟通道侧账单多出一行（本地无记录 → CHANNEL_ONLY）。
+   * 生产路径不经此方法（真实通道账单来自通道 T+1 文件，R-04）。
+   */
+  appendStatementLine(input: {
+    readonly direction: StatementLine['direction'];
+    readonly amount: Money;
+    readonly channelTxnNo: string;
+    readonly period?: string;
+  }): void {
+    this.journal.push({
+      period: input.period ?? isoDate(this.clock()),
+      channelTxnNo: input.channelTxnNo,
+      direction: input.direction,
+      amount: input.amount,
+    });
+  }
+
+  /**
+   * 差异场景构造位（mock 能力，对账用）：模拟通道账单金额与本方记录不一致（AMOUNT_MISMATCH）——
+   * statement() 渲染时对该流水号替换金额，账单日志原值不动。
+   */
+  setStatementDiscrepancy(channelTxnNo: string, amount: Money): void {
+    this.discrepancies.set(channelTxnNo, amount);
   }
 
   async preorder(req: ChannelPreorderRequest): Promise<ChannelResult> {
@@ -219,7 +247,7 @@ export class MockChannelAdapter implements PaymentChannelAdapter {
       .map((j) => ({
         channelTxnNo: j.channelTxnNo,
         direction: j.direction,
-        amount: j.amount,
+        amount: this.discrepancies.get(j.channelTxnNo) ?? j.amount,
         status: 'SUCCESS' as const,
       }));
   }

@@ -216,13 +216,14 @@ export class PaymentGatewayService {
       }
       const inserted = claim.rows[0]!;
 
-      // 通道预下单/冻结（§4）：经路由主→备；失败随事务回滚（claim 不烧键）
+      // 通道预下单/冻结（§4）：经路由主→备；失败随事务回滚（claim 不烧键）。
+      // 账单 PAY 行金额=支付总额（cash+points/100）——对账按 total 核对的口径锚点
       const out = await this.router.execute((a) =>
         a.preorder({
           orderId: Number(inserted.id),
           bizType: input.biz_type,
           bizId: input.biz_id,
-          amount: input.cash_amount,
+          amount: centsToMoney(moneyToCents(input.cash_amount) + points),
           pointsAmount: points,
           idempotencyKey: input.idempotency_key,
         }),
