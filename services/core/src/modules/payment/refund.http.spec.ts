@@ -10,6 +10,7 @@ import { ErrorCode } from '@ljr/shared';
 import { ensureTestDatabase, truncateAll } from '../../infrastructure/testing/db';
 import { IDENTITY_CONFIG, type IdentityConfig } from '../identity/identity.config';
 import { PaymentModule } from './payment.module';
+import { PaymentGatewayService } from './payment.gateway.service';
 import { RefundService } from './refund.service';
 
 /**
@@ -126,7 +127,6 @@ describe('F2 REST 面：GET /refunds/mine（需 PG）', () => {
 
 /** 夹具：经真 F1 创建并 markFrozen 的已支付单（幂等键固定，供服务面受理） */
 async function seedOrder(app: INestApplication, seq: number): Promise<number> {
-  const { PaymentGatewayService } = await import('./payment.gateway.service');
   const gateway = app.get(PaymentGatewayService);
   const res = await gateway.createOrder({
     biz_type: 'enroll',

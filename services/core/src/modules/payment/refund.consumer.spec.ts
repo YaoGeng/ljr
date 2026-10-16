@@ -15,10 +15,8 @@ import { StateTransitionGuardService } from '../../infrastructure/state-machine/
 import { StateTransitionLogService } from '../../infrastructure/state-machine/state-transition-log.service';
 import { BenefitsConfig, POINTS_TTL_DAYS_DEFAULT } from '../benefits/benefits.config';
 import { PointsService } from '../benefits/points.service';
-import {
-  ChannelRouter,
-  MockChannelAdapter,
-} from './payment.channels';
+import { listRefundRestoreTxns, seedPointsBalance } from '../benefits/points-fixture';
+import { ChannelRouter, MockChannelAdapter } from './payment.channels';
 import { PAYMENT_SWITCH_WINDOW_MS_DEFAULT, type PaymentConfig } from './payment.config';
 import { MockPaymentAlertSink, PaymentAlertService } from './payment.alerts';
 import { PaymentGatewayService } from './payment.gateway.service';
@@ -29,7 +27,7 @@ import {
 } from './refund.consumer';
 import { RefundService } from './refund.service';
 import { RefundSourceRegistry } from './refund.source';
-import type { RefundSource, RefundSourceOrder } from '@ljr/shared';
+import type { RefundSource } from '@ljr/shared';
 import type { PaymentOrderView } from './payment.types';
 
 /**
@@ -200,10 +198,7 @@ describe('F2 批量退款消费端（需 PG）', () => {
       ],
     };
     registry.register('session', source);
-    await pool.query(
-      `INSERT INTO benefits.points_accounts (user_id, balance) VALUES (602, 0)
-       ON CONFLICT (user_id) DO UPDATE SET balance = 0`,
-    );
+    await seedPointsBalance(pool, 602, 0);
 
     await recordSessionFailed(501);
     const tick = await relay.tick();
@@ -259,11 +254,9 @@ describe('F2 批量退款消费端（需 PG）', () => {
       `SELECT count(*)::int AS n FROM platform.outbox WHERE topic = 'payment.refund.completed'`,
     );
     expect(completed.rows[0]!.n).toBe(2);
-    const restore = await pool.query<{ delta: number; source_ref: string }>(
-      `SELECT delta, source_ref FROM benefits.points_txns WHERE kind = 'REFUND_RESTORE'`,
-    );
-    expect(restore.rows).toHaveLength(1);
-    expect(restore.rows[0]!.delta).toBe(4000); // 积分单还原恰一次；现金绝不折积分
+    const restore = await listRefundRestoreTxns(pool);
+    expect(restore).toHaveLength(1);
+    expect(restore[0]!.delta).toBe(4000); // 积分单还原恰一次；现金绝不折积分
     const inbox = await pool.query<{ status: string }>(`SELECT status FROM payment.inbox`);
     expect(inbox.rows.every((r) => r.status === 'CONSUMED')).toBe(true);
   });
@@ -276,10 +269,16 @@ describe('F2 批量退款消费端（需 PG）', () => {
     expect(n.rows[0]!.n).toBe(0);
   });
 
+  /** handler 直调的第二参（relay 认领事务 client 桩）：SessionFailed/回调 noop 路径不触 uow */
+  const stubUow = { query: async () => ({ rows: [], rowCount: 0 }) } as never;
+
   it('载荷防御：SessionFailed 缺 id 抛错进重试轨道（不静默丢弃）', async () => {
     const handler = createSessionFailedHandler(refunds, registry);
     await expect(
-      handler({ id: 1, eventId: 'e', topic: SESSION_FAILED_TOPIC, payload: {}, retryCount: 0 }),
+      handler(
+        { id: 1, eventId: 'e', topic: SESSION_FAILED_TOPIC, payload: {}, retryCount: 0 },
+        stubUow,
+      ),
     ).rejects.toMatchObject({ code: 'E_INVALID_ARGUMENT' });
   });
 
@@ -309,13 +308,16 @@ describe('F2 批量退款消费端（需 PG）', () => {
 
     // 首轮：ghost 单失败 → handler 抛错（relay 语义=进重试轨道），A/C 已逐单落单
     await expect(
-      handler({
-        id: 2,
-        eventId: 'e',
-        topic: SESSION_FAILED_TOPIC,
-        payload: { id: 503 } as unknown as SessionFailedPayload,
-        retryCount: 0,
-      }),
+      handler(
+        {
+          id: 2,
+          eventId: 'e',
+          topic: SESSION_FAILED_TOPIC,
+          payload: { id: 503 } as unknown as SessionFailedPayload,
+          retryCount: 0,
+        },
+        stubUow,
+      ),
     ).rejects.toMatchObject({ code: 'E_OUTBOX_HANDLER_FAILED' });
     let rows = await pool.query<{ payment_order_id: number }>(
       `SELECT payment_order_id::int AS payment_order_id FROM payment.refunds ORDER BY payment_order_id`,
@@ -329,13 +331,16 @@ describe('F2 批量退款消费端（需 PG）', () => {
       ghostId,
       payerB.id,
     ]);
-    await handler({
-      id: 3,
-      eventId: 'e',
-      topic: SESSION_FAILED_TOPIC,
-      payload: { id: 503 } as unknown as SessionFailedPayload,
-      retryCount: 1,
-    });
+    await handler(
+      {
+        id: 3,
+        eventId: 'e',
+        topic: SESSION_FAILED_TOPIC,
+        payload: { id: 503 } as unknown as SessionFailedPayload,
+        retryCount: 1,
+      },
+      stubUow,
+    );
 
     rows = await pool.query<{ payment_order_id: number }>(
       `SELECT payment_order_id::int AS payment_order_id FROM payment.refunds ORDER BY payment_order_id`,
@@ -363,22 +368,27 @@ describe('F2 批量退款消费端（需 PG）', () => {
       `SELECT count(*)::int AS n FROM payment.inbox WHERE status = 'RECEIVED'`,
     );
 
-    await handler({
-      id: 4,
-      eventId: 'e',
-      topic: PAYMENT_CALLBACK_INBOXED_TOPIC,
-      payload: {
-        biz_idempotency_key: `${order.idempotency_key}:PAY_SUCCESS`,
-        event: 'PAY_SUCCESS',
+    await handler(
+      {
+        id: 4,
+        eventId: 'e',
+        topic: PAYMENT_CALLBACK_INBOXED_TOPIC,
+        payload: {
+          biz_idempotency_key: `${order.idempotency_key}:PAY_SUCCESS`,
+          event: 'PAY_SUCCESS',
+        },
+        retryCount: 0,
       },
-      retryCount: 0,
-    });
+      stubUow,
+    );
 
     const after = await pool.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM payment.inbox WHERE status = 'RECEIVED'`,
     );
     expect(after.rows[0]!.n).toBe(before.rows[0]!.n); // RECEIVED 原样（消费权归 C3）
-    const refundsN = await pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM payment.refunds`);
+    const refundsN = await pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM payment.refunds`,
+    );
     expect(refundsN.rows[0]!.n).toBe(0);
   });
 });

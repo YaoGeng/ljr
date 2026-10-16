@@ -70,7 +70,10 @@ export function createSessionFailedHandler(
   const logger = new Logger('RefundBatch');
   return async (event: RelayEvent): Promise<void> => {
     if (event.topic !== SESSION_FAILED_TOPIC) {
-      throw new AppError(ErrorCode.InvalidArgument, `批量退款消费器收到未注册 topic：${event.topic}`);
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `批量退款消费器收到未注册 topic：${event.topic}`,
+      );
     }
     const payload = (event.payload ?? {}) as Partial<SessionFailedPayload>;
     if (!isPositiveInt(payload.id)) {

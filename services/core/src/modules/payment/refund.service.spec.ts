@@ -10,6 +10,11 @@ import { StateTransitionGuardService } from '../../infrastructure/state-machine/
 import { StateTransitionLogService } from '../../infrastructure/state-machine/state-transition-log.service';
 import { BenefitsConfig, POINTS_TTL_DAYS_DEFAULT } from '../benefits/benefits.config';
 import { PointsService } from '../benefits/points.service';
+import {
+  getPointsBalance,
+  listRefundRestoreTxns,
+  seedPointsBalance,
+} from '../benefits/points-fixture';
 import { ChannelRouter, MockChannelAdapter } from './payment.channels';
 import { PAYMENT_SWITCH_WINDOW_MS_DEFAULT, type PaymentConfig } from './payment.config';
 import { MockPaymentAlertSink, PaymentAlertService } from './payment.alerts';
@@ -157,7 +162,11 @@ describe('F2 退款受理（需 PG）', () => {
         WHERE idempotency_key = $1`,
       ['refund/po-1/group-fail'],
     );
-    expect(ledger.rows[0]).toMatchObject({ direction: 'REFUND', status: 'CONFIRMED', amount: '100.00' });
+    expect(ledger.rows[0]).toMatchObject({
+      direction: 'REFUND',
+      status: 'CONFIRMED',
+      amount: '100.00',
+    });
   });
 
   it('R-04 幂等重放：同键同载荷返回原单（不新增行/不重复下发台账）', async () => {
@@ -221,7 +230,12 @@ describe('F2 退款受理（需 PG）', () => {
       }),
     ).rejects.toMatchObject({ code: ErrorCode.NotFound });
     await expect(
-      svc.accept({ ...base, points: -1, reason: 'GROUP_FAIL', idempotency_key: 'refund/x3/group-fail' }),
+      svc.accept({
+        ...base,
+        points: -1,
+        reason: 'GROUP_FAIL',
+        idempotency_key: 'refund/x3/group-fail',
+      }),
     ).rejects.toMatchObject({ code: ErrorCode.InvalidArgument });
 
     const n = await pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM payment.refunds`);
@@ -311,38 +325,24 @@ describe('F2 退款受理（需 PG）', () => {
   it('R-03 积分还原：还原额=积分部分（不退现金额），ref=refund:{id}；重放收敛幂等（恰一次入账）', async () => {
     // 拆分单：cash 60.00 + points 4000；积分账户种子余额 100
     const order = await createPaidOrder({ cash: '60.00', points: 4000 });
-    await pool.query(
-      `INSERT INTO benefits.points_accounts (user_id, balance) VALUES ($1, 100)
-       ON CONFLICT (user_id) DO UPDATE SET balance = 100`,
-      [601],
-    );
+    await seedPointsBalance(pool, 601, 100);
     const { refund } = await accept(order, '60.00', 4000, 'refund/po-8/group-fail');
     await svc.convergeRefundSuccess(order.idempotency_key);
 
     // 还原额=积分 4000（现金 60.00 走原路台账，绝不折积分入账）
-    const acct = await pool.query<{ balance: number }>(
-      `SELECT balance FROM benefits.points_accounts WHERE user_id = 601`,
-    );
-    expect(acct.rows[0]!.balance).toBe(100 + 4000);
-    const txn = await pool.query<{ delta: number; kind: string; source_ref: string }>(
-      `SELECT delta, kind, source_ref FROM benefits.points_txns WHERE kind = 'REFUND_RESTORE'`,
-    );
-    expect(txn.rows).toHaveLength(1);
-    expect(txn.rows[0]).toEqual({
+    expect(await getPointsBalance(pool, 601)).toBe(100 + 4000);
+    const txns = await listRefundRestoreTxns(pool);
+    expect(txns).toHaveLength(1);
+    expect(txns[0]).toEqual({
       delta: 4000,
-      kind: 'REFUND_RESTORE',
       source_ref: `refund:${refund.refund_id}`,
     });
 
     // 崩溃窗口收敛重放：completed 空、还原短路（不重复入账）
     const replay = await svc.convergeRefundSuccess(order.idempotency_key);
     expect(replay.completed).toEqual([]);
-    const after = await pool.query<{ balance: number; n: number }>(
-      `SELECT (SELECT balance FROM benefits.points_accounts WHERE user_id = 601) AS balance,
-              (SELECT count(*)::int FROM benefits.points_txns WHERE kind = 'REFUND_RESTORE') AS n`,
-    );
-    expect(after.rows[0]!.balance).toBe(100 + 4000);
-    expect(after.rows[0]!.n).toBe(1);
+    expect(await getPointsBalance(pool, 601)).toBe(100 + 4000);
+    expect(await listRefundRestoreTxns(pool)).toHaveLength(1);
   });
 
   // =========================================================================
@@ -373,7 +373,7 @@ describe('F2 退款受理（需 PG）', () => {
     ).rejects.toMatchObject({ code: ErrorCode.StateIllegalTransition });
 
     // 首败记账：PROCESSING + attempt 1 + 退避位 + last_error
-    let row = await pool.query<{
+    const row = await pool.query<{
       status: string;
       attempt_count: number;
       next_retry_at: Date | null;
@@ -389,25 +389,29 @@ describe('F2 退款受理（需 PG）', () => {
     // 时间旅行到期 → 第 2 次尝试仍败 → 退避
     await pool.query(`UPDATE payment.refunds SET next_retry_at = now() - interval '1s'`);
     expect(await svc.dispatchDue()).toEqual({ attempted: 0, failed: 1 });
-    row = await pool.query<{
+    const row2 = await pool.query<{
       status: string;
       attempt_count: number;
       next_retry_at: Date | null;
     }>(`SELECT status, attempt_count, next_retry_at FROM payment.refunds`);
-    expect(row.rows[0]).toMatchObject({ status: 'PROCESSING', attempt_count: 2 });
-    expect(row.rows[0]!.next_retry_at).not.toBeNull();
+    expect(row2.rows[0]).toMatchObject({ status: 'PROCESSING', attempt_count: 2 });
+    expect(row2.rows[0]!.next_retry_at).not.toBeNull();
 
     // 第 3 次尝试耗尽 → FAILED + RefundFailed 出箱 + 终态无退避位
     await pool.query(`UPDATE payment.refunds SET next_retry_at = now() - interval '1s'`);
     expect(await svc.dispatchDue()).toEqual({ attempted: 0, failed: 1 });
-    row = await pool.query<{
+    const row3 = await pool.query<{
       status: string;
       attempt_count: number;
       next_retry_at: Date | null;
       last_error: string | null;
     }>(`SELECT status, attempt_count, next_retry_at, last_error FROM payment.refunds`);
-    expect(row.rows[0]).toMatchObject({ status: 'FAILED', attempt_count: 3, next_retry_at: null });
-    expect(row.rows[0]!.last_error).toContain('非法状态迁移');
+    expect(row3.rows[0]).toMatchObject({
+      status: 'FAILED',
+      attempt_count: 3,
+      next_retry_at: null,
+    });
+    expect(row3.rows[0]!.last_error).toContain('非法状态迁移');
 
     const dead = await pool.query<{ topic: string; payload: Record<string, unknown> }>(
       `SELECT topic, payload FROM platform.outbox WHERE topic = $1`,

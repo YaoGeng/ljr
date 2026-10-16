@@ -158,7 +158,8 @@ export class RefundService {
       if (claim.rows.length === 0) {
         // 并发同键冲突：读回走同一载荷比对（串行快路径与并发路径同口径，F1 claimOrderRow 先例）
         const raced = await this.findByKey(input.idempotency_key);
-        if (!raced) throw new AppError(ErrorCode.InternalError, '幂等键冲突但原单不可读（不应触达）');
+        if (!raced)
+          throw new AppError(ErrorCode.InternalError, '幂等键冲突但原单不可读（不应触达）');
         const view = this.replayOr409(raced, input);
         if (raced.status !== 'REQUESTED') return { refund: view };
         refundId = raced.refund_id;
@@ -287,17 +288,17 @@ export class RefundService {
     reason: string,
     error: unknown,
   ): Promise<void> {
-    const message = (error instanceof Error ? `${error.name}: ${error.message}` : String(error)).slice(
-      0,
-      500,
-    );
+    const message = (
+      error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+    ).slice(0, 500);
     await this.pool.withTransaction(async (uow) => {
       const cur = await uow.query<{ status: string; attempt_count: number }>(
         `SELECT status, attempt_count FROM payment.refunds WHERE id = $1 FOR UPDATE`,
         [refundId],
       );
       const row = cur.rows[0];
-      if (!row) throw new AppError(ErrorCode.InternalError, `退款单 ${refundId} 不可读（不应触达）`);
+      if (!row)
+        throw new AppError(ErrorCode.InternalError, `退款单 ${refundId} 不可读（不应触达）`);
       if (row.status !== 'PROCESSING') return; // 并发已终局（重投幂等）
       if (row.attempt_count >= MAX_DISPATCH_ATTEMPTS) {
         await this.guard.assertTransition(REFUND_MACHINE, {
