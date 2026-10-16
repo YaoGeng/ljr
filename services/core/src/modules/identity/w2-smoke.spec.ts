@@ -95,6 +95,7 @@ const LAWYER_PHONE = '13900004002';
 const MONDAY = nextMondayShanghai();
 const MON_10 = `${MONDAY}T02:00:00.000Z`; // 周一 10:00 上海
 const MON_11 = `${MONDAY}T03:00:00.000Z`; // 周一 11:00 上海
+const MON_12 = `${MONDAY}T04:00:00.000Z`; // 周一 12:00 上海（R-W3-F 收窄后滥用触发第二段）
 /** B2 锁的 ref 半边（session 业务实体虚构 id；C1 创建即锁语义） */
 const SMOKE_SESSION_REF = 7401;
 const LICENSE_NO = '110101199001011234';
@@ -423,14 +424,28 @@ describe('M1-W2 单链烟测（A1→A3a→授角色→切换→B1/B2→G1 限制
     });
 
     // ---------- 段 5：R-03 滥用 → SlotAbuseDetected（真 B2 路径）→ G1 入账发限制令 ----------
-    // 断言⑩ R-03 滥用拒绝：同用户对同律师进行中锁 ≤1 → SLOT_ABUSE_LIMIT（锁行未写入）
-    const abuse = await poolSvc.withTransaction((uow) =>
+    // 断言⑩ R-03 滥用拒绝：同用户对同律师进行中**待支付**锁 ≤1 → SLOT_ABUSE_LIMIT（锁行未写入）。
+    // R-W3-F 收窄（M1-W3 修复轮）：计数集=仅 PENDING_PAYMENT（C2B 滥用防护口径）——滥用触发夹具
+    // 改锚 PENDING_PAYMENT（C2B 发布锁形态）；段 4 的 LOCKED 锁同时钉「LOCKED 不计数」侧。
+    const pend = await poolSvc.withTransaction((uow) =>
       slotLocks.lockSlot(uow, {
         lawyerId: lawyer.userId,
         slotStart: new Date(MON_11),
         initiatorUserId: user.userId,
         refType: 'session',
         refId: SMOKE_SESSION_REF + 1,
+        paymentOrderId: 901001, // PENDING_PAYMENT（计数集内）
+      }),
+    );
+    expect(pend).toMatchObject({ ok: true, status: 'PENDING_PAYMENT' });
+    const abuse = await poolSvc.withTransaction((uow) =>
+      slotLocks.lockSlot(uow, {
+        lawyerId: lawyer.userId,
+        slotStart: new Date(MON_12),
+        initiatorUserId: user.userId,
+        refType: 'session',
+        refId: SMOKE_SESSION_REF + 2,
+        paymentOrderId: 901002,
       }),
     );
     expect(abuse).toEqual({ ok: false, reason: 'SLOT_ABUSE_LIMIT' });
@@ -456,11 +471,12 @@ describe('M1-W2 单链烟测（A1→A3a→授角色→切换→B1/B2→G1 限制
       }),
     );
 
-    // tick#2：SlotLocked（B1 缓存失效消费）+ SlotAbuseDetected（G1 入账+限制令同事务出箱）；
+    // tick#2：SlotLocked×2（段 4 创建锁 + 段 5 R-W3-F 收窄后的 PENDING_PAYMENT 夹具锁，各出箱一条；
+    // B1 缓存失效消费）+ SlotAbuseDetected（G1 入账+限制令同事务出箱）；
     // relay 游标口径（id>cursor 逐条拾取）会把 G1 消费中新出箱的 CEE/RI（noop 承接）同轮级联拾取
-    // ——4=SlotLocked+SlotAbuseDetected+CreditEventEmitted+RestrictionIssued，链内级联一次清空
+    // ——5=SlotLocked×2+SlotAbuseDetected+CreditEventEmitted+RestrictionIssued，链内级联一次清空
     const tick2 = await relay.tick();
-    expect(tick2).toMatchObject({ dispatched: 4, retried: 0, dead: 0 });
+    expect(tick2).toMatchObject({ dispatched: 5, retried: 0, dead: 0 });
 
     // 断言⑪ G1 限制令查询面：/credit/restrictions 查到该用户 BAN_JOIN（行为内嵌发行，reason=行为锚）
     const restrictions = await request(app.getHttpServer())
@@ -538,13 +554,14 @@ describe('M1-W2 单链烟测（A1→A3a→授角色→切换→B1/B2→G1 限制
       .query({ owner_type: 'user', owner_id: String(user.userId) });
     expect(restrictionsReplay.body).toHaveLength(1);
 
-    // 全链收口：无死信；7 事件（USER_REGISTERED×2/LAP/SLOT_LOCKED/SAD/CEE/RI）全部 SENT
+    // 全链收口：无死信；8 事件（USER_REGISTERED×2/LAP/SLOT_LOCKED×2[R-W3-F 收窄后 PENDING 夹具锁
+    // 亦出箱一条]/SAD/CEE/RI）全部 SENT
     const dead = await pool.query<{ n: number }>(
       'SELECT count(*)::int AS n FROM platform.outbox_dead_letter',
     );
     expect(dead.rows[0]?.n).toBe(0);
     const outbox = await pool.query<{ status: string }>('SELECT status FROM platform.outbox');
-    expect(outbox.rows).toHaveLength(7);
+    expect(outbox.rows).toHaveLength(8);
     expect(outbox.rows.every((r) => r.status === 'SENT')).toBe(true);
   });
 });

@@ -73,7 +73,8 @@ describe('MockChannelAdapter（mock 适配器：零网络请求 + 故障注入�
   });
 
   it('refreeze/unfreezeSplit/refund/partialRefund/deduct 全原语可用并记入账单日志（statement 数据源）', async () => {
-    const wechat = new MockChannelAdapter('wechat_ecom', 'm', 's');
+    // 固定时钟（W3 修复轮：真实时钟跨上海日切后 statement('2026-10-16') 为空——本文件 91/99 行同模式）
+    const wechat = new MockChannelAdapter('wechat_ecom', 'm', 's', () => new Date(BASE_MS));
     await wechat.preorder(PREORDER);
     await wechat.refreeze(INSTRUCTION);
     await wechat.unfreezeSplit({ ...INSTRUCTION, amount: '150.00' });
@@ -226,7 +227,8 @@ describe('ChannelRouter（§8 单通道故障切换：主→备 + 降级窗口 +
   });
 
   it('statement 直连指定适配器（不经 failover——对账必须用指令实际发生通道的账单）', async () => {
-    const primary = new MockChannelAdapter('wechat_ecom', 'm', 's');
+    // 固定时钟（W3 修复轮：同上——对账期断言不得依赖真实日期）
+    const primary = new MockChannelAdapter('wechat_ecom', 'm', 's', () => new Date(BASE_MS));
     const backup = new MockChannelAdapter('alipay', 'm', 's');
     const { router } = makeRouter(primary, backup);
     await primary.preorder(PREORDER);
