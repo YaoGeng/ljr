@@ -739,9 +739,13 @@ export class EnrollmentService {
     };
   }
 
+  /**
+   * 快照版本锚：走 getHistory（无缓存读）而非 getCurrentPricing（30s 进程内缓存适配位）——
+   * 版本锚是审计口径（R-03 快照「改价后版本可追溯」），30s 陈旧版本会让同批报名锚到旧版本。
+   */
   private async currentPricingVersion(lawyerId: number): Promise<number> {
-    const current = await this.pricing.getCurrentPricing(lawyerId);
-    return current.version;
+    const history = await this.pricing.getHistory(lawyerId);
+    return history[0]?.version ?? 0; // 无任何版本=0（B3 GET /lawyer/{id}/pricing 同口径）
   }
 
   /** groupbuy 报名的快照版本锚：任务行回链律师（同 schema 读 trade-group-buys 行，禁跨域） */
