@@ -606,4 +606,58 @@ describe('C1 领域层（开团事务/幂等/R-01/R-04/R-05/截止流标/终态 
     expect(failedDetail.status).toBe('FAILED');
     expect(failedDetail.remaining).toBe(6);
   });
+
+  it('R-W3-K 履约 Session 创建服务方法（C2B 确认生成，M2 C4 接线）：mode=C2B 行落库+SessionCreated 出箱+六类 job 预写，B2 不加锁（发布锁 ref=groupbuy 由 C2 持有）', async () => {
+    await seedPricing(9101, { per_head: '50.00' });
+    const slotStart = hourAfter(30);
+    const view = await sessions.createC2BFulfillment({
+      group_buy_id: 501,
+      lawyer_id: 9101,
+      slot_start: slotStart,
+      share_price: '33.33',
+      capacity: 6,
+      room_mode: 'text',
+    });
+
+    expect(view.mode).toBe('C2B'); // §3：C2B 确认后生成履约 Session 复用本表 mode=C2B
+    expect(view.status).toBe('CREATED');
+    expect(view.capacity).toBe(6);
+    expect(view.unit_price).toBe('33.33'); // per_head 语义：每人固定分摊快照
+    expect(view.session_total).toBe('199.98'); // R-04：33.33×6（整数分，无浮点）
+
+    const row = await pool.query<{ mode: string; status: string }>(
+      `SELECT mode, status FROM trade.sessions WHERE id = $1`,
+      [view.id],
+    );
+    expect(row.rows[0]).toEqual({ mode: 'C2B', status: 'CREATED' });
+
+    // SessionCreated 出箱（同事务）
+    const created = await pool.query<{ payload: Record<string, unknown> }>(
+      `SELECT payload FROM platform.outbox WHERE topic = $1`,
+      [SESSION_CREATED_TOPIC],
+    );
+    expect(created.rows).toHaveLength(1);
+    expect(created.rows[0]!.payload).toMatchObject({ id: view.id, lawyer_id: 9101 });
+
+    // 六类 job 预写（与 B2C 同构；ROOM_OPEN executor=D1=M2 只预写）
+    const jobs = await scheduler.listJobs({ limit: 50 });
+    const byType = (t: string) => jobs.filter((j) => j.jobType === t && j.refId === view.id);
+    for (const t of [
+      'ENROLL_DEADLINE',
+      'ROOM_OPEN',
+      'REMIND_24H',
+      'REMIND_1H',
+      'REMIND_10MIN',
+      'REMIND_1MIN',
+    ]) {
+      expect(byType(t)).toHaveLength(1);
+    }
+
+    // B2 不加锁（发布锁 ref=groupbuy 由 C2 持有；锁迁移语义随 C4=M2 设计，报告注明）——
+    // activeStatusOf 探针：本 session 无任何活跃锁行
+    const lockStatus = await app
+      .get(PgPoolService)
+      .withTransaction((uow) => app.get(SlotLockService).activeStatusOf(uow, 'session', view.id));
+    expect(lockStatus).toBeNull();
+  });
 });

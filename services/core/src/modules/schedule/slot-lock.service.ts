@@ -200,6 +200,28 @@ export class SlotLockService {
 
   // ---------- §5 CONFIRM_PAYMENT ----------
 
+  /**
+   * 活跃锁状态查询（ref 粒度，行锁形态）：消费方（C2 cancel 的 R-W3-L「无任何已支付加入者」判定）
+   * 在自己业务事务内以 uow 调用——FOR UPDATE 与支付回调事务（CONFIRM_PAYMENT 同表行迁移）互斥，
+   * 消除「读到未提交 PENDING_PAYMENT 而支付恰在此刻确认」的竞态窗口。无活跃锁行（已释放/从无）⇒
+   * null（TTL 已释放的未支付拼团取消路径由此放行）。只读语义不迁移状态、不出事件。
+   */
+  async activeStatusOf(
+    uow: SqlExecutor,
+    refType: SlotLockRefType,
+    refId: number,
+  ): Promise<SlotLockStatus | null> {
+    assertRefType(refType);
+    assertPositiveInt(refId, 'refId');
+    const res = await uow.query<{ status: SlotLockStatus }>(
+      `SELECT status FROM schedule.slot_locks
+        WHERE ref_type = $1 AND ref_id = $2 AND status IN (${ACTIVE_STATUSES_SQL})
+        ORDER BY id DESC LIMIT 1 FOR UPDATE`,
+      [refType, refId],
+    );
+    return res.rows[0]?.status ?? null;
+  }
+
   /** CONFIRM_PAYMENT(payment_order_id)：支付回调事务内调用；重复回调幂等短路（transitioned=false） */
   async confirmPayment(uow: SqlExecutor, paymentOrderId: number): Promise<ConfirmPaymentResult> {
     assertPositiveInt(paymentOrderId, 'paymentOrderId');

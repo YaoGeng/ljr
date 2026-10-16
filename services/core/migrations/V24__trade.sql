@@ -37,8 +37,8 @@
 --
 -- 边界纪律：initiator_id/lawyer_id 为他域 bigint 裸引用（跨 schema 禁 FK，W1/W2/W3 惯例）；
 --   金额列 share_price numeric(10,2)（=session_total_default÷sub_min 发布时固化，R-02 HALF_UP
---   两位，应用侧一律经 Money 字符串往返禁 float）；锁语义不落本表（B2 slot_locks.ref_type=
---   'groupbuy' 持有，PENDING_PAYMENT 发布锁绑发起人支付单——架构 §4.2）。
+--   两位，应用侧一律经 Money 字符串往返禁 float）；锁语义不落本表——发布锁由 B2 占用锁承载
+--   （schedule 域表，ref_type=groupbuy、PENDING_PAYMENT 形态绑发起人支付单，架构 §4.2）。
 --
 -- 注意：flyway.conf defaultSchema=flyway —— 所有 DDL 一律全限定 trade 表。
 -- 幂等性：IF NOT EXISTS，reset 整库重放可重复执行。

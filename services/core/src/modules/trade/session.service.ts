@@ -61,8 +61,10 @@ import {
   splitTotalIntoUnit,
   type CreateSessionInput,
   type ListSessionsFilter,
+  type Money,
   type PriceMode,
   type SessionDetailView,
+  type SessionRoomMode,
   type SessionStatsView,
   type SessionView,
 } from './session.types';
@@ -477,6 +479,116 @@ export class SessionService {
       return toView(updated.rows[0]!);
     };
     return uow ? run(uow) : this.pool.withTransaction(run);
+  }
+
+  // ===========================================================================
+  // C2B 履约 Session 创建（R-W3-K 裁决导出位；C4 确认=M2 经此生成，禁直 INSERT）
+  // ===========================================================================
+
+  /**
+   * C2B 确认后生成履约 Session（§4「CONFIRMED 生成履约 Session」；R-W3-K：同 schema 同域内
+   * 服务调用保持「session 创建逻辑单点」——C4=M2 经本方法落 trade.sessions mode='C2B'）。
+   * 职责=纯行创建+SessionCreated 出箱+I2 job 同事务预写（ENROLL_DEADLINE/REMIND×4/ROOM_OPEN，
+   * 与 B2C 创建同构锚位）；**B2 不加锁**：发布锁 ref=groupbuy 由 C2 持有并占用同段，履约 Session
+   * 重复加锁会撞唯一防线——锁迁移/释放语义（groupbuy 锁与 session 锁的衔接）随 C4=M2 设计，
+   * 报告注明。价格形态：C2B=每人固定分摊 → price_mode='per_head'、unit_price=share_price 快照、
+   * session_total=share_price×capacity（整数分无浮点）。enroll_deadline 缺省=slot_start 前 N 小时
+   * （⚠04§8-3 同源口径；已确认场次该列仅作形式承载，报名面不开放）。
+   */
+  async createC2BFulfillment(input: {
+    readonly group_buy_id: number;
+    readonly lawyer_id: number;
+    readonly slot_start: Date;
+    /** R-02 分摊额快照（C2 发布时固化；Money 字符串禁 float） */
+    readonly share_price: Money;
+    readonly capacity: number;
+    readonly room_mode: SessionRoomMode;
+    readonly enroll_deadline?: Date;
+  }): Promise<SessionView> {
+    // group_buy_id 形态校验（回链责任在 C4/M2 的 enrollment 行——架构 §4.1「新建 enrollment 行」，
+    // 本方法只承载 Session 行；SessionCreatedPayload 契约 §6 逐字无 group_buy_id，不扩载荷）
+    assertPositiveInt(input.group_buy_id, 'group_buy_id');
+    const lawyerId = assertPositiveInt(input.lawyer_id, 'lawyer_id');
+    if (!(input.slot_start instanceof Date) || Number.isNaN(input.slot_start.getTime())) {
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `slot_start 须为有效时刻：${String(input.slot_start)}`,
+      );
+    }
+    const slotStart = input.slot_start;
+    const shareCents = moneyToCents(input.share_price); // 形态/越界校验内聚（Money 字符串禁 float）
+    const capacity = assertCapacity(input.capacity);
+    const roomMode = assertRoomMode(input.room_mode);
+    const totalCents = shareCents * capacity;
+    this.assertColumnBounds(shareCents, totalCents);
+    const deadline =
+      input.enroll_deadline ??
+      new Date(slotStart.getTime() - this.config.enrollDeadlineHours * HOUR_MS);
+    if (Number.isNaN(deadline.getTime())) {
+      throw new AppError(ErrorCode.InvalidArgument, 'enroll_deadline 须为有效时刻');
+    }
+    if (deadline.getTime() >= slotStart.getTime()) {
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        'enroll_deadline 须早于 slot_start（截止先于开始）',
+      );
+    }
+
+    return this.pool.withTransaction(async (uow) => {
+      const inserted = await uow.query<SessionRow>(
+        `INSERT INTO trade.sessions
+           (lawyer_id, mode, slot_start, price_mode, unit_price, session_total,
+            capacity, joined, enroll_deadline, room_mode, status)
+         VALUES ($1, 'C2B', $2, 'per_head', $3, $4, $5, 0, $6, $7, 'CREATED')
+         RETURNING ${SESSION_COLS}`,
+        [
+          lawyerId,
+          slotStart,
+          input.share_price,
+          centsToMoney(totalCents),
+          capacity,
+          deadline,
+          roomMode,
+        ],
+      );
+      const row = inserted.rows[0]!;
+      const sessionId = Number(row.id);
+
+      // I2 job 预写（与 B2C 创建同构：REMIND×4 锚 slot_start、ENROLL_DEADLINE 锚 deadline、
+      // ROOM_OPEN 锚 slot_start——executor=D1/D2=M2 只预写不装配）
+      await this.scheduler.registerJob(uow, {
+        jobType: 'ENROLL_DEADLINE',
+        refType: 'session',
+        refId: sessionId,
+        dueAt: deadline,
+      });
+      for (const [jobType, offsetMs] of REMIND_OFFSETS_MS) {
+        await this.scheduler.registerJob(uow, {
+          jobType,
+          refType: 'session',
+          refId: sessionId,
+          dueAt: new Date(slotStart.getTime() - offsetMs),
+        });
+      }
+      await this.scheduler.registerJob(uow, {
+        jobType: 'ROOM_OPEN',
+        refType: 'session',
+        refId: sessionId,
+        dueAt: slotStart,
+      });
+
+      // §6：SessionCreated 与创建同事务出箱（业务回滚则事件不出）
+      await this.outbox.recordOutbox(uow, {
+        type: SESSION_CREATED_TOPIC,
+        payload: {
+          id: sessionId,
+          lawyer_id: lawyerId,
+          slot_start: slotStart.toISOString(),
+          enroll_deadline: deadline.toISOString(),
+        } satisfies SessionCreatedPayload,
+      });
+      return toView(row);
+    });
   }
 
   // ===========================================================================

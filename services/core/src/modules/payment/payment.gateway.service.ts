@@ -180,78 +180,105 @@ export class PaymentGatewayService {
   // ===========================================================================
 
   async createOrder(input: CreateOrderInput): Promise<CreateOrderResult> {
-    assertBizType(input.biz_type);
-    assertPositiveInt(input.biz_id, 'biz_id');
-    moneyToCents(assertMoney(input.cash_amount)); // 形态/越界校验（Money 字符串禁 float）
-    const points = assertPoints(input.points_amount);
-    assertIdempotencyKey(input.idempotency_key);
-
+    this.assertCreateOrderInput(input);
     // 幂等快路径：在册键直接按载荷比对（重放/409），不开事务
     const existing = await this.findOrderByKey(input.idempotency_key);
     if (existing) return this.replayOrder(existing, input);
 
-    const row = await this.pool.withTransaction(async (uow) => {
-      // claim：唯一约束真兜底（并发同键第二笔在此败退转重放）
-      const claim = await uow.query<OrderRow>(
-        `INSERT INTO payment.payment_orders
-           (biz_type, biz_id, channel, cash_amount, points_amount, status, idempotency_key)
-         VALUES ($1, $2, $3, $4::numeric, $5, 'CREATED', $6)
-         ON CONFLICT (idempotency_key) DO NOTHING
-         RETURNING ${ORDER_COLS}`,
-        [
-          input.biz_type,
-          input.biz_id,
-          this.config.primary.channel,
-          input.cash_amount,
-          points,
-          input.idempotency_key,
-        ],
-      );
-      if (claim.rows.length === 0) {
-        // 冲突分支（并发同键）：读回原单后必须走 replayOrder 载荷比对——
-        // 同键同载荷=重放原单；异载荷=409 E_DUP_KEY（幂等铁律对并发路径与串行快路径同口径）
-        const prev = await this.findOrderByKeyInTx(uow, input.idempotency_key);
-        if (!prev)
-          throw new AppError(ErrorCode.InternalError, '幂等键冲突但原单不可读（不应触达）');
-        return { row: prev, replayed: true as const };
-      }
-      const inserted = claim.rows[0]!;
-
-      // 通道预下单/冻结（§4）：经路由主→备；失败随事务回滚（claim 不烧键）。
-      // 账单 PAY 行金额=支付总额（cash+points/100）——对账按 total 核对的口径锚点
-      const out = await this.router.execute((a) =>
-        a.preorder({
-          orderId: Number(inserted.id),
-          bizType: input.biz_type,
-          bizId: input.biz_id,
-          amount: centsToMoney(moneyToCents(input.cash_amount) + points),
-          pointsAmount: points,
-          idempotencyKey: input.idempotency_key,
-        }),
-      );
-      await uow.query(
-        `UPDATE payment.payment_orders SET channel = $2, channel_txn_no = $3 WHERE id = $1`,
-        [inserted.id, out.adapter.channel, out.result.channelTxnNo],
-      );
-      if (out.degradedNow && out.degradedChannel !== null) {
-        await this.recordDegraded(uow, out.degradedChannel);
-      }
-      const finalRow = await this.findOrderByIdInTx(uow, Number(inserted.id));
-      return {
-        row: finalRow,
-        replayed: false as const,
-      };
-    });
-
-    // 重放（串行快路径或并发冲突分支）：统一载荷比对——同键异载荷 409（I-1 修复口径）
+    const row = await this.pool.withTransaction((uow) => this.claimOrderRow(uow, input));
     if (row.replayed) return this.replayOrder(row.row, input);
+    return this.buildOrderResult(row.row);
+  }
 
-    // 金额不变量断言（§9：生成列读回 vs 本地整化）
-    assertAmountInvariant(row.row.cash_amount, row.row.points_amount, row.row.total);
-    const view = toOrderView(row.row);
+  /**
+   * 同事务下单（§5 同口径的调用方事务形态）：C2 发布事务消费位——B2 lockSlot(payment_order_id
+   * 绑定)+INSERT group_buys+支付单创建同事务（架构 §4.2），调用方在自己的业务事务内以 uow 调用，
+   * 失败随调用方回滚不烧幂等键。校验/claim/通道预下单/重放比对与 createOrder 全同口径。
+   */
+  async createOrderInTx(uow: SqlExecutor, input: CreateOrderInput): Promise<CreateOrderResult> {
+    this.assertCreateOrderInput(input);
+    const row = await this.claimOrderRow(uow, input);
+    if (row.replayed) return this.replayOrder(row.row, input);
+    return this.buildOrderResult(row.row);
+  }
+
+  /** 幂等键定位支付单（导出只读面：C2 发布幂等重放回带原支付单；C3/T7 消费位）。不存在=null */
+  async findOrderByIdempotencyKey(key: string): Promise<PaymentOrderView | null> {
+    const row = await this.findOrderByKey(key);
+    return row ? toOrderView(row) : null;
+  }
+
+  /** 入参校验收口（createOrder/createOrderInTx 共用） */
+  private assertCreateOrderInput(input: CreateOrderInput): void {
+    assertBizType(input.biz_type);
+    assertPositiveInt(input.biz_id, 'biz_id');
+    moneyToCents(assertMoney(input.cash_amount)); // 形态/越界校验（Money 字符串禁 float）
+    assertPoints(input.points_amount);
+    assertIdempotencyKey(input.idempotency_key);
+  }
+
+  /**
+   * claim：唯一约束真兜底（并发同键第二笔在此败退转重放）；冲突分支读回原单返回 replayed=true
+   * （统一走 replayOrder 载荷比对——同键同载荷=重放原单，异载荷=409 E_DUP_KEY）。
+   */
+  private async claimOrderRow(
+    uow: SqlExecutor,
+    input: CreateOrderInput,
+  ): Promise<{ row: OrderRow; replayed: boolean }> {
+    const claim = await uow.query<OrderRow>(
+      `INSERT INTO payment.payment_orders
+         (biz_type, biz_id, channel, cash_amount, points_amount, status, idempotency_key)
+       VALUES ($1, $2, $3, $4::numeric, $5, 'CREATED', $6)
+       ON CONFLICT (idempotency_key) DO NOTHING
+       RETURNING ${ORDER_COLS}`,
+      [
+        input.biz_type,
+        input.biz_id,
+        this.config.primary.channel,
+        input.cash_amount,
+        input.points_amount,
+        input.idempotency_key,
+      ],
+    );
+    if (claim.rows.length === 0) {
+      // 冲突分支（并发同键）：读回原单后必须走 replayOrder 载荷比对——
+      // 同键同载荷=重放原单；异载荷=409 E_DUP_KEY（幂等铁律对并发路径与串行快路径同口径）
+      const prev = await this.findOrderByKeyInTx(uow, input.idempotency_key);
+      if (!prev) throw new AppError(ErrorCode.InternalError, '幂等键冲突但原单不可读（不应触达）');
+      return { row: prev, replayed: true };
+    }
+    const inserted = claim.rows[0]!;
+
+    // 通道预下单/冻结（§4）：经路由主→备；失败随事务回滚（claim 不烧键）。
+    // 账单 PAY 行金额=支付总额（cash+points/100）——对账按 total 核对的口径锚点
+    const out = await this.router.execute((a) =>
+      a.preorder({
+        orderId: Number(inserted.id),
+        bizType: input.biz_type,
+        bizId: input.biz_id,
+        amount: centsToMoney(moneyToCents(input.cash_amount) + input.points_amount),
+        pointsAmount: input.points_amount,
+        idempotencyKey: input.idempotency_key,
+      }),
+    );
+    await uow.query(
+      `UPDATE payment.payment_orders SET channel = $2, channel_txn_no = $3 WHERE id = $1`,
+      [inserted.id, out.adapter.channel, out.result.channelTxnNo],
+    );
+    if (out.degradedNow && out.degradedChannel !== null) {
+      await this.recordDegraded(uow, out.degradedChannel);
+    }
+    const finalRow = await this.findOrderByIdInTx(uow, Number(inserted.id));
+    return { row: finalRow, replayed: false };
+  }
+
+  /** 金额不变量断言（§9：生成列读回 vs 本地整化）+ 视图/支付参数构建（两下单入口共用） */
+  private buildOrderResult(row: OrderRow): CreateOrderResult {
+    assertAmountInvariant(row.cash_amount, row.points_amount, row.total);
+    const view = toOrderView(row);
     const payParams: PayParamsView = {
-      ...this.router.payParamsFor(row.row.channel as PaymentChannelName, view.id, row.row.biz_type),
-      channel: row.row.channel,
+      ...this.router.payParamsFor(row.channel as PaymentChannelName, view.id, row.biz_type),
+      channel: row.channel,
     };
     return { payment_order: view, pay_params: payParams };
   }

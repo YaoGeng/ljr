@@ -67,7 +67,10 @@ export const QUESTION_TAGS_MAX_ITEMS = 20;
 export const QUESTION_TAG_MAX_LEN = 64;
 
 /** R-01 子范围值域（2..50 且 min≤max；⊆ B3 accept 范围的语义校验在服务层——需读 B3） */
-export function assertSubRange(subMin: unknown, subMax: unknown): {
+export function assertSubRange(
+  subMin: unknown,
+  subMax: unknown,
+): {
   sub_min: number;
   sub_max: number;
 } {
