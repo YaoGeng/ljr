@@ -74,12 +74,27 @@ import { LawyerQualificationModule } from './lawyer-qualification.module';
  *   - CREDIT_EVENT_EMITTED / RESTRICTION_ISSUED（G1 生产，消费方=C1/C3 入口联动与 H4 未落位）
  */
 
-/** 烟测常量：双账号手机号（虚构，TRUNCATE 清场隔离）；2026-11-02=周一，10:00/11:00 上海 */
+/**
+ * 下一个周一（Asia/Shanghai 墙钟，恒 UTC+8 无夏令时；今天为周一则取下周一=严格未来）。
+ * G-B 做项9：替换硬编码 2026-11-02，消除日期过后模板不再命中周一的回归炸弹；断言语义不变
+ * （周一 10:00/11:00 上海 = 02:00Z/03:00Z，模板物化按运行时日期现算）。
+ */
+function nextMondayShanghai(now: Date = new Date()): string {
+  const sh = new Date(now.getTime() + 8 * 3_600_000); // 平移钟面：getUTC* 读出上海墙钟
+  const daysUntilMonday = (8 - sh.getUTCDay()) % 7 || 7;
+  return new Date(
+    Date.UTC(sh.getUTCFullYear(), sh.getUTCMonth(), sh.getUTCDate() + daysUntilMonday),
+  )
+    .toISOString()
+    .slice(0, 10);
+}
+
+/** 烟测常量：双账号手机号（虚构，TRUNCATE 清场隔离）；下一个周一（上海），10:00/11:00 两段 */
 const USER_PHONE = '13900004001';
 const LAWYER_PHONE = '13900004002';
-const MONDAY = '2026-11-02';
-const MON_10 = '2026-11-02T02:00:00.000Z';
-const MON_11 = '2026-11-02T03:00:00.000Z';
+const MONDAY = nextMondayShanghai();
+const MON_10 = `${MONDAY}T02:00:00.000Z`; // 周一 10:00 上海
+const MON_11 = `${MONDAY}T03:00:00.000Z`; // 周一 11:00 上海
 /** B2 锁的 ref 半边（session 业务实体虚构 id；C1 创建即锁语义） */
 const SMOKE_SESSION_REF = 7401;
 const LICENSE_NO = '110101199001011234';
