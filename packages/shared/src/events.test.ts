@@ -10,12 +10,18 @@ import {
   LawyerAuditPassedPayload,
   LAWYER_REJECTED_TOPIC,
   LawyerRejectedPayload,
+  PAYMENT_CALLBACK_INBOXED_TOPIC,
+  PaymentCallbackInboxedPayload,
   PRICE_CHANGE_APPROVED_TOPIC,
   PRICE_VERSION_CREATED_TOPIC,
   PriceChangeApprovedPayload,
   PriceChangeKind,
   PriceVersionCreatedPayload,
   REAL_NAME_VERIFIED_TOPIC,
+  RECONCILIATION_DIFF_FOUND_TOPIC,
+  ReconciliationDiffFoundPayload,
+  CHANNEL_DEGRADED_TOPIC,
+  ChannelDegradedPayload,
   RESTRICTION_ISSUED_TOPIC,
   RealNameVerifiedPayload,
   RestrictionIssuedPayload,
@@ -175,5 +181,43 @@ describe('G1 信用体系事件契约（M1-W2）：生产 2 + 消费 5（消费�
       reviewee_user_id: 9101,
     };
     expect(payload.dims.overall).toBe(5);
+  });
+});
+
+describe('F1 支付网关事件契约（M1-W3）：生产 3（消费：C3=T7 接收件、H3=M2 接工单；告警 sink=mock，M2+ 换装）。F1 §6 消费：无——出箱即止', () => {
+  it('PaymentCallbackInboxed：topic=payment.callback.inboxed，{biz_idempotency_key, event}（§6 载荷逐字）', () => {
+    expect(PAYMENT_CALLBACK_INBOXED_TOPIC).toBe('payment.callback.inboxed');
+    const payload: PaymentCallbackInboxedPayload = {
+      biz_idempotency_key: 'payment/order-1/pay:PAY_SUCCESS',
+      event: 'PAY_SUCCESS',
+    };
+    expect(payload).toEqual({
+      biz_idempotency_key: 'payment/order-1/pay:PAY_SUCCESS',
+      event: 'PAY_SUCCESS',
+    });
+  });
+
+  it('ReconciliationDiffFound：topic=payment.reconciliation.diff_found，{period, detail[]}', () => {
+    expect(RECONCILIATION_DIFF_FOUND_TOPIC).toBe('payment.reconciliation.diff_found');
+    const payload: ReconciliationDiffFoundPayload = {
+      period: '2026-10-15',
+      detail: [
+        {
+          channel: 'wechat_ecom',
+          channel_txn_no: 'MOCK-WECHAT-000009',
+          kind: 'CHANNEL_ONLY',
+          amount: '12.00',
+          reason: '通道账单有行、本地无对应支付单',
+        },
+      ],
+    };
+    expect(payload.detail[0]!.kind).toBe('CHANNEL_ONLY');
+    expect(payload.detail[0]!.amount).toBe('12.00'); // 金额字符串往返（NUMERIC 禁 float）
+  });
+
+  it('ChannelDegraded：topic=payment.channel.degraded，{channel}', () => {
+    expect(CHANNEL_DEGRADED_TOPIC).toBe('payment.channel.degraded');
+    const payload: ChannelDegradedPayload = { channel: 'wechat_ecom' };
+    expect(payload).toEqual({ channel: 'wechat_ecom' });
   });
 });

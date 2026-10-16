@@ -200,3 +200,50 @@ export interface ReviewSubmittedPayload {
   readonly dims: Record<string, number>;
   readonly reviewee_user_id: number;
 }
+
+// ---------------------------------------------------------------------------
+// F1 支付网关与回调 Inbox（M1-W3 T1）：3 生产契约。F1 §6「消费：无」——指令型服务，
+// 事件出箱即止：PaymentCallbackInboxed → C3（T7 接线）消费推进业务状态机；
+// ReconciliationDiffFound → H3 工单面（M2）；ChannelDegraded → 告警 sink（本批 mock，
+// M2+ 换装，沿 B2 告警 mock sink 先例）。
+// ---------------------------------------------------------------------------
+
+/** 支付回调入箱（F1 §6 生产 → C3 消费推进）。载荷逐字 §6：{biz_idempotency_key, event}；
+ *  biz_idempotency_key = {业务幂等号}:{channel_event_type}（F1 §3 构成，下游按前缀定位支付单）。 */
+export const PAYMENT_CALLBACK_INBOXED_TOPIC = 'payment.callback.inboxed';
+
+export interface PaymentCallbackInboxedPayload {
+  readonly biz_idempotency_key: string;
+  /** 通道事件类型（如 PAY_SUCCESS / REFUND_SUCCESS；F1 §3 注释例） */
+  readonly event: string;
+}
+
+/** 对账差异发现（F1 §6 生产 → H3 工单面，SLA 24h，M2 接线；本批断言到事件出箱为止）。
+ *  detail 金额一律 Money 字符串（NUMERIC 禁 float）。 */
+export const RECONCILIATION_DIFF_FOUND_TOPIC = 'payment.reconciliation.diff_found';
+
+/** 差异明细项（kind：通道独有行 / 本地独有行 / 双边金额不一致；F1 §4 双向核对三态） */
+export interface ReconciliationDiffItem {
+  readonly channel: string;
+  /** 通道流水号（本地独有行可能无通道流水号 → null） */
+  readonly channel_txn_no: string | null;
+  readonly kind: 'CHANNEL_ONLY' | 'LOCAL_ONLY' | 'AMOUNT_MISMATCH';
+  /** 差异行金额（Money 字符串；本地独有=本地金额，其余=账单行金额） */
+  readonly amount: string;
+  /** 人读差异原因（与 split_ledgers.diff_reason 同文） */
+  readonly reason: string;
+}
+
+export interface ReconciliationDiffFoundPayload {
+  /** 对账期（ISO date：YYYY-MM-DD） */
+  readonly period: string;
+  readonly detail: readonly ReconciliationDiffItem[];
+}
+
+/** 通道降级（F1 §6 生产 → 告警 sink/切换记录；§8 单通道故障 5min 内切换的观测位）。 */
+export const CHANNEL_DEGRADED_TOPIC = 'payment.channel.degraded';
+
+export interface ChannelDegradedPayload {
+  /** 降级通道（wechat_ecom | alipay） */
+  readonly channel: string;
+}

@@ -72,6 +72,14 @@ export const ErrorCode = {
   PriceOutOfRange: 'E_OUT_OF_RANGE',
   /** B3 R-04 在团修改默认价格：须走 C6 改价引擎，本模块拒绝直改（§5 409 IN_GROUP_CHANGE，转 C6 流程） */
   InGroupChange: 'E_IN_GROUP_CHANGE',
+  /** F1 支付网关幂等键同键异载荷：同 idempotency_key 但业务载荷不一致（F1 §5 409 DUP_KEY；同键同载荷=幂等重放原单） */
+  PaymentDuplicateKey: 'E_DUP_KEY',
+  /** F1 违约扣减余额不足：通道 INSUFFICIENT 应答（F1 §5 400 INSUFFICIENT；余额事实源在业务模块台账，本层转发通道应答） */
+  InsufficientFunds: 'E_INSUFFICIENT',
+  /** F1 回调验签失败：HMAC-SHA256 签名不匹配（F1 §5 403 SIGN_FAIL） */
+  SignVerificationFailed: 'E_SIGN_FAIL',
+  /** F1 双通道全故障：主备均不可用，指令无处承载（F1 §8 双通道抽象的耗尽态；默认 503） */
+  ChannelUnavailable: 'E_CHANNEL_UNAVAILABLE',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -197,6 +205,22 @@ const ERROR_CODE_META: Readonly<Record<ErrorCode, ErrorCodeMeta>> = {
   [ErrorCode.InGroupChange]: {
     httpStatus: 409,
     defaultMessage: '存在进行中拼团，默认价格修改须走改价引擎（C6，R-04）',
+  },
+  [ErrorCode.PaymentDuplicateKey]: {
+    httpStatus: 409,
+    defaultMessage: '幂等键冲突：同键载荷不一致（同键同载荷请走幂等重放，返回原单）',
+  },
+  [ErrorCode.InsufficientFunds]: {
+    httpStatus: 400,
+    defaultMessage: '余额不足（通道 INSUFFICIENT 应答；余额事实源在业务模块台账）',
+  },
+  [ErrorCode.SignVerificationFailed]: {
+    httpStatus: 403,
+    defaultMessage: '回调验签失败（HMAC-SHA256 签名不匹配）',
+  },
+  [ErrorCode.ChannelUnavailable]: {
+    httpStatus: 503,
+    defaultMessage: '支付通道全部不可用（主备双通道均故障，请稍后重试）',
   },
 };
 

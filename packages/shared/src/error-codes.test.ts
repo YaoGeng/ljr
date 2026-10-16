@@ -73,6 +73,17 @@ describe('错误码契约（ErrorCode 常量表 + AppError{code,httpStatus}）',
     expect(new AppError(ErrorCode.InGroupChange).httpStatus).toBe(409);
   });
 
+  it('F1 支付网关错误码（M1-W3 §5）：幂等键同键异载荷 409 / 余额不足 400 / 验签失败 403 / 双通道全故障 503', () => {
+    expect(ErrorCode.PaymentDuplicateKey).toBe('E_DUP_KEY');
+    expect(new AppError(ErrorCode.PaymentDuplicateKey).httpStatus).toBe(409);
+    expect(ErrorCode.InsufficientFunds).toBe('E_INSUFFICIENT');
+    expect(new AppError(ErrorCode.InsufficientFunds).httpStatus).toBe(400);
+    expect(ErrorCode.SignVerificationFailed).toBe('E_SIGN_FAIL');
+    expect(new AppError(ErrorCode.SignVerificationFailed).httpStatus).toBe(403);
+    expect(ErrorCode.ChannelUnavailable).toBe('E_CHANNEL_UNAVAILABLE');
+    expect(new AppError(ErrorCode.ChannelUnavailable).httpStatus).toBe(503);
+  });
+
   it('isAppError 类型收窄', () => {
     expect(isAppError(new AppError(ErrorCode.Conflict))).toBe(true);
     expect(isAppError(new Error('plain'))).toBe(false);
