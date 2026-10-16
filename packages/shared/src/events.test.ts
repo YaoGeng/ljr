@@ -12,6 +12,13 @@ import {
   LawyerRejectedPayload,
   PAYMENT_CALLBACK_INBOXED_TOPIC,
   PaymentCallbackInboxedPayload,
+  POINTS_EXPIRED_TOPIC,
+  POINTS_GRANTED_TOPIC,
+  POINTS_REDEEMED_TOPIC,
+  PointsExpiredPayload,
+  PointsGrantedPayload,
+  PointsRedeemedPayload,
+  PointsTxnKind,
   PRICE_CHANGE_APPROVED_TOPIC,
   PRICE_VERSION_CREATED_TOPIC,
   PriceChangeApprovedPayload,
@@ -219,5 +226,67 @@ describe('F1 支付网关事件契约（M1-W3）：生产 3（消费：C3=T7 接
     expect(CHANNEL_DEGRADED_TOPIC).toBe('payment.channel.degraded');
     const payload: ChannelDegradedPayload = { channel: 'wechat_ecom' };
     expect(payload).toEqual({ channel: 'wechat_ecom' });
+  });
+});
+
+describe('F4 权益积分事件契约（M1-W3 T2）：生产 3（消费：H4/C6 回执均 M2——生产方定型，出箱即止）。载荷含 user_id/delta/kind/ref 与幂等引用', () => {
+  it('PointsGranted：topic=benefits.points.granted，{user_id, delta>0, kind, ref, balance_after}', () => {
+    expect(POINTS_GRANTED_TOPIC).toBe('benefits.points.granted');
+    const granted: PointsGrantedPayload = {
+      user_id: 601,
+      delta: 500,
+      kind: 'COMPENSATION',
+      ref: 'price_change:21',
+      balance_after: 500,
+    };
+    expect(granted.delta).toBeGreaterThan(0);
+    const restored: PointsGrantedPayload = {
+      user_id: 601,
+      delta: 300,
+      kind: 'REFUND_RESTORE',
+      ref: 'refund:order-9:1',
+      balance_after: 800,
+    };
+    expect(restored.kind).toBe('REFUND_RESTORE'); // R-06 退款还原走同事件，kind 区分
+  });
+
+  it('PointsRedeemed：topic=benefits.points.redeemed，{user_id, delta<0, kind, order_id, ref, balance_after}（幂等键=order）', () => {
+    expect(POINTS_REDEEMED_TOPIC).toBe('benefits.points.redeemed');
+    const payload: PointsRedeemedPayload = {
+      user_id: 601,
+      delta: -300,
+      kind: 'REDEEM',
+      order_id: 9,
+      ref: 'order:9',
+      balance_after: 500,
+    };
+    expect(payload.delta).toBeLessThan(0);
+    expect(payload.order_id).toBe(9);
+  });
+
+  it('PointsExpired：topic=benefits.points.expired，{user_id, delta<0, kind, ref(null), balance_after}', () => {
+    expect(POINTS_EXPIRED_TOPIC).toBe('benefits.points.expired');
+    const payload: PointsExpiredPayload = {
+      user_id: 601,
+      delta: -200,
+      kind: 'EXPIRE',
+      ref: null, // EXPIRE 聚合行无业务幂等引用（消费侧按 user_id+event_id 去重）
+      balance_after: 300,
+    };
+    expect(payload.delta).toBeLessThan(0);
+    expect(payload.ref).toBeNull();
+  });
+
+  it('PointsTxnKind 词汇表：F4 §3 逐字 5 值 + ①切片 FREEZE/UNFREEZE 口径归一 2 值', () => {
+    const kinds: PointsTxnKind[] = [
+      'COMPENSATION',
+      'ABSENCE_SHARE',
+      'REDEEM',
+      'REFUND_RESTORE',
+      'EXPIRE',
+      'FREEZE',
+      'UNFREEZE',
+    ];
+    expect(kinds).toHaveLength(7);
   });
 });

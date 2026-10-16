@@ -247,3 +247,76 @@ export interface ChannelDegradedPayload {
   /** 降级通道（wechat_ecom | alipay） */
   readonly channel: string;
 }
+
+// ---------------------------------------------------------------------------
+// F4 权益积分（M1-W3 T2）：3 生产契约（消费：H4/C6 回执均 M2——本批生产方定型契约，
+// 出箱即止）。①切片=积分账户+下单冻结核销+退款还原+过期；券/备付=②全量（M2-W2）。
+// 载荷口径（简报）：含 user_id/delta/kind/ref 与幂等引用；balance_after=出站时点账户
+// 可用余额快照（同 CreditEventEmittedPayload.score_after 形态）。
+// ---------------------------------------------------------------------------
+
+/**
+ * 积分流水 kind 词汇表（F4 §3 注释逐字 5 值 + ①切片口径归一追加 2 值）：
+ *   COMPENSATION/ABSENCE_SHARE/REFUND_RESTORE=正向授予（expires_at 有意义）；
+ *   REDEEM/EXPIRE=消耗；FREEZE/UNFREEZE=冻结/解冻留痕行（§5「幂等键=order」在两表模型下
+ *   的幂等锚点+审计行——delta 携带冻结额，不参与余额不变量求和口径，core points.service
+ *   头注与 V21 迁移头注同口径注明）。
+ */
+export const POINTS_TXN_KINDS = [
+  'COMPENSATION',
+  'ABSENCE_SHARE',
+  'REDEEM',
+  'REFUND_RESTORE',
+  'EXPIRE',
+  'FREEZE',
+  'UNFREEZE',
+] as const;
+
+export type PointsTxnKind = (typeof POINTS_TXN_KINDS)[number];
+
+/** 正向授予 kind（PointsGranted 的 kind 值域；REFUND_RESTORE=R-06 退款还原，过期时钟重置） */
+export type PointsGrantKind = 'COMPENSATION' | 'ABSENCE_SHARE' | 'REFUND_RESTORE';
+
+/** 积分授予（F4 §6 生产 → H4/C6 回执消费位=M2）。delta>0；ref=幂等引用（points_txns.source_ref 同文）。 */
+export const POINTS_GRANTED_TOPIC = 'benefits.points.granted';
+
+export interface PointsGrantedPayload {
+  readonly user_id: number;
+  /** 本次正向增量（恒 >0） */
+  readonly delta: number;
+  readonly kind: PointsGrantKind;
+  /** 幂等引用（授予=调用方 ref；退款还原=调用方 refund ref） */
+  readonly ref: string;
+  /** 入账后账户可用余额快照 */
+  readonly balance_after: number;
+}
+
+/** 积分核销（下单抵扣成功落账；F4 §6 生产 → H4 消费位=M2）。幂等键=order（§5）。 */
+export const POINTS_REDEEMED_TOPIC = 'benefits.points.redeemed';
+
+export interface PointsRedeemedPayload {
+  readonly user_id: number;
+  /** 本次核销增量（恒 <0） */
+  readonly delta: number;
+  readonly kind: 'REDEEM';
+  /** 支付单 id（幂等键=order，F1 支付单表主键） */
+  readonly order_id: number;
+  /** 幂等引用（=order:{order_id}，source_ref 同文） */
+  readonly ref: string;
+  /** 核销后账户可用余额快照 */
+  readonly balance_after: number;
+}
+
+/** 积分过期扣减（F4 §6 生产 → H4 消费位=M2）。POINTS_EXPIRE job 聚合行，逐用户一条。 */
+export const POINTS_EXPIRED_TOPIC = 'benefits.points.expired';
+
+export interface PointsExpiredPayload {
+  readonly user_id: number;
+  /** 本次过期扣减增量（恒 <0） */
+  readonly delta: number;
+  readonly kind: 'EXPIRE';
+  /** EXPIRE 聚合行无业务幂等引用 → null（消费侧按 user_id+event_id 去重） */
+  readonly ref: null;
+  /** 扣减后账户可用余额快照 */
+  readonly balance_after: number;
+}
