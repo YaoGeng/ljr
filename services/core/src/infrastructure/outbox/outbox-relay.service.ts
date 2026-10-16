@@ -10,6 +10,10 @@
  *
  * Nest 集成：后台轮询服务（interval 可配，测试手动 tick()）；
  * `start()` 仅在进程入口（main.ts）调用，测试/嵌套场景直接调 `tick()`。
+ *
+ * 同 topic 多 handler 扇出（M1-W3 T3 扩展，向后兼容）：registerHandler 追加不覆盖——一事件
+ * 可被多模块消费（A3b 消费 LawyerAuditPassed 与 A1 授角色并存的前提）；任一 handler 失败
+ * 整体回滚进重试轨道，重投时全部 handler 重跑（at-least-once 语义内，消费方自带幂等）。
  */
 import { Injectable, type OnApplicationShutdown } from '@nestjs/common';
 import { AppError, ErrorCode } from '@ljr/shared';
@@ -60,7 +64,8 @@ export class OutboxRelayService implements OnApplicationShutdown {
   private readonly maxRetry: number;
   private readonly backoffMs: (retryCount: number) => number;
   private readonly pollIntervalMs: number;
-  private readonly handlers = new Map<string, OutboxHandler>();
+  /** topic → handler 列表（同 topic 多 handler 扇出：追加不覆盖，注册序即执行序） */
+  private readonly handlers = new Map<string, OutboxHandler[]>();
   private timer: ReturnType<typeof setInterval> | null = null;
 
   constructor(store: Pool | PgPoolService, options: OutboxRelayOptions = {}) {
@@ -72,7 +77,9 @@ export class OutboxRelayService implements OnApplicationShutdown {
   }
 
   registerHandler(topic: string, handler: OutboxHandler): this {
-    this.handlers.set(topic, handler);
+    const list = this.handlers.get(topic) ?? [];
+    list.push(handler);
+    this.handlers.set(topic, list);
     return this;
   }
 
@@ -139,14 +146,16 @@ export class OutboxRelayService implements OnApplicationShutdown {
         };
 
         try {
-          const handler = this.handlers.get(event.topic);
-          if (!handler) {
+          const handlers = this.handlers.get(event.topic);
+          if (!handlers || handlers.length === 0) {
             throw new AppError(
               ErrorCode.OutboxHandlerFailed,
               `no handler registered for topic ${event.topic}（事件将进入重试轨道，不静默丢弃）`,
             );
           }
-          await handler(event, client); // 消费效果与 SENT 同事务
+          for (const handler of handlers) {
+            await handler(event, client); // 消费效果与 SENT 同事务；扇出按注册序依次执行
+          }
           await client.query(
             `UPDATE platform.outbox SET status = 'SENT', sent_at = now(), last_error = NULL WHERE id = $1`,
             [event.id],

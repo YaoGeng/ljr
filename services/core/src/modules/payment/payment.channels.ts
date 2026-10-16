@@ -2,6 +2,8 @@
  * F1 双通道抽象（⚠W3-3 落位）：PaymentChannelAdapter 八原语 + 双 mock 适配器（wechat_ecom 主 /
  * alipay 备）+ 切换路由。开发期通道全 mock（工作约定 2026-10-14「外部对接后置」）；服务剥离=V2
  * 演进路径（架构 §2.1/§3.3），届时真实适配器实现同一接口替换，服务面零改动。
+ * A3b 扩展（M1-W3 T3，不改 F1 已交付 REST 契约）：进件两原语 submitMerchant/queryMerchantStatus
+ * + freeze 的 INSUFFICIENT 业务应答（保证金冻结资金来源不足，A3b §5 400 上抛语义）。
  *
  * mock 口径（E3 embedding 确定性 mock 先例）：
  *   - 零网络请求：pay_params 为 mockpay:// 非网络形态 URL（含 order_id 供模拟器回调用），
@@ -83,6 +85,30 @@ export class ChannelFaultError extends Error {
   }
 }
 
+// ---------------------------------------------------------------------------
+// A3b 进件原语（M1-W3 T3 扩展，Task 3 简报「在 payment 模块内扩展通道适配器进件原语」；
+// 不改 F1 已交付 REST 契约——纯接口扩面 + mock 实现）
+// ---------------------------------------------------------------------------
+
+/**
+ * A3b 进件审核结果（mock 可注入词汇）：APPROVED=通过（可生效）；PENDING=审核中（停 IN_REVIEW，
+ * 由 queryMerchantStatus 应答驱动后续推进）。REJECTED 不提供——§4 迁移矩阵无拒绝终态（状态全集
+ * 六态无 REJECTED），文档补定义前 mock 不发明（A3b 服务层同口径）。
+ */
+export type MerchantReviewResult = 'APPROVED' | 'PENDING';
+
+/** A3b 进件提交入参（materials 原样透传机构侧——PII 红线：适配器层不落日志） */
+export interface MerchantSubmitRequest {
+  readonly firmId: number;
+  readonly materials: Readonly<Record<string, unknown>>;
+}
+
+/** A3b 进件提交应答（subMchid 仅 APPROVED 下发；PENDING 为 null——未生效无商户号） */
+export interface MerchantSubmitResult {
+  readonly subMchid: string | null;
+  readonly review: MerchantReviewResult;
+}
+
 export interface PaymentChannelAdapter {
   readonly channel: PaymentChannelName;
   /** 健康检查（mock=故障标志取反；真实通道=M2 探活实现） */
@@ -106,6 +132,10 @@ export interface PaymentChannelAdapter {
   partialRefund(req: ChannelInstructionRequest): Promise<ChannelResult>;
   /** 违约扣减（待结算余额 → 保证金专户补足的指令面，架构 §4.4） */
   deduct(req: ChannelDeductRequest): Promise<ChannelResult>;
+  /** A3b 二级商户进件提交（mock=同步审核结果；真实通道=M2 异步应答+回调） */
+  submitMerchant(req: MerchantSubmitRequest): Promise<MerchantSubmitResult>;
+  /** A3b 进件审核状态查询（「机构回调→状态机推进」的应答原语：APPROVED 驱动 →ACTIVE） */
+  queryMerchantStatus(firmId: number): Promise<MerchantReviewResult>;
   /** 对账文件拉取（T+1，R-04） */
   statement(period: string): Promise<StatementLine[]>;
 }
@@ -127,9 +157,16 @@ export class MockChannelAdapter implements PaymentChannelAdapter {
 
   /**
    * 故障注入钩子（测试专有；生产构造不设置）。CHANNEL_ERROR：healthy()=false 且全部原语抛错；
-   * INSUFFICIENT：仅 deduct 抛（其余原语正常——业务应答≠通道故障）。
+   * INSUFFICIENT：deduct 与 freeze 抛业务应答（A3b 保证金冻结扩展 freeze 同享；其余原语正常
+   * ——业务应答≠通道故障，不触发切换）。
    */
   fault: { readonly kind: 'CHANNEL_ERROR' | 'INSUFFICIENT' } | null = null;
+
+  /**
+   * A3b 进件审核结果注入钩子（测试专有；默认 APPROVED=mock 同步通过）。改回 APPROVED 即模拟
+   * 「机构审核完成」——queryMerchantStatus 应答驱动 A3b 状态机推进（mock 即时可配）。
+   */
+  merchantReview: MerchantReviewResult = 'APPROVED';
 
   private seq = 0;
   /** 账单金额漂移位（setStatementDiscrepancy 写入；statement 渲染时替换金额，AMOUNT_MISMATCH 构造） */
@@ -217,7 +254,11 @@ export class MockChannelAdapter implements PaymentChannelAdapter {
     };
   }
 
-  async freeze(_req: ChannelInstructionRequest): Promise<ChannelResult> {
+  async freeze(req: ChannelInstructionRequest): Promise<ChannelResult> {
+    if (this.fault?.kind === 'INSUFFICIENT') {
+      // A3b 保证金冻结业务应答：资金来源不足（与 deduct 共用 INSUFFICIENT 词汇，不触发切换）
+      throw new ChannelFaultError('INSUFFICIENT', this.channel, 'INSUFFICIENT：冻结资金来源不足');
+    }
     this.assertChannelHealthy();
     // 托管状态操作：无资金移动不出账单行（账单=资金行口径，R-04 对账只核资金行）
     return { channelTxnNo: this.nextTxnNo() };
@@ -250,6 +291,26 @@ export class MockChannelAdapter implements PaymentChannelAdapter {
     }
     this.assertChannelHealthy();
     return { channelTxnNo: this.record('DEDUCT', req.amount).channelTxnNo };
+  }
+
+  /** A3b 进件提交（mock=同步审核；二级商户号确定性构造 MOCKMCH-<CHANNEL>-<firmId>，同 firm 恒同） */
+  async submitMerchant(req: MerchantSubmitRequest): Promise<MerchantSubmitResult> {
+    if (!Number.isInteger(req.firmId) || req.firmId <= 0) {
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `进件 firmId 须为正整数：${JSON.stringify(req.firmId)}`,
+      );
+    }
+    if (this.merchantReview === 'APPROVED') {
+      const subMchid = `MOCKMCH-${this.channel.toUpperCase()}-${req.firmId}`;
+      return { subMchid, review: 'APPROVED' };
+    }
+    return { subMchid: null, review: this.merchantReview };
+  }
+
+  /** A3b 审核状态查询（merchantReview 钩子即时可配=「机构回调」的 mock 应答驱动） */
+  async queryMerchantStatus(_firmId: number): Promise<MerchantReviewResult> {
+    return this.merchantReview;
   }
 
   async statement(period: string): Promise<StatementLine[]> {

@@ -102,7 +102,7 @@ describe('MockChannelAdapter（mock 适配器：零网络请求 + 故障注入�
     expect(await wechat.statement('2026-10-16')).toEqual([]); // UTC 日 ≠ 对账期
   });
 
-  it('故障注入 CHANNEL_ERROR：healthy()=false 且原语抛 ChannelFaultError；INSUFFICIENT 仅 deduct 抛', async () => {
+  it('故障注入 CHANNEL_ERROR：healthy()=false 且原语抛 ChannelFaultError；INSUFFICIENT=业务应答（deduct/freeze 抛，A3b 保证金冻结扩展 freeze 同享）', async () => {
     const wechat = new MockChannelAdapter('wechat_ecom', 'm', 's');
     expect(wechat.healthy()).toBe(true);
 
@@ -115,6 +115,42 @@ describe('MockChannelAdapter（mock 适配器：零网络请求 + 故障注入�
     expect(wechat.healthy()).toBe(true); // INSUFFICIENT 是业务应答非通道故障
     await expect(wechat.preorder(PREORDER)).resolves.toBeTruthy();
     await expect(wechat.deduct(DEDUCT)).rejects.toMatchObject({ kind: 'INSUFFICIENT' });
+    // A3b 保证金冻结走 freeze 原语：资金来源不足同为业务应答（400 E_INSUFFICIENT 上抛语义）
+    await expect(wechat.freeze(INSTRUCTION)).rejects.toMatchObject({ kind: 'INSUFFICIENT' });
+  });
+});
+
+describe('MockChannelAdapter 进件原语（A3b：submitMerchant/queryMerchantStatus，审核结果可注入）', () => {
+  it('submitMerchant 默认同步 APPROVED：确定性二级商户号（同 firm 恒同），queryMerchantStatus 回读一致', async () => {
+    const wechat = new MockChannelAdapter('wechat_ecom', 'm', 's');
+    const res = await wechat.submitMerchant({ firmId: 12, materials: { bank_no: 'x' } });
+    expect(res.review).toBe('APPROVED');
+    expect(res.subMchid).toMatch(/^MOCKMCH-WECHAT_ECOM-12$/);
+    const again = await wechat.submitMerchant({ firmId: 12, materials: {} });
+    expect(again.subMchid).toBe(res.subMchid); // 确定性：同 firm 恒同商户号（幂等重放口径）
+    expect(await wechat.queryMerchantStatus(12)).toBe('APPROVED');
+    const alipay = new MockChannelAdapter('alipay', 'm', 's');
+    expect((await alipay.submitMerchant({ firmId: 12, materials: {} })).subMchid).toBe(
+      'MOCKMCH-ALIPAY-12',
+    );
+  });
+
+  it('merchantReview 钩子注入 PENDING：submit 保持 IN_REVIEW 语义，钩子改 APPROVED 后 query 读到新结果（机构回调=适配器异步应答驱动）', async () => {
+    const wechat = new MockChannelAdapter('wechat_ecom', 'm', 's');
+    wechat.merchantReview = 'PENDING';
+    const res = await wechat.submitMerchant({ firmId: 7, materials: {} });
+    expect(res.review).toBe('PENDING');
+    expect(res.subMchid).toBeNull(); // 未生效不下发商户号
+    expect(await wechat.queryMerchantStatus(7)).toBe('PENDING');
+    wechat.merchantReview = 'APPROVED'; // 模拟机构审核完成（mock 即时可配）
+    expect(await wechat.queryMerchantStatus(7)).toBe('APPROVED');
+  });
+
+  it('firmId 非正整数：InvalidArgument 显性化（进件主体是机构侧关键标识）', async () => {
+    const wechat = new MockChannelAdapter('wechat_ecom', 'm', 's');
+    await expect(wechat.submitMerchant({ firmId: 0, materials: {} })).rejects.toMatchObject({
+      code: ErrorCode.InvalidArgument,
+    });
   });
 });
 

@@ -133,6 +133,35 @@ describe('OutboxRelayService（at-least-once 投递，需 PG）', () => {
     expect(row.rows[0]?.last_error).toContain('no handler');
   });
 
+  it('同 topic 多 handler 扇出（A3b 消费 LawyerAuditPassed 与 A1 授角色并存的前提）：两个 handler 依次执行；后者失败整体回滚重投，重投时两者都重跑（at-least-once）', async () => {
+    const id = await seedEvent('test.topic.fanout', { n: 6 });
+    const calls: string[] = [];
+    let a3bFailedOnce = false;
+    relay.registerHandler('test.topic.fanout', async () => {
+      calls.push('a1');
+    });
+    relay.registerHandler('test.topic.fanout', async () => {
+      calls.push('a3b');
+      if (!a3bFailedOnce) {
+        a3bFailedOnce = true;
+        throw new Error('第二 handler 首跑失败');
+      }
+    });
+
+    const t1 = await relay.tick();
+    expect(t1.retried).toBe(1); // 第二 handler 失败 → 整体回滚进重试轨道
+    expect(calls).toEqual(['a1', 'a3b']); // 两者都已执行（但随事务回滚）
+
+    const t2 = await relay.tick();
+    expect(t2.dispatched).toBe(1); // 重投成功
+    expect(calls).toEqual(['a1', 'a3b', 'a1', 'a3b']); // 重投两 handler 都重跑（消费方须自带幂等）
+    const row = await pool.query<{ status: string }>(
+      `SELECT status FROM platform.outbox WHERE id = $1`,
+      [id],
+    );
+    expect(row.rows[0]?.status).toBe('SENT');
+  });
+
   it('退避生效：next_retry_at 被推后，未到期不拾取', async () => {
     const slowRelay = new OutboxRelayService(pool, {
       maxRetry: 5,
