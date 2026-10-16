@@ -55,6 +55,8 @@ export const TEST_DB_TABLES = [
   'payment.payment_orders',
   'payment.inbox',
   'payment.split_ledgers',
+  'payment.firm_merchants',
+  'payment.lawyer_deposits',
   'benefits.points_accounts',
   'benefits.points_txns',
 ] as const;
