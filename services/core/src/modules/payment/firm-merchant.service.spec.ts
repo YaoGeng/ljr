@@ -90,6 +90,30 @@ describe('A3b 进件服务（§4/§5/§7，需 PG）', () => {
   const submitActive = (firmId: number) =>
     service.submit({ firm_id: firmId, channel: 'wechat_ecom', materials: { bank_no: 'x' } });
 
+  /**
+   * 时间旅行（I2 API 面）：在册 FIRM_REVERIFY job 作废后按过去时刻重注册 + payment 侧复验锚提前
+   * ——schedule_jobs 禁直改（schema-refs 红线：跨 schema 走 I2 服务面）；payment.firm_merchants
+   * 是本模块表，测试夹具 UPDATE 合法。
+   */
+  const travelJobDue = async (merchantId: number) => {
+    const cancelled = await scheduler.cancelJob(pool, {
+      jobType: 'FIRM_REVERIFY',
+      refType: 'firm_merchant',
+      refId: merchantId,
+    });
+    expect(cancelled.cancelled).toBe(true);
+    await scheduler.registerJob(pool, {
+      jobType: 'FIRM_REVERIFY',
+      refType: 'firm_merchant',
+      refId: merchantId,
+      dueAt: new Date(Date.now() - 1000),
+    });
+    await pool.query(
+      `UPDATE payment.firm_merchants SET reverify_due = now() - interval '1s' WHERE id = $1`,
+      [merchantId],
+    );
+  };
+
   it('R-01 提交→生效主路径：SUBMITTING→IN_REVIEW→ACTIVE 双留痕；sub_mchid/verified_at/reverify_due 落定；FIRM_REVERIFY job 注册（due=reverify_due）；FirmMerchantActivated 出箱恰一条', async () => {
     const view = await submitActive(12);
     expect(view.status).toBe('ACTIVE');
@@ -109,14 +133,12 @@ describe('A3b 进件服务（§4/§5/§7，需 PG）', () => {
     ]);
 
     // FIRM_REVERIFY job：producer=A3b（进件生效时注册一年后 job，due=reverify_due）
-    const job = await pool.query<{ status: string; due_at: string }>(
-      `SELECT status, due_at::text AS due_at FROM schedule.schedule_jobs
-        WHERE job_type = 'FIRM_REVERIFY' AND ref_type = 'firm_merchant' AND ref_id = $1`,
-      [view.id],
-    );
-    expect(job.rows).toHaveLength(1);
-    expect(job.rows[0]!.status).toBe('PENDING');
-    expect(new Date(job.rows[0]!.due_at).getTime()).toBe(new Date(view.reverify_due!).getTime());
+    // 断言经 I2 运维视图查询面（跨 schema 禁直查 schedule 表——schema-refs 红线）
+    const jobs = await scheduler.listJobs({ jobType: 'FIRM_REVERIFY' });
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]!.refId).toBe(view.id);
+    expect(jobs[0]!.status).toBe('PENDING');
+    expect(jobs[0]!.dueAt.getTime()).toBe(new Date(view.reverify_due!).getTime());
 
     const events = await pool.query<{ topic: string; payload: Record<string, unknown> }>(
       `SELECT topic, payload FROM platform.outbox WHERE topic = $1`,
@@ -149,11 +171,8 @@ describe('A3b 进件服务（§4/§5/§7，需 PG）', () => {
     const active = await service.refreshFromChannel({ firm_id: 15, channel: 'wechat_ecom' });
     expect(active.status).toBe('ACTIVE');
     expect(active.sub_mchid).toBe('MOCKMCH-WECHAT_ECOM-15');
-    const job = await pool.query<{ id: number }>(
-      `SELECT id FROM schedule.schedule_jobs WHERE job_type = 'FIRM_REVERIFY' AND ref_id = $1`,
-      [active.id],
-    );
-    expect(job.rows).toHaveLength(1);
+    const jobs = await scheduler.listJobs({ jobType: 'FIRM_REVERIFY' });
+    expect(jobs.filter((j) => j.refId === active.id)).toHaveLength(1);
     const events = await pool.query<{ topic: string }>(
       `SELECT topic FROM platform.outbox WHERE topic = $1`,
       [FIRM_MERCHANT_ACTIVATED_TOPIC],
@@ -223,16 +242,8 @@ describe('A3b 进件服务（§4/§5/§7，需 PG）', () => {
 
   it('R-03 复验到期：FIRM_REVERIFY job 到期 tick → ACTIVE→SUSPENDED + Suspended(REVERIFY_OVERDUE)+ReverifiedDue 成对出箱；未到期/非 ACTIVE 回查不开工', async () => {
     const view = await submitActive(17);
-    // 时间旅行：job 与复验锚提前到期
-    await pool.query(
-      `UPDATE schedule.schedule_jobs SET due_at = now() - interval '1s'
-        WHERE job_type = 'FIRM_REVERIFY' AND ref_id = $1`,
-      [view.id],
-    );
-    await pool.query(
-      `UPDATE payment.firm_merchants SET reverify_due = now() - interval '1s' WHERE id = $1`,
-      [view.id],
-    );
+    // 时间旅行：job 与复验锚提前到期（经 I2 API 面，schedule_jobs 禁直改）
+    await travelJobDue(view.id);
 
     const tick = await scheduler.tick('normal');
     expect(tick.done).toBe(1);
@@ -265,27 +276,17 @@ describe('A3b 进件服务（§4/§5/§7，需 PG）', () => {
 
   it('R-03 复验端点：SUSPENDED→ACTIVE（刷新 verified_at/reverify_due+新 job+Activated）；ACTIVE 复验被守卫拒', async () => {
     const view = await submitActive(19);
-    await pool.query(
-      `UPDATE schedule.schedule_jobs SET due_at = now() - interval '1s'
-        WHERE job_type = 'FIRM_REVERIFY' AND ref_id = $1`,
-      [view.id],
-    );
-    await pool.query(
-      `UPDATE payment.firm_merchants SET reverify_due = now() - interval '1s' WHERE id = $1`,
-      [view.id],
-    );
+    await travelJobDue(view.id);
     await scheduler.tick('normal');
     expect((await service.getMerchant(19, 'wechat_ecom'))!.status).toBe('SUSPENDED');
 
     const reactivated = await service.reverify({ firm_id: 19, channel: 'wechat_ecom' });
     expect(reactivated.status).toBe('ACTIVE');
     expect(new Date(reactivated.reverify_due!).getTime()).toBeGreaterThan(Date.now());
-    const jobs = await pool.query<{ status: string }>(
-      `SELECT status FROM schedule.schedule_jobs
-        WHERE job_type = 'FIRM_REVERIFY' AND ref_id = $1 ORDER BY id`,
-      [reactivated.id],
-    );
-    expect(jobs.rows.map((r) => r.status)).toEqual(['DONE', 'PENDING']); // 旧 job DONE + 新一年期在册
+    const jobs = await scheduler.listJobs({ jobType: 'FIRM_REVERIFY' });
+    const mine = jobs.filter((j) => j.refId === reactivated.id);
+    expect(mine.some((j) => j.status === 'DONE')).toBe(true); // 到期 job 已执行
+    expect(mine.filter((j) => j.status === 'PENDING')).toHaveLength(1); // 新一年期在册
     const activated = await pool.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM platform.outbox WHERE topic = $1`,
       [FIRM_MERCHANT_ACTIVATED_TOPIC],
@@ -318,15 +319,7 @@ describe('A3b 进件服务（§4/§5/§7，需 PG）', () => {
 
     // SUSPENDED 同拒（复验到期）
     const v23 = await submitActive(23);
-    await pool.query(
-      `UPDATE schedule.schedule_jobs SET due_at = now() - interval '1s'
-        WHERE job_type = 'FIRM_REVERIFY' AND ref_id = $1`,
-      [v23.id],
-    );
-    await pool.query(
-      `UPDATE payment.firm_merchants SET reverify_due = now() - interval '1s' WHERE id = $1`,
-      [v23.id],
-    );
+    await travelJobDue(v23.id);
     await scheduler.tick('normal');
     await expect(service.assertSplittable(23, 'wechat_ecom')).rejects.toMatchObject({
       code: ErrorCode.MerchantNotActive,

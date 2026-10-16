@@ -128,15 +128,28 @@ describe('A3b HTTP 契约（§5，需 PG）', () => {
     await request(app.getHttpServer())
       .post('/firms/53/merchant/submit')
       .send({ channel: 'wechat_ecom', materials: {} });
-    // 时间旅行：复验到期（job 与锚提前），经 I2 tick 触发停用
-    await pool.query(
-      `UPDATE schedule.schedule_jobs SET due_at = now() - interval '1s'
-        WHERE job_type = 'FIRM_REVERIFY' AND ref_id = (SELECT id FROM payment.firm_merchants WHERE firm_id = 53)`,
-    );
+    // 时间旅行（I2 API 面，schedule_jobs 禁直改——schema-refs 红线）：job 按过去时刻重注册 +
+    // payment 侧复验锚提前，经 I2 tick 触发停用
+    const scheduler = app.get(SchedulerService);
+    const merchantId = (
+      await pool.query<{ id: string }>(`SELECT id FROM payment.firm_merchants WHERE firm_id = 53`)
+    ).rows[0]!.id;
+    const cancelled = await scheduler.cancelJob(pool, {
+      jobType: 'FIRM_REVERIFY',
+      refType: 'firm_merchant',
+      refId: Number(merchantId),
+    });
+    expect(cancelled.cancelled).toBe(true);
+    await scheduler.registerJob(pool, {
+      jobType: 'FIRM_REVERIFY',
+      refType: 'firm_merchant',
+      refId: Number(merchantId),
+      dueAt: new Date(Date.now() - 1000),
+    });
     await pool.query(
       `UPDATE payment.firm_merchants SET reverify_due = now() - interval '1s' WHERE firm_id = 53`,
     );
-    const tick = await app.get(SchedulerService).tick('normal');
+    const tick = await scheduler.tick('normal');
     expect(tick.done).toBe(1);
 
     const ok = await request(app.getHttpServer()).post('/firms/53/merchant/reverify').send({});
