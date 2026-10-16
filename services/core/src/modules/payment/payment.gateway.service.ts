@@ -775,7 +775,7 @@ export class PaymentGatewayService {
       );
     }
 
-    const order = await this.findOrderById(orderId); // 无事务读：幂等键只读定位
+    const order = await this.requireOrderById(orderId); // 无事务读：幂等键只读定位
     const bizIdempotencyKey = `${order.idempotency_key}:${eventType}`;
 
     return this.pool.withTransaction(async (uow) => {
@@ -889,7 +889,8 @@ export class PaymentGatewayService {
     return res.rows[0] ?? null;
   }
 
-  private async findOrderById(id: number): Promise<OrderRow> {
+  /** id 定位支付单（不存在即 404——回调 Ingest 的强依赖定位）；只读变体见 findOrderById */
+  private async requireOrderById(id: number): Promise<OrderRow> {
     const res = await this.pool.query<OrderRow>(
       `SELECT ${ORDER_COLS} FROM payment.payment_orders WHERE id = $1`,
       [id],
