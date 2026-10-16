@@ -311,13 +311,26 @@ describe('C1 领域层（开团事务/幂等/R-01/R-04/R-05/截止流标/终态 
     expect(n1.rows[0]!.n).toBe(0);
     expect(await countOutbox(SESSION_CREATED_TOPIC)).toBe(0);
 
-    // SLOT_ABUSE_LIMIT：律师本人已有进行中锁（A 场次），同段换段第二团 → B2 计数拒绝
+    // SLOT_ABUSE_LIMIT（R-W3-F 收窄后对 B2C 为防御位）：直调 B2 注入 PENDING_PAYMENT 锁（C2B
+    // 形态）触发计数——机制用例归 B2 spec 持有（slot-lock.spec R-W3-F 两用例），此处钉消费方
+    // 「收到 ok:false 即中止且零业务行」契约；B2C 频控归属=R-W3-H：不设上限，本分支不可自然触发
     await seedPricing(9202, { per_head: '50.00' });
-    const a = await sessions.create(createInput({ lawyer_id: 9202 }));
+    const a = await sessions.create(createInput({ lawyer_id: 9202 })); // A=LOCKED（不计数，R-W3-F）
     expect(a.status).toBe('CREATED');
+    await pg.withTransaction(async (uow) => {
+      const pend = await locks.lockSlot(uow, {
+        lawyerId: 9202,
+        slotStart: hourAfter(40),
+        initiatorUserId: 9202,
+        refType: 'groupbuy',
+        refId: 998,
+        paymentOrderId: 501, // PENDING_PAYMENT（计数集内）
+      });
+      expect(pend.ok).toBe(true);
+    });
     await expect(
       sessions.create(
-        createInput({ lawyer_id: 9202, slot_start: hourAfter(40), unit_price: '50.00' }),
+        createInput({ lawyer_id: 9202, slot_start: hourAfter(50), unit_price: '50.00' }),
       ),
     ).rejects.toMatchObject({ code: ErrorCode.RateLimited, httpStatus: 429 });
     const n2 = await pool.query<{ n: number }>(
@@ -341,9 +354,9 @@ describe('C1 领域层（开团事务/幂等/R-01/R-04/R-05/截止流标/终态 
     expect(outcomes.filter((o) => o === 'WIN')).toHaveLength(1);
     for (const o of outcomes) {
       if (o !== 'WIN') {
-        // 败者：幂等查先到=E_SESSION_DUP_KEY；advisory 串行化后计数先到=E_RATE_LIMITED；
-        // 唯一索引直撞=E_SLOT_TAKEN——三者同义「本段已被本场次占据」
-        expect(['E_SESSION_DUP_KEY', 'E_RATE_LIMITED', 'E_SLOT_TAKEN']).toContain(o);
+        // 败者（R-W3-F 收窄后）：幂等查先到=E_SESSION_DUP_KEY；唯一索引直撞=E_SLOT_TAKEN
+        // ——E_RATE_LIMITED 对 B2C 已不可达（B2C 创建即锁 LOCKED 不计数，滥用计数=C2B 专属）
+        expect(['E_SESSION_DUP_KEY', 'E_SLOT_TAKEN']).toContain(o);
       }
     }
     const n = await pool.query<{ n: number }>(
@@ -427,6 +440,49 @@ describe('C1 领域层（开团事务/幂等/R-01/R-04/R-05/截止流标/终态 
     expect(await countOutbox(SESSION_FAILED_TOPIC)).toBe(0);
   });
 
+  it('R-W3-G 临期/过期校验（⚠W3-11）：过期 slot_start 400；临期（缺省截止已过）缺省被拒 E_ENROLL_DEADLINE_INVALID；显式未来 deadline 放行、显式过期 deadline 拒绝', async () => {
+    // ① slot_start 已过 → 400（E_INVALID_ARGUMENT）
+    await expect(
+      sessions.create(createInput({ slot_start: new Date(Date.now() - HOUR) })),
+    ).rejects.toMatchObject({ code: ErrorCode.InvalidArgument });
+    const n0 = await pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM trade.sessions`);
+    expect(n0.rows[0]!.n).toBe(0);
+
+    // ② 临期（slot_start=+2h ⇒ 缺省截止=now−22h 已过）且未显式传 deadline → 400 E_ENROLL_DEADLINE_INVALID
+    await expect(sessions.create(createInput({ slot_start: hourAfter(2) }))).rejects.toMatchObject({
+      code: ErrorCode.EnrollDeadlineInvalid,
+      httpStatus: 400,
+    });
+    // 临期 + 显式 deadline 已过 → 同拒（须 now<deadline）
+    await expect(
+      sessions.create(
+        createInput({
+          lawyer_id: 9107,
+          slot_start: hourAfter(2),
+          enroll_deadline: new Date(Date.now() - 1),
+        }),
+      ),
+    ).rejects.toMatchObject({ code: ErrorCode.EnrollDeadlineInvalid });
+
+    // 显式合法 deadline（now < d < slot_start）→ 放行；远期场次缺省截止仍有效（回归锚）
+    await seedPricing(9107, { per_head: '50.00' });
+    await seedPricing(9108, { per_head: '50.00' });
+    const ok = await sessions.create(
+      createInput({
+        lawyer_id: 9107,
+        slot_start: hourAfter(2),
+        enroll_deadline: new Date(Date.now() + HOUR),
+      }),
+    );
+    expect(ok.status).toBe('CREATED');
+    const far = await sessions.create(createInput({ lawyer_id: 9108 })); // +25h，缺省截止=+1h>now
+    expect(far.status).toBe('CREATED');
+    const n = await pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM trade.sessions WHERE lawyer_id IN (9107, 9108)`,
+    );
+    expect(n.rows[0]!.n).toBe(2);
+  });
+
   it('markFull 消费位（C3=T7 预留）：joined≥capacity → CREATED→FULL 守卫推进+SessionFull 出箱；未满 409；重放守卫拒绝', async () => {
     await seedPricing(9101, { per_head: '50.00' });
     const view = await sessions.create(createInput());
@@ -502,9 +558,10 @@ describe('C1 领域层（开团事务/幂等/R-01/R-04/R-05/截止流标/终态 
     expect(finished.get(alive.id)?.terminal).toBe(true);
   });
 
-  it('详情/列表服务面：getById 详情+剩余席位（404 缺失）；list 仅 PASSED 律师 + lawyer/from/to 过滤', async () => {
+  it('详情/列表服务面：getById 详情+剩余席位（404 缺失）；list 仅 PASSED 律师 + lawyer/from/to 过滤；公开列表仅 CREATED（⚠W3-12，FAILED 不出列详情可查）', async () => {
     await seedLawyerProfile(pool, 9301, 'PASSED', 't4-passed');
     await seedLawyerProfile(pool, 9302, 'SUBMITTED', 't4-submitted');
+    await seedLawyerProfile(pool, 9303, 'PASSED', 't4-passed-failed');
     const audit = app.get(LawyerQualificationService);
     expect(await audit.isAuditPassed(9301)).toBe(true);
     expect(await audit.isAuditPassed(9302)).toBe(false);
@@ -517,19 +574,36 @@ describe('C1 领域层（开团事务/幂等/R-01/R-04/R-05/截止流标/终态 
     await sessions.create(
       createInput({ lawyer_id: 9302, unit_price: '50.00', slot_start: hourAfter(26) }),
     );
+    // FAILED 场次（流标路径真实产生）：不出公开列表，详情仍可查（⚠W3-12 R-W3-J）
+    const v3 = await sessions.create(
+      createInput({
+        lawyer_id: 9303,
+        unit_price: '50.00',
+        slot_start: hourAfter(30),
+        enroll_deadline: new Date(Date.now() - 1_000),
+      }),
+    );
+    const pg = app.get(PgPoolService);
+    await pg.withTransaction((uow) => sessions.failOnDeadline(uow, v3.id));
 
     const detail = await sessions.getDetail(v1.id);
     expect(detail.remaining).toBe(6); // capacity - joined
     await expect(sessions.getDetail(987654)).rejects.toMatchObject({ code: ErrorCode.NotFound });
 
     const listAll = await sessions.list({});
-    expect(listAll.map((s) => s.lawyer_id)).toEqual([9301]); // 仅 PASSED（9302 隐藏）
+    expect(listAll.map((s) => s.lawyer_id)).toEqual([9301]); // 仅 PASSED（9302 隐藏）且仅 CREATED（9303 FAILED 隐藏）
     const listLawyer = await sessions.list({ lawyer: 9302 });
     expect(listLawyer).toEqual([]); // 过滤命中但审核未过 → 不可见
+    const listFailedLawyer = await sessions.list({ lawyer: 9303 });
+    expect(listFailedLawyer).toEqual([]); // FAILED 不出公开列表（⚠W3-12）
     const listEmptyDay = await sessions.list({
       from: ymd(new Date(today.getTime() + 40 * 24 * HOUR)),
       to: ymd(new Date(today.getTime() + 41 * 24 * HOUR)),
     });
     expect(listEmptyDay).toEqual([]); // 区间外
+
+    const failedDetail = await sessions.getDetail(v3.id); // 详情不过滤（⚠W3-12）
+    expect(failedDetail.status).toBe('FAILED');
+    expect(failedDetail.remaining).toBe(6);
   });
 });

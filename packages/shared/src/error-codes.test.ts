@@ -91,13 +91,15 @@ describe('错误码契约（ErrorCode 常量表 + AppError{code,httpStatus}）',
     expect(new AppError(ErrorCode.MerchantNotActive).httpStatus).toBe(409);
   });
 
-  it('C1 开团错误码（M1-W3 T4 §5）：时段已被占用 409 SLOT_TAKEN / 停接限制令 403 RESTRICTED / 幂等键同键异载荷 409（F1 R-02 口径先例）', () => {
+  it('C1 开团错误码（M1-W3 T4 §5）：时段已被占用 409 SLOT_TAKEN / 停接限制令 403 RESTRICTED / 幂等键同键异载荷 409（F1 R-02 口径先例）/ 临期缺省截止 400 ENROLL_DEADLINE_INVALID（R-W3-G）', () => {
     expect(ErrorCode.SlotTaken).toBe('E_SLOT_TAKEN');
     expect(new AppError(ErrorCode.SlotTaken).httpStatus).toBe(409);
     expect(ErrorCode.Restricted).toBe('E_RESTRICTED');
     expect(new AppError(ErrorCode.Restricted).httpStatus).toBe(403);
     expect(ErrorCode.SessionDuplicateKey).toBe('E_SESSION_DUP_KEY');
     expect(new AppError(ErrorCode.SessionDuplicateKey).httpStatus).toBe(409);
+    expect(ErrorCode.EnrollDeadlineInvalid).toBe('E_ENROLL_DEADLINE_INVALID');
+    expect(new AppError(ErrorCode.EnrollDeadlineInvalid).httpStatus).toBe(400);
   });
 
   it('isAppError 类型收窄', () => {

@@ -90,6 +90,8 @@ export const ErrorCode = {
   Restricted: 'E_RESTRICTED',
   /** C1 幂等键同键异载荷：同 lawyer+slot_start 已有进行中场次但载荷不一致（F1 R-02 口径先例：同键同载荷=幂等重放原单；§5 409） */
   SessionDuplicateKey: 'E_SESSION_DUP_KEY',
+  /** C1 临期开团缺省截止无效：slot_start 已过，或临期（缺省截止=开始前 24h 已过）未显式传未来 enroll_deadline（R-W3-G ⚠W3-11；400） */
+  EnrollDeadlineInvalid: 'E_ENROLL_DEADLINE_INVALID',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -254,6 +256,11 @@ const ERROR_CODE_META: Readonly<Record<ErrorCode, ErrorCodeMeta>> = {
     httpStatus: 409,
     defaultMessage:
       '开团幂等键冲突：同律师同开始时刻已有进行中场次且载荷不一致（同载荷请走幂等重放，返回原单）',
+  },
+  [ErrorCode.EnrollDeadlineInvalid]: {
+    httpStatus: 400,
+    defaultMessage:
+      '报名截止无效：临期场次（缺省截止已过）须显式传晚于当前时刻且早于开始时刻的 enroll_deadline（R-W3-G）',
   },
 };
 

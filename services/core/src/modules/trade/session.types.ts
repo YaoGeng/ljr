@@ -87,6 +87,44 @@ export function splitTotalIntoUnit(totalCents: number, capacity: number): number
 }
 
 // ---------------------------------------------------------------------------
+// 席位价（R-W3-I：C1 导出纯函数——下游 C3 退款/违约金按席位计算的唯一口径）
+// ---------------------------------------------------------------------------
+
+/** seatPriceFor 入参的最小切面（SessionView 的价格四元组；字面结构兼容，不要求传全量视图） */
+export interface SeatPriceSession {
+  readonly price_mode: PriceMode;
+  readonly unit_price: Money;
+  readonly session_total: Money;
+  readonly capacity: number;
+}
+
+/**
+ * 第 seatNo 个席位的价格（1-based，1..capacity；Money 字符串域，整数分全程无浮点）：
+ *   - per_head 模式：恒 unit_price（每席同价）；
+ *   - session_total 模式：seatNo<capacity → 半分向上分摊（splitTotalIntoUnit 同口径）；
+ *     seatNo=capacity（末位）→ session_total−(capacity−1)×分摊——尾差归集末位（半分案例为
+ *     少收方向），不变量 Σ(1..capacity) ≡ session_total 恒成立（session.seat-price.spec 钉住）。
+ * seatNo 越界/非整数 → 400 E_INVALID_ARGUMENT（调用方 C3 传错席位序号显性化，不静默钳制）。
+ */
+export function seatPriceFor(session: SeatPriceSession, seatNo: number): Money {
+  if (!Number.isInteger(seatNo) || seatNo < 1 || seatNo > session.capacity) {
+    throw new AppError(
+      ErrorCode.InvalidArgument,
+      `seatNo 须为 1..capacity（=${session.capacity}）整数：${JSON.stringify(seatNo)}`,
+    );
+  }
+  if (session.price_mode === 'per_head') {
+    return session.unit_price;
+  }
+  const totalCents = moneyToCents(session.session_total);
+  const unitCents = splitTotalIntoUnit(totalCents, session.capacity);
+  if (seatNo < session.capacity) {
+    return centsToMoney(unitCents);
+  }
+  return centsToMoney(totalCents - unitCents * (session.capacity - 1));
+}
+
+// ---------------------------------------------------------------------------
 // §5 契约入参/出参（snake_case 逐字）
 // ---------------------------------------------------------------------------
 

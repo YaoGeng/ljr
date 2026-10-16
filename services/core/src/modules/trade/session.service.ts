@@ -160,6 +160,37 @@ export class SessionService {
     const roomMode = assertRoomMode(input.room_mode);
     const unitPriceRaw = input.unit_price === undefined ? null : input.unit_price;
 
+    // R-W3-G ①（⚠W3-11 决策位：产品若翻转「允许即开即报」走 H7 规则）：slot_start 须为未来时刻
+    //（校验先行于 G1/价格 I/O——fail-fast，无效入参不耗外部查询）
+    if (slotStart.getTime() <= Date.now()) {
+      throw new AppError(ErrorCode.InvalidArgument, 'slot_start 须为未来时刻（不得晚于当前开团）');
+    }
+
+    // D3 缺省（⚠04§8-3）：enroll_deadline 缺省=slot_start 前 N 小时（config 可调），律师可改
+    const defaultDeadline = new Date(
+      slotStart.getTime() - this.config.enrollDeadlineHours * HOUR_MS,
+    );
+    const deadline = input.enroll_deadline ?? defaultDeadline;
+    if (Number.isNaN(deadline.getTime())) {
+      throw new AppError(ErrorCode.InvalidArgument, `enroll_deadline 须为有效时刻`);
+    }
+    if (deadline.getTime() >= slotStart.getTime()) {
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        'enroll_deadline 须早于 slot_start（截止先于开始）',
+      );
+    }
+    // R-W3-G ②（⚠W3-11）：临期场次（缺省截止已过）必须显式传晚于当前时刻的截止——防「创建即流标」
+    // 的静默无效场次；远期场次显式传过去截止不在此列（创建即流标=misfire 自愈口径，执行器用例锚）
+    if (defaultDeadline.getTime() <= Date.now()) {
+      if (input.enroll_deadline === undefined || deadline.getTime() <= Date.now()) {
+        throw new AppError(
+          ErrorCode.EnrollDeadlineInvalid,
+          `临期场次（开始于 ${slotStart.toISOString()}，缺省截止已过）须显式传晚于当前时刻且早于开始时刻的 enroll_deadline`,
+        );
+      }
+    }
+
     // R-05 G1 限制令入口校验（/credit/restrictions 查询面缓存适配位 30s，W2 形态）：
     // 仅 BAN_PUBLISH 拦截开团（简报逐字；SUSPEND_TAKE_* 语义=接单侧，⚠决策位报告注明）
     const restrictions = await this.credit.listActiveRestrictions('lawyer', lawyerId);
@@ -178,20 +209,6 @@ export class SessionService {
       unitPriceRaw,
     );
     this.assertColumnBounds(unitCents, totalCents);
-
-    // D3 缺省（⚠04§8-3）：enroll_deadline 缺省=slot_start 前 N 小时（config 可调），律师可改
-    const deadline =
-      input.enroll_deadline ??
-      new Date(slotStart.getTime() - this.config.enrollDeadlineHours * HOUR_MS);
-    if (Number.isNaN(deadline.getTime())) {
-      throw new AppError(ErrorCode.InvalidArgument, `enroll_deadline 须为有效时刻`);
-    }
-    if (deadline.getTime() >= slotStart.getTime()) {
-      throw new AppError(
-        ErrorCode.InvalidArgument,
-        'enroll_deadline 须早于 slot_start（截止先于开始）',
-      );
-    }
 
     const view = await this.pool.withTransaction(async (uow) => {
       // 幂等（F1 R-02 口径先例）：同键（lawyer+slot_start，B2C，非终态）同载荷重放原单
@@ -243,7 +260,7 @@ export class SessionService {
       const locked = await this.locks.lockSlot(uow, {
         lawyerId,
         slotStart,
-        initiatorUserId: lawyerId, // B2C 创建即锁：发起人=律师本人（报告 ⚠注明滥用计数含义）
+        initiatorUserId: lawyerId, // B2C 创建即锁：发起人=律师本人；B2 计数集=仅 PENDING_PAYMENT（R-W3-F）→ LOCKED 不计数
         refType: 'session',
         refId: sessionId,
       });
@@ -256,10 +273,13 @@ export class SessionService {
           );
         }
         // SLOT_ABUSE_LIMIT：非毒化，显式中止——零业务行（R-W3-E 消费方裁决；滥用事件已由
-        // B2 经独立连接落 outbox，不随本回滚丢失）
+        // B2 经独立连接落 outbox，不随本回滚丢失）。**防御位（R-W3-F 收窄后）**：B2C 创建即锁
+        // LOCKED 不计数，本分支对 B2C 自然流程不可达（触发锚=B2 计数集内的 C2B PENDING_PAYMENT
+        // 锁，机制用例归 B2 spec 持有；C1 侧用例经直调注入钉消费方中止契约）。B2C 频控归属=
+        // R-W3-H：不设上限（B1 自然边界+G1 BAN_PUBLISH 滥用闸），待澄清备查。
         throw new AppError(
           ErrorCode.RateLimited,
-          `时段占用滥用限制（B2 R-03：每发起人同律师进行中锁 ≤1、全局 ≤3），本次开团未创建`,
+          `时段占用滥用限制（B2 R-03 计数，C2B 待支付锁锚定），本次开团未创建`,
         );
       }
 
@@ -320,14 +340,18 @@ export class SessionService {
     return { ...toView(row), remaining: row.capacity - row.joined };
   }
 
-  /** GET /sessions：列表（仅审核 PASSED 律师；缓存 30s 进程内适配位 ⚠沿 W2 形态） */
+  /**
+   * GET /sessions：公开列表（仅审核 PASSED 律师；缓存 30s 进程内适配位 ⚠沿 W2 形态）。
+   * **仅 CREATED（报名中）**（⚠W3-12 决策位 R-W3-J）：公开面只承载「可报名场次」发现——
+   * FULL 及成团链/终态场次不出公开列表（详情/律师 stats 不过滤，审计与看板口径不变）。
+   */
   async list(filter: ListSessionsFilter): Promise<SessionView[]> {
     const normalized = this.normalizeListFilter(filter);
     const cacheKey = JSON.stringify(normalized);
     const cached = this.cache.get<SessionView[]>(cacheKey);
     if (cached) return cached;
 
-    const clauses: string[] = [];
+    const clauses: string[] = [`status = 'CREATED'`]; // ⚠W3-12：公开列表仅报名中
     const params: unknown[] = [];
     if (normalized.lawyer !== undefined) {
       params.push(normalized.lawyer);
