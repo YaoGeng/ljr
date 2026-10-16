@@ -24,7 +24,7 @@
  * 业务写同事务出箱（恰首次翻动一条）。
  */
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
   AppError,
   ErrorCode,
@@ -39,12 +39,9 @@ import type { SqlExecutor } from '../../infrastructure/sql';
 import { PgPoolService } from '../../infrastructure/sql';
 import { OutboxService } from '../../infrastructure/outbox/outbox.service';
 import { StateTransitionGuardService } from '../../infrastructure/state-machine/state-transition-guard.service';
-import {
-  ChannelFaultError,
-  ChannelRouter,
-  type PaymentChannelName,
-} from './payment.channels';
+import { ChannelFaultError, ChannelRouter, type PaymentChannelName } from './payment.channels';
 import type { PaymentConfig } from './payment.config';
+import { PAYMENT_CONFIG } from './payment.config';
 import { PaymentAlertService } from './payment.alerts';
 import {
   PAYMENT_ORDER_MACHINE,
@@ -174,7 +171,8 @@ export class PaymentGatewayService {
     private readonly guard: StateTransitionGuardService,
     private readonly router: ChannelRouter,
     private readonly alerts: PaymentAlertService,
-    private readonly config: PaymentConfig,
+    // Symbol token（纯 interface 无运行时类型）：module useFactory 装配，测试构造直传
+    @Inject(PAYMENT_CONFIG) private readonly config: PaymentConfig,
   ) {}
 
   // ===========================================================================

@@ -16,6 +16,7 @@ import { RuleCenterModule } from './modules/ops/rule-center.module';
 import { WordDictModule } from './modules/ops/word-dict.module';
 import { SpecialtyKnowledgeModule } from './modules/agent-assist/specialty.module';
 import { SanitizeModule } from './modules/agent-assist/sanitize.module';
+import { PaymentModule } from './modules/payment/payment.module';
 import { HealthController } from './health.controller';
 
 // ObservabilityModule 紧随配置之后：http/pg 插桩先于 Infrastructure/Demo 建池注册
@@ -39,6 +40,7 @@ import { HealthController } from './health.controller';
     WordDictModule, // H5 风控词库切片（ops schema owner，M1-W1 Task 5；人审闭环 M2-W2）
     SpecialtyKnowledgeModule, // E3 专项配置与知识库基建（agent_assist schema owner，M1-W1 Task 6；E1 Task 7 同目录追加）
     SanitizeModule, // E1 实时脱敏层切片（agent_assist schema owner，M1-W1 Task 7；草稿管线接线 M2-W3）
+    PaymentModule, // F1 支付网关与回调 Inbox（payment schema owner，M1-W3 Task 1；指令面+回调验签+Inbox+对账；下游 C3=T7/H3=M2 接线）
   ],
   controllers: [HealthController],
 })

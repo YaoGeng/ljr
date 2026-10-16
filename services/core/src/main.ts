@@ -10,8 +10,9 @@ import { SchedulerWorker } from './modules/schedule/scheduler.worker';
 import { SlotLockService } from './modules/schedule/slot-lock.service';
 
 async function bootstrap(): Promise<void> {
-  // bufferLogs：create 期间的启动日志先进缓冲，挂上 TraceLogger（含 trace_id 注入）后统一回放
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  // bufferLogs：create 期间的启动日志先进缓冲，挂上 TraceLogger（含 trace_id 注入）后统一回放；
+  // rawBody：F1 回调验签须对原始报文字节做 HMAC-SHA256（payment.controller /callbacks/{channel}）
+  const app = await NestFactory.create(AppModule, { bufferLogs: true, rawBody: true });
   app.useLogger(app.get(TRACE_LOGGER));
   app.enableShutdownHooks(); // SIGTERM/SIGINT → relay/notify worker stop + 观测 shutdown(flush) + 连接池回收
 

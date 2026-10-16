@@ -20,8 +20,13 @@
  * statementOf 直连指定适配器不经 failover——对账必须用指令实际发生通道的账单。
  */
 import { AppError, ErrorCode, type Money } from '@ljr/shared';
+import { type InjectionToken } from '@nestjs/common';
 
 export type PaymentChannelName = 'wechat_ecom' | 'alipay';
+
+/** DI 令牌：适配器实例数组 [主, 备]（module useFactory 装配；测试可 override） */
+export const PAYMENT_CHANNEL_ADAPTERS: InjectionToken<readonly PaymentChannelAdapter[]> =
+  Symbol('PAYMENT_CHANNEL_ADAPTERS');
 
 /** 通道指令通用入参（amount=Money 字符串；idempotencyKey=业务幂等键，通道侧透传审计） */
 export interface ChannelInstructionRequest {

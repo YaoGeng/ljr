@@ -18,7 +18,7 @@
  * 资金红线（R-01）：对账只读账单+本地台账比对，零资金动作；差异处置（追补/退款/挂起）为
  * H3/F2 域，不在本层。
  */
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
   AppError,
   ErrorCode,
@@ -30,7 +30,12 @@ import type { SqlExecutor } from '../../infrastructure/sql';
 import { PgPoolService } from '../../infrastructure/sql';
 import { OutboxService } from '../../infrastructure/outbox/outbox.service';
 import { dbNumericToCents, moneyToCents, centsToMoney } from './payment.types';
-import type { PaymentChannelAdapter, PaymentChannelName, StatementLine } from './payment.channels';
+import {
+  PAYMENT_CHANNEL_ADAPTERS,
+  type PaymentChannelAdapter,
+  type PaymentChannelName,
+  type StatementLine,
+} from './payment.channels';
 
 const PERIOD_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -41,8 +46,8 @@ type LedgerDirection = (typeof LEDGER_DIRECTIONS)[number];
 export interface ReconcileInput {
   /** 对账期（ISO date YYYY-MM-DD；本地侧按 Asia/Shanghai 日切比对） */
   readonly period: string;
-  /** 缺省=双通道全集（ adapters 顺序） */
-  readonly channels?: readonly PaymentChannelName[];
+  /** 缺省=双通道全集（adapters 顺序）；元素值域校验在本层（未知通道 → 404） */
+  readonly channels?: readonly string[];
 }
 
 export interface ReconcileChannelResult {
@@ -76,7 +81,8 @@ export class PaymentReconcileService {
   constructor(
     private readonly pool: PgPoolService,
     private readonly outbox: OutboxService,
-    private readonly adapters: readonly PaymentChannelAdapter[],
+    // Symbol token（通道适配器数组；module useFactory 装配，测试构造直传）
+    @Inject(PAYMENT_CHANNEL_ADAPTERS) private readonly adapters: readonly PaymentChannelAdapter[],
   ) {}
 
   /** 对账入口（admin REST POST /admin/payment/reconcile {period}；channels 缺省双通道） */
@@ -84,11 +90,16 @@ export class PaymentReconcileService {
     if (!PERIOD_RE.test(input.period)) {
       throw new AppError(ErrorCode.InvalidArgument, `对账期须为 YYYY-MM-DD：${String(input.period)}`);
     }
-    const targets: readonly PaymentChannelName[] =
-      input.channels ?? this.adapters.map((a) => a.channel);
-    if (targets.length === 0) {
+    const requested: readonly string[] = input.channels ?? this.adapters.map((a) => a.channel);
+    if (requested.length === 0) {
       throw new AppError(ErrorCode.InvalidArgument, '对账通道集为空');
     }
+    const targets = requested.map((ch) => {
+      if (ch !== 'wechat_ecom' && ch !== 'alipay') {
+        throw new AppError(ErrorCode.NotFound, `未知支付通道：${ch}`);
+      }
+      return ch as PaymentChannelName;
+    });
 
     return this.pool.withTransaction(async (uow) => {
       const perChannel: ReconcileChannelResult[] = [];
