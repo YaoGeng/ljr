@@ -29,6 +29,13 @@ import {
   ReconciliationDiffFoundPayload,
   CHANNEL_DEGRADED_TOPIC,
   ChannelDegradedPayload,
+  FIRM_MERCHANT_ACTIVATED_TOPIC,
+  FirmMerchantActivatedPayload,
+  FIRM_MERCHANT_REVERIFIED_DUE_TOPIC,
+  FirmMerchantReverifiedDuePayload,
+  FIRM_MERCHANT_SUSPENDED_TOPIC,
+  FirmMerchantSuspensionReason,
+  FirmMerchantSuspendedPayload,
   RESTRICTION_ISSUED_TOPIC,
   RealNameVerifiedPayload,
   RestrictionIssuedPayload,
@@ -288,5 +295,40 @@ describe('F4 权益积分事件契约（M1-W3 T2）：生产 3（消费：H4/C6 
       'UNFREEZE',
     ];
     expect(kinds).toHaveLength(7);
+  });
+});
+
+describe('A3b 律所进件事件契约（M1-W3 T3）：生产 3（消费：F3 分账前置=T8、I1 通知、H1 视图=T10——生产方定型，出箱即止）', () => {
+  it('FirmMerchantActivated：topic=payment.firm_merchant.activated，{firm_id, channel}', () => {
+    expect(FIRM_MERCHANT_ACTIVATED_TOPIC).toBe('payment.firm_merchant.activated');
+    const payload: FirmMerchantActivatedPayload = { firm_id: 12, channel: 'wechat_ecom' };
+    expect(payload).toEqual({ firm_id: 12, channel: 'wechat_ecom' });
+  });
+
+  it('FirmMerchantSuspended：topic=payment.firm_merchant.suspended，{firm_id, channel, reason}（reason 两值词汇表）', () => {
+    expect(FIRM_MERCHANT_SUSPENDED_TOPIC).toBe('payment.firm_merchant.suspended');
+    const changing: FirmMerchantSuspendedPayload = {
+      firm_id: 12,
+      channel: 'wechat_ecom',
+      reason: 'ACCOUNT_CHANGING', // R-W3-C2：变更期即分账暂停语义
+    };
+    const overdue: FirmMerchantSuspendedPayload = {
+      firm_id: 12,
+      channel: 'wechat_ecom',
+      reason: 'REVERIFY_OVERDUE', // R-03 年度复验到期未复验
+    };
+    expect(changing.reason).toBe('ACCOUNT_CHANGING');
+    expect(overdue.reason).toBe('REVERIFY_OVERDUE');
+    const reasons: FirmMerchantSuspensionReason[] = ['ACCOUNT_CHANGING', 'REVERIFY_OVERDUE'];
+    expect(reasons).toHaveLength(2);
+  });
+
+  it('FirmMerchantReverifiedDue：topic=payment.firm_merchant.reverified_due，{firm_id, due_at}', () => {
+    expect(FIRM_MERCHANT_REVERIFIED_DUE_TOPIC).toBe('payment.firm_merchant.reverified_due');
+    const payload: FirmMerchantReverifiedDuePayload = {
+      firm_id: 12,
+      due_at: '2027-10-16T00:00:00.000Z',
+    };
+    expect(payload.due_at).toBe('2027-10-16T00:00:00.000Z');
   });
 });

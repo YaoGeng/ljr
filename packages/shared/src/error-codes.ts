@@ -80,6 +80,10 @@ export const ErrorCode = {
   SignVerificationFailed: 'E_SIGN_FAIL',
   /** F1 双通道全故障：主备均不可用，指令无处承载（F1 §8 双通道抽象的耗尽态；默认 503） */
   ChannelUnavailable: 'E_CHANNEL_UNAVAILABLE',
+  /** A3b 律所进件重复提交：同 firm+channel 已存在非 SUBMITTING 商户行（A3b §5 409 DUPLICATE；幂等键=firm+channel） */
+  MerchantDuplicate: 'E_DUPLICATE',
+  /** A3b R-01 分账前置不满足：firm_merchants 非 ACTIVE（CHANGING 变更期同拒，R-W3-C2）不可作为分账接收方（§5/§10；F3 经查询面消费，默认 409） */
+  MerchantNotActive: 'E_MERCHANT_NOT_ACTIVE',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -221,6 +225,14 @@ const ERROR_CODE_META: Readonly<Record<ErrorCode, ErrorCodeMeta>> = {
   [ErrorCode.ChannelUnavailable]: {
     httpStatus: 503,
     defaultMessage: '支付通道全部不可用（主备双通道均故障，请稍后重试）',
+  },
+  [ErrorCode.MerchantDuplicate]: {
+    httpStatus: 409,
+    defaultMessage: '律所进件重复提交：同律所同通道的商户进件已在流程中或已生效（幂等键=firm+channel）',
+  },
+  [ErrorCode.MerchantNotActive]: {
+    httpStatus: 409,
+    defaultMessage: '律所商户未生效（R-01 分账前置）：仅 ACTIVE 状态可接收分账指令（变更期 CHANGING 同拒）',
   },
 };
 

@@ -84,6 +84,13 @@ describe('错误码契约（ErrorCode 常量表 + AppError{code,httpStatus}）',
     expect(new AppError(ErrorCode.ChannelUnavailable).httpStatus).toBe(503);
   });
 
+  it('A3b 律所进件错误码（M1-W3 T3 §5/§7）：同 firm+channel 重复提交 409 DUPLICATE / R-01 非 ACTIVE 分账拒绝 409', () => {
+    expect(ErrorCode.MerchantDuplicate).toBe('E_DUPLICATE');
+    expect(new AppError(ErrorCode.MerchantDuplicate).httpStatus).toBe(409);
+    expect(ErrorCode.MerchantNotActive).toBe('E_MERCHANT_NOT_ACTIVE');
+    expect(new AppError(ErrorCode.MerchantNotActive).httpStatus).toBe(409);
+  });
+
   it('isAppError 类型收窄', () => {
     expect(isAppError(new AppError(ErrorCode.Conflict))).toBe(true);
     expect(isAppError(new Error('plain'))).toBe(false);

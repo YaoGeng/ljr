@@ -320,3 +320,46 @@ export interface PointsExpiredPayload {
   /** 扣减后账户可用余额快照 */
   readonly balance_after: number;
 }
+
+// ---------------------------------------------------------------------------
+// A3b 律所进件（M1-W3 T3）：3 生产契约（消费：F3 分账前置=T8、I1 进件状态通知、
+// H1 状态视图=T10——本批生产方定型契约，出箱即止）。schema=payment（进件子域归支付网关
+// 持有、identity 只读，架构 §3.3-3）； materials（对公账户等）PII 禁入载荷（lj-data-security）。
+// ---------------------------------------------------------------------------
+
+/** 律所商户生效（A3b §6 生产 → F3 分账前置解除、H1 状态视图）。任何 →ACTIVE 迁移（首次
+ *  进件生效 / 变更完成 / 复验恢复）均发出——「生效」是 R-01 可分账的唯一正向信号。 */
+export const FIRM_MERCHANT_ACTIVATED_TOPIC = 'payment.firm_merchant.activated';
+
+export interface FirmMerchantActivatedPayload {
+  /** 律所 id（trade/pricing 域引用，bigint 裸引用口径） */
+  readonly firm_id: number;
+  /** 进件通道（wechat_ecom | alipay） */
+  readonly channel: string;
+}
+
+/** 律所商户暂停分账（A3b §6 生产 → F3 暂停+挂起待结算、I1 通知律所）。§4「进入 SUSPENDED
+ *  即发事件」；R-W3-C2 裁决：ACTIVE→CHANGING（账户变更期）同事务发出本事件（分账暂停语义
+ *  与 SUSPENDED 等价，F3 查询态两态同样不可分账）。 */
+export const FIRM_MERCHANT_SUSPENDED_TOPIC = 'payment.firm_merchant.suspended';
+
+/** 暂停事由：ACCOUNT_CHANGING=对公账户变更期（R-02 + R-W3-C2）；REVERIFY_OVERDUE=年度复验
+ *  到期未复验（R-03，电商法 §27）。 */
+export type FirmMerchantSuspensionReason = 'ACCOUNT_CHANGING' | 'REVERIFY_OVERDUE';
+
+export interface FirmMerchantSuspendedPayload {
+  readonly firm_id: number;
+  readonly channel: string;
+  readonly reason: FirmMerchantSuspensionReason;
+}
+
+/** 律所复验到期（A3b §6 生产 → I1 通知律所复验、H3 处置提醒位）。FIRM_REVERIFY job 触发且
+ *  商户仍 ACTIVE 未复验时发出，与 FirmMerchantSuspended(REVERIFY_OVERDUE) 同事务成对出箱；
+ *  复验完成后经 POST /firms/{id}/merchant/reverify → ACTIVE（SUSPENDED→ACTIVE 守卫边）。 */
+export const FIRM_MERCHANT_REVERIFIED_DUE_TOPIC = 'payment.firm_merchant.reverified_due';
+
+export interface FirmMerchantReverifiedDuePayload {
+  readonly firm_id: number;
+  /** 复验到期时刻（ISO 8601 UTC；=firm_merchants.reverify_due 快照） */
+  readonly due_at: string;
+}
