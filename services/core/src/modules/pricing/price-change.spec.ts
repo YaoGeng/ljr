@@ -425,6 +425,10 @@ describe('C6 改价与补偿（§4/§5/§7/§9/§10，需 PG）', () => {
     expect(granted.map((g) => g.payload['user_id']).sort()).toEqual([USER_A, USER_B]);
     expect(granted[0]!.payload).toMatchObject({ kind: 'COMPENSATION', delta: expect.any(Number) });
 
+    const renderedComp = await templates.render('PRICE_DOWN_COMP', {});
+    expect(renderedComp.content).toBe(
+      '您参与的服务价格有所调整，您已锁定的原价不受影响。为感谢您的信任，我们已为您申请平台积分补偿，将在 24 小时内到账。',
+    );
     // 降价≤10% 无券指令；I1 降价话术 PRICE_DOWN_COMP 送达（含积分受偿用户）
     expect(await outboxOf(PRICE_COUPON_INSTRUCTED_TOPIC)).toHaveLength(0);
     await dispatcher.processPending();
@@ -476,6 +480,10 @@ describe('C6 改价与补偿（§4/§5/§7/§9/§10，需 PG）', () => {
       coupon_kind: 'PRICE_COMP',
     });
     expect(await balanceOf(USER_A)).toBe(2000); // (100-80)×100% = 20 元 = 2000 分
+    const renderedBig = await templates.render('PRICE_DOWN_BIG', {});
+    expect(renderedBig.content).toBe(
+      '您参与的服务价格大幅调整。您已锁定的原价不受影响，我们已为您申请积分补偿 + 额外平台优惠券，将在 24 小时内到账。感谢您的信任与支持。',
+    );
     await dispatcher.processPending();
     expect((await notificationsOf(USER_A, 'PRICE_DOWN_BIG'))[0]!.status).toBe('SENT');
   });
@@ -552,6 +560,12 @@ describe('C6 改价与补偿（§4/§5/§7/§9/§10，需 PG）', () => {
     });
     expect(res.body.result).toBe('EFFECTED');
     expect(await headPerHead(LAWYER_FREE)).toBe('88.00');
+    // R-02 快照保护面：版本行 append-only，基线行内容原样（已锁定用户的快照事实源不被触碰）
+    const v1 = await pool.query(
+      'SELECT per_head::text AS per_head FROM pricing.price_versions WHERE lawyer_id = $1 AND version = 1',
+      [LAWYER_FREE],
+    );
+    expect(v1.rows[0]!.per_head).toBe('100.00');
     const [row] = await histRows(LAWYER_FREE);
     expect(row).toMatchObject({
       direction: 'DOWN',
