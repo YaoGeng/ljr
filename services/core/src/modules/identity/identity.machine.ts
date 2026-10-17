@@ -12,8 +12,19 @@ import { createStateMachine } from '../../infrastructure/state-machine/state-mac
 
 export type UserStatus = 'ACTIVE' | 'BANNED' | 'DELETING';
 
-/** 双角色（R-02：lawyer 账号默认具备 user 身份） */
-export type UserRole = 'user' | 'lawyer';
+/**
+ * 角色词汇（R-02 双角色 + ⚠W3-8/G-A 运营旗标）：
+ *   user/lawyer=双角色同 App（lawyer 由 A3a 审核事件授予）；
+ *   admin=运营权限旗标（DB 级预置进 identity.user_roles，无自助 API——运营台=M3/M4）：
+ *   仅作为 claims.roles 成员参与 @RequireRole('admin') 判定（权限旗标语义），不是
+ *   switch-role 可切换的「激活角色」（claims.role 词汇仍由 A1 服务层限定 user|lawyer，
+ *   admin 不可自铸/自换——防提权）。DB CHECK 枚举放宽=V31（apply 后不可改）。
+ */
+export type UserRole = 'user' | 'lawyer' | 'admin';
+
+/** claims.role 可取的激活角色词汇（admin 为旗标不入此列，A1 服务层 switch/默认角色用） */
+export const ACTIVE_ROLES = ['user', 'lawyer'] as const;
+export type ActiveRole = (typeof ACTIVE_ROLES)[number];
 
 export const USER_MACHINE = createStateMachine<UserStatus>({
   entityType: 'identity_user',

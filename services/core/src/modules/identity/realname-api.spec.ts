@@ -32,6 +32,8 @@ describe('A2 REST 契约（实名面，需 PG）', () => {
   let pool: Pool;
   let app: INestApplication;
   let token: string;
+  /** G-A 接线（R-W2-F）：DB 预置 admin 形态的测试 token（roles 持 admin 旗标） */
+  let adminToken: string;
   let userId: number;
 
   /** 直插一条完整双签审批（R-W2-5 合成口径） */
@@ -76,6 +78,11 @@ describe('A2 REST 契约（实名面，需 PG）', () => {
     // 用 A1 token 服务签发（IdentityAuthModule 经 RealnameConsentModule 可达），claims 形态与真实签发一致
     const tokens = app.get(IdentityTokenService);
     token = await tokens.signAccessToken({ userId: inserted, role: 'user', roles: ['user'] });
+    adminToken = await tokens.signAccessToken({
+      userId: inserted,
+      role: 'user',
+      roles: ['user', 'admin'],
+    });
   });
 
   afterEach(async () => {
@@ -146,15 +153,29 @@ describe('A2 REST 契约（实名面，需 PG）', () => {
     expect(JSON.stringify(after.body)).not.toContain(VALID_ID_NO);
   });
 
-  it('GET /admin/realname/decrypt：缺/未双签审批 → 403 E_NOT_APPROVED（§10-4）；双签完整 → {name, id_no}', async () => {
+  it('GET /admin/realname/decrypt：G-A 接线（R-W2-F）未认证 401/未持 admin 403；admin 持旗标：缺/未双签审批 → 403 E_NOT_APPROVED（§10-4）；双签完整 → {name, id_no}', async () => {
     await request(app.getHttpServer())
       .post('/realname')
       .set('Authorization', `Bearer ${token}`)
       .send({ name: '张三', id_no: VALID_ID_NO });
 
-    // 无审批 → 403
+    // 接线新行为（W3 T10）：未认证 401 / user token（无 admin 旗标）403 E_ROLE_FORBIDDEN
+    const anon = await request(app.getHttpServer())
+      .get('/admin/realname/decrypt')
+      .query({ user_id: userId, reason: '纠纷处理', approval_id: 987654 });
+    expect(anon.status).toBe(401);
+    expect(anon.body.code).toBe(ErrorCode.Unauthorized);
+    const plain = await request(app.getHttpServer())
+      .get('/admin/realname/decrypt')
+      .set('Authorization', `Bearer ${token}`)
+      .query({ user_id: userId, reason: '纠纷处理', approval_id: 987654 });
+    expect(plain.status).toBe(403);
+    expect(plain.body.code).toBe(ErrorCode.RoleForbidden);
+
+    // 无审批 → 403（审批双签门禁先于解密，admin 鉴权之后的第二道门）
     const none = await request(app.getHttpServer())
       .get('/admin/realname/decrypt')
+      .set('Authorization', `Bearer ${adminToken}`)
       .query({ user_id: userId, reason: '纠纷处理', approval_id: 987654 });
     expect(none.status).toBe(403);
     expect(none.body.code).toBe(ErrorCode.NotApproved);
@@ -167,6 +188,7 @@ describe('A2 REST 契约（实名面，需 PG）', () => {
     );
     const notSigned = await request(app.getHttpServer())
       .get('/admin/realname/decrypt')
+      .set('Authorization', `Bearer ${adminToken}`)
       .query({
         user_id: userId,
         reason: '纠纷处理',
@@ -179,20 +201,23 @@ describe('A2 REST 契约（实名面，需 PG）', () => {
     const approvalId = await seedApproval(userId);
     const ok = await request(app.getHttpServer())
       .get('/admin/realname/decrypt')
+      .set('Authorization', `Bearer ${adminToken}`)
       .query({ user_id: userId, reason: '纠纷处理-2026-001', approval_id: approvalId });
     expect(ok.status).toBe(200);
     expect(ok.body).toEqual({ name: '张三', id_no: VALID_ID_NO });
   });
 
-  it('GET /admin/realname/decrypt：缺参 → 400 E_INVALID_ARGUMENT（user_id/approval_id/reason 防呆）', async () => {
+  it('GET /admin/realname/decrypt：缺参 → 400 E_INVALID_ARGUMENT（user_id/approval_id/reason 防呆；admin 鉴权后到达解析层）', async () => {
     const missing = await request(app.getHttpServer())
       .get('/admin/realname/decrypt')
+      .set('Authorization', `Bearer ${adminToken}`)
       .query({ reason: '纠纷处理', approval_id: 1 });
     expect(missing.status).toBe(400);
     expect(missing.body.code).toBe(ErrorCode.InvalidArgument);
 
     const badReason = await request(app.getHttpServer())
       .get('/admin/realname/decrypt')
+      .set('Authorization', `Bearer ${adminToken}`)
       .query({ user_id: 1, reason: '', approval_id: 1 });
     expect(badReason.status).toBe(400);
     expect(badReason.body.code).toBe(ErrorCode.InvalidArgument);

@@ -127,6 +127,8 @@ describe('G1 信用体系（REST 契约 + R-01~R-03 + §8.8 矩阵 + 窗口/限�
   let jwt: JwtService;
   let userToken: string;
   let lawyerToken: string;
+  /** G-A 接线（R-W2-H）：DB 预置 admin 形态的测试 token（roles 持 admin 旗标，claims 形态与真实签发一致） */
+  let adminToken: string;
 
   const emit = (input: EmitCreditEventInput) => credit.emit(input);
 
@@ -235,6 +237,7 @@ describe('G1 信用体系（REST 契约 + R-01~R-03 + §8.8 矩阵 + 窗口/限�
       role: 'lawyer',
       roles: ['user', 'lawyer'],
     });
+    adminToken = await jwt.signAsync({ sub: String(USER), role: 'user', roles: ['user', 'admin'] });
   });
 
   afterAll(async () => {
@@ -262,6 +265,15 @@ describe('G1 信用体系（REST 契约 + R-01~R-03 + §8.8 矩阵 + 窗口/限�
       .set('Authorization', `Bearer ${userToken}`);
     expect(mine.status).toBe(200);
     expect(mine.body).toEqual({ score: 100, recent_events: [], restrictions: [] });
+  });
+
+  it('GET /credit/mine：admin 激活角色（纯运营预置账号 claims.role=admin）→ 403（信用账户按 user/lawyer 双角色分账，⚠W3-8 旗标语义边界）', async () => {
+    const adminToken = await jwt.signAsync({ sub: String(USER), role: 'admin', roles: ['admin'] });
+    const res = await request(app.getHttpServer())
+      .get('/credit/mine')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe(ErrorCode.RoleForbidden);
   });
 
   it('GET /credit/mine：同 id 双角色账户隔离（owner_type 分账户）；事件新在前、活跃限制令在列', async () => {
@@ -313,10 +325,25 @@ describe('G1 信用体系（REST 契约 + R-01~R-03 + §8.8 矩阵 + 窗口/限�
 
   // ---------- §5 GET /credit/restrictions：入口校验面（活跃行；参数校验 400） ----------
 
-  it('GET /credit/restrictions：活跃行返回、过期行不返回（惰性失效）；owner_type/owner_id 非法 400', async () => {
+  it('GET /credit/restrictions：G-A 接线（R-W2-H）未认证 401/未持 admin 403；admin 持旗标：活跃行返回、过期行不返回（惰性失效）；owner_type/owner_id 非法 400', async () => {
+    // 接线新行为（W3 T10）：HTTP 面仅运营台可达——未认证 401，user/lawyer 双角色 403
+    const anon = await request(app.getHttpServer()).get(
+      '/credit/restrictions?owner_type=user&owner_id=601',
+    );
+    expect(anon.status).toBe(401);
+    expect(anon.body.code).toBe(ErrorCode.Unauthorized);
+    const plain = await request(app.getHttpServer())
+      .get('/credit/restrictions?owner_type=user&owner_id=601')
+      .set('Authorization', `Bearer ${userToken}`);
+    expect(plain.status).toBe(403);
+    expect(plain.body.code).toBe(ErrorCode.RoleForbidden);
+
     expect(
-      (await request(app.getHttpServer()).get('/credit/restrictions?owner_type=user&owner_id=601'))
-        .body,
+      (
+        await request(app.getHttpServer())
+          .get('/credit/restrictions?owner_type=user&owner_id=601')
+          .set('Authorization', `Bearer ${adminToken}`)
+      ).body,
     ).toEqual([]);
 
     await emit({
@@ -333,30 +360,30 @@ describe('G1 信用体系（REST 契约 + R-01~R-03 + §8.8 矩阵 + 窗口/限�
       [LAWYER_PRICE],
     );
 
-    const res = await request(app.getHttpServer()).get(
-      `/credit/restrictions?owner_type=lawyer&owner_id=${LAWYER_PRICE}`,
-    );
+    const res = await request(app.getHttpServer())
+      .get(`/credit/restrictions?owner_type=lawyer&owner_id=${LAWYER_PRICE}`)
+      .set('Authorization', `Bearer ${adminToken}`);
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
     expect(res.body[0]).toMatchObject({ kind: 'SUSPEND_TAKE_3D' }); // 过期 BAN_PUBLISH 不返回
 
-    const badType = await request(app.getHttpServer()).get(
-      `/credit/restrictions?owner_type=admin&owner_id=${LAWYER_PRICE}`,
-    );
+    const badType = await request(app.getHttpServer())
+      .get(`/credit/restrictions?owner_type=admin&owner_id=${LAWYER_PRICE}`)
+      .set('Authorization', `Bearer ${adminToken}`);
     expect(badType.status).toBe(400);
     expect(badType.body.code).toBe(ErrorCode.InvalidArgument);
-    const badId = await request(app.getHttpServer()).get(
-      '/credit/restrictions?owner_type=lawyer&owner_id=abc',
-    );
+    const badId = await request(app.getHttpServer())
+      .get('/credit/restrictions?owner_type=lawyer&owner_id=abc')
+      .set('Authorization', `Bearer ${adminToken}`);
     expect(badId.status).toBe(400);
     expect(badId.body.code).toBe(ErrorCode.InvalidArgument);
   });
 
   it('owner_id 严格化（G-B 做项4）：0x10/1e2/超长数字三形态 → 400（拒 Number 宽解析与精度丢失）', async () => {
     for (const id of ['0x10', '1e2', '99999999999999999999']) {
-      const res = await request(app.getHttpServer()).get(
-        `/credit/restrictions?owner_type=lawyer&owner_id=${id}`,
-      );
+      const res = await request(app.getHttpServer())
+        .get(`/credit/restrictions?owner_type=lawyer&owner_id=${id}`)
+        .set('Authorization', `Bearer ${adminToken}`);
       expect(res.status).toBe(400);
       expect(res.body.code).toBe(ErrorCode.InvalidArgument);
     }
@@ -746,10 +773,11 @@ describe('G1 信用体系（REST 契约 + R-01~R-03 + §8.8 矩阵 + 窗口/限�
 
   // ---------- §8 缓存适配位（R-W2-8）：30s 进程内缓存 + 发行后失效 ----------
 
-  it('缓存适配位：GET 命中窗口内绕过发行的外部直插不可见 → invalidateOwner 后可见；emit 发行后主动失效立即可见', async () => {
+  it('缓存适配位：GET 命中窗口内绕过发行的外部直插不可见 → invalidateOwner 后可见；emit 发行后主动失效立即可见（G-A 接线后 GET 面挂 admin 鉴权）', async () => {
     const owner = LAWYER_CACHE;
     const url = `/credit/restrictions?owner_type=lawyer&owner_id=${owner}`;
-    expect((await request(app.getHttpServer()).get(url)).body).toEqual([]); // 空数组入缓存（防穿透）
+    const adminGet = () => request(app.getHttpServer()).get(url).set('Authorization', `Bearer ${adminToken}`);
+    expect((await adminGet()).body).toEqual([]); // 空数组入缓存（防穿透）
 
     // 外部写方（绕过 emit，无失效钩子）：TTL 窗口内不可见（缓存位存在性证明）
     await pool.query(
@@ -757,10 +785,10 @@ describe('G1 信用体系（REST 契约 + R-01~R-03 + §8.8 矩阵 + 窗口/限�
        VALUES ('lawyer', $1, 'BAN_PUBLISH', now() + interval '1 day', 'external fixture')`,
       [owner],
     );
-    expect((await request(app.getHttpServer()).get(url)).body).toEqual([]);
+    expect((await adminGet()).body).toEqual([]);
 
     expect(cache.invalidateOwner({ ownerType: 'lawyer', ownerId: owner })).toBe(1);
-    const refreshed = await request(app.getHttpServer()).get(url);
+    const refreshed = await adminGet();
     expect(refreshed.body).toHaveLength(1);
     expect(refreshed.body[0]).toMatchObject({ kind: 'BAN_PUBLISH' });
 
@@ -772,7 +800,7 @@ describe('G1 信用体系（REST 契约 + R-01~R-03 + §8.8 矩阵 + 窗口/限�
       ref_type: 'price_change',
       ref_id: 1,
     });
-    const afterEmit = await request(app.getHttpServer()).get(url);
+    const afterEmit = await adminGet();
     expect(afterEmit.body.map((r: { kind: string }) => r.kind).sort()).toEqual([
       'BAN_PUBLISH',
       'SUSPEND_TAKE_3D',

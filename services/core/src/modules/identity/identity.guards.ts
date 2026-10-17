@@ -6,6 +6,9 @@
  *   verify 登录 / refresh 续签 / switch-role 换签——终审 I-1）。
  * - IdentityRoleGuard：配合 @RequireRole('user'|'lawyer')——claims.role ≠ 要求角色 →
  *   403 E_ROLE_FORBIDDEN（R-03：界面数据隔离=角色路由 + 接口级 claims 校验）。
+ *   W3 T10（⚠W3-8/G-A 前置门）扩 @RequireRole('admin')：admin=DB 预置「权限旗标」非激活
+ *   角色——判定 claims.roles 成员含 'admin'（激活角色保持 user/lawyer 语义不变）；
+ *   switch-role 词汇仍限 user|lawyer，admin 不可自铸/自换（防提权）。
  */
 import {
   CanActivate,
@@ -52,11 +55,12 @@ export class IdentityAuthGuard implements CanActivate {
       throw new AppError(ErrorCode.Unauthorized, '凭证无效或已过期');
     }
     const claims = (payload ?? {}) as { sub?: unknown; role?: unknown; roles?: unknown };
+    const isKnownRole = (r: unknown): r is UserRole => r === 'user' || r === 'lawyer' || r === 'admin';
     const userId = Number(claims.sub);
     if (
       !Number.isInteger(userId) ||
       userId <= 0 ||
-      (claims.role !== 'user' && claims.role !== 'lawyer') ||
+      !isKnownRole(claims.role) ||
       !Array.isArray(claims.roles)
     ) {
       throw new AppError(ErrorCode.Unauthorized, '凭证载荷非法');
@@ -64,7 +68,7 @@ export class IdentityAuthGuard implements CanActivate {
     req.identity = {
       userId,
       role: claims.role,
-      roles: claims.roles.filter((r): r is UserRole => r === 'user' || r === 'lawyer'),
+      roles: claims.roles.filter(isKnownRole),
     };
     return true;
   }
@@ -72,7 +76,7 @@ export class IdentityAuthGuard implements CanActivate {
 
 export const IDENTITY_ROLE_META = 'identity.required_role';
 
-/** 接口角色要求（R-03）：@RequireRole('user') / @RequireRole('lawyer') */
+/** 接口角色要求（R-03 + ⚠W3-8）：@RequireRole('user') / @RequireRole('lawyer') / @RequireRole('admin') */
 export const RequireRole = (role: UserRole): MethodDecorator & ClassDecorator =>
   SetMetadata(IDENTITY_ROLE_META, role);
 
@@ -87,10 +91,18 @@ export class IdentityRoleGuard implements CanActivate {
     ]);
     if (!required) return true;
     const req = context.switchToHttp().getRequest<AuthedRequest>();
-    if (req.identity?.role !== required) {
+    // admin=权限旗标语义（⚠W3-8）：只认 claims.roles 成员，不要求激活角色=admin；
+    // user/lawyer 维持激活角色相等语义（R-03 原口径）。
+    const holds =
+      required === 'admin'
+        ? req.identity?.roles.includes('admin') ?? false
+        : req.identity?.role === required;
+    if (!holds) {
       throw new AppError(
         ErrorCode.RoleForbidden,
-        `该接口要求 ${required} 角色（当前激活角色：${req.identity?.role ?? '未认证'}）`,
+        required === 'admin'
+          ? '该接口要求运营（admin）角色'
+          : `该接口要求 ${required} 角色（当前激活角色：${req.identity?.role ?? '未认证'}）`,
       );
     }
     return true;

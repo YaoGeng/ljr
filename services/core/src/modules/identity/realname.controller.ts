@@ -5,7 +5,13 @@
  */
 import { Body, Controller, Get, Post, Query, UseFilters, UseGuards } from '@nestjs/common';
 import { AppHttpExceptionFilter } from '../../infrastructure/app-error.filter';
-import { CurrentIdentity, IdentityAuthGuard, type IdentityClaims } from './identity.guards';
+import {
+  CurrentIdentity,
+  IdentityAuthGuard,
+  IdentityRoleGuard,
+  RequireRole,
+  type IdentityClaims,
+} from './identity.guards';
 import { parseDecryptQuery, parseRealnameBody } from './realname.http';
 import { RealnameService } from './realname.service';
 
@@ -42,16 +48,19 @@ export class RealnameController {
 }
 
 /**
- * 受控解密管理面（R-04，§5 GET /admin/realname/decrypt）：后台鉴权 ⚠决策位随 H1/H2
- * （W2+）接入后替换，本批只交付接口形态（rule-admin 同口径）；授权事实源=审批行双签
- * 完整性（approved_by≠reviewed_by），无/不完整 → 403 NOT_APPROVED。
+ * 受控解密管理面（R-04，§5 GET /admin/realname/decrypt）。授权两层：
+ *   ① admin 角色守卫（⚠W3-8 @RequireRole('admin')，W3 T10 G-A 前置门接线——R-W2-F park 关闭，
+ *      接线前禁上 staging 共网的定性项就此关闭）；
+ *   ② 审批行双签完整性（approved_by≠reviewed_by），无/不完整 → 403 NOT_APPROVED（第二道门）。
  */
 @Controller('admin/realname')
 @UseFilters(AppHttpExceptionFilter)
+@UseGuards(IdentityAuthGuard, IdentityRoleGuard)
 export class RealnameAdminController {
   constructor(private readonly realname: RealnameService) {}
 
   @Get('decrypt')
+  @RequireRole('admin')
   async decrypt(
     @Query('user_id') userId?: string,
     @Query('reason') reason?: string,

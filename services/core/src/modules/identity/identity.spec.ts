@@ -339,6 +339,32 @@ describe('A1 领域层（注册/登录/双 token/事件消费/PII 红线，需 P
     expect(claims.sub).toBe(String(done.userId)); // 切换不产生新账号
   });
 
+  it('admin 角色预置（⚠W3-8/G-A，V31）：user_roles role=admin 可落库；登录默认激活角色 user、roles 持 admin 旗标；switch-role 不接受 admin（权限旗标非激活角色）', async () => {
+    // DB 级预置路径（无自助 API，运营台=M3/M4）：注册后直插 admin 旗标行
+    const done = await registerOrLogin('13800002013', true);
+    await pool.query(
+      "INSERT INTO identity.user_roles (user_id, role) VALUES ($1, 'admin') ON CONFLICT DO NOTHING",
+      [done.userId],
+    );
+
+    // 再登录：roles=['admin','user']；默认激活角色=user（admin 为旗标不抢占激活位）。
+    // 二次验证走 seedCode（绕过 requestSms 的 R-01 60s 窗，同号重登不撞限频）
+    await seedCode('13800002013', '654321');
+    const again = await service.verify({ phone: '13800002013', code: '654321' });
+    expect(again.roles).toEqual(['admin', 'user']); // rolesOf ORDER BY role
+    const claims = JSON.parse(
+      Buffer.from(again.accessToken.split('.')[1]!, 'base64url').toString(),
+    );
+    expect(claims.role).toBe('user');
+    expect(claims.roles).toEqual(expect.arrayContaining(['user', 'admin']));
+
+    // switch-role 词汇仍限 user|lawyer：admin 不可自换激活（防提权，400）
+    await expect(service.switchRole(again.userId, 'admin')).rejects.toMatchObject({
+      code: ErrorCode.InvalidArgument,
+      httpStatus: 400,
+    });
+  });
+
   it('AccountDeletionExecuted 消费：ACTIVE → DELETING 经守卫留痕；at-least-once 重投幂等短路（无重复留痕）', async () => {
     const done = await registerOrLogin('13800002012', true);
     const eventId = await insertSyntheticEvent('identity.account.deletion.executed', {

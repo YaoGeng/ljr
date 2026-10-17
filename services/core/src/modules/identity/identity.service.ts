@@ -296,10 +296,15 @@ export class IdentityService {
     return rows.rows.map((r) => r.role);
   }
 
-  /** 默认激活角色（R-02：默认 user 身份；登录/刷新签发取默认，激活角色变更走 switch-role） */
+  /**
+   * 默认激活角色（R-02：默认 user 身份；登录/刷新签发取默认，激活角色变更走 switch-role）。
+   * ⚠W3-8：admin 只是权限旗标（user_roles 可能只有 admin 一行的 DB 预置账号）——
+   * 默认角色兜底顺序 user→lawyer→admin，admin 不抢占 user/lawyer 激活位。
+   */
   private defaultRole(roles: UserRole[]): UserRole {
     if (roles.includes('user')) return 'user';
     if (roles.includes('lawyer')) return 'lawyer';
+    if (roles.includes('admin')) return 'admin';
     throw new AppError(ErrorCode.InternalError, '账号无任何角色（不应触达）');
   }
 }
