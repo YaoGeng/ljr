@@ -697,6 +697,53 @@ describe('F3 SettlementService（需 PG）', () => {
     expect(centsToMoney(await sumOf('DEDUCT'))).toBe('30.00');
   });
 
+  it('E8 F-1 P1 回归：首扣全走保证金腿（无行可锚）后同键重放——不 Fresh 重扣 settlement 腿（恰一次）', async () => {
+    // 首扣：律师无未结算行 → 全额走保证金腿（deduction_detail 无承载行，旧探测锚缺失）
+    const first = await settlements.applyPenalty(
+      penaltyInput({ amount: '60.00', key: 'penalty/session-655/cancel-60' }),
+    );
+    expect(first).toMatchObject({
+      replayed: false,
+      from_settlement: '0.00',
+      from_deposit: '60.00',
+    });
+    // 重放前新结算行到账（P1 实证序列：旧探测漏 → settlement 腿 Fresh 重扣新行）
+    await enter({ refId: 655, gross: '30.00', lawyer: LAWYER });
+    const replay = await settlements.applyPenalty(
+      penaltyInput({ amount: '60.00', key: 'penalty/session-655/cancel-60' }),
+    );
+    expect(replay).toMatchObject({
+      replayed: true,
+      from_settlement: '0.00',
+      from_deposit: '60.00',
+      debt: '0.00',
+    });
+    expect(await countLedgersByDirection(pool, 'DEDUCT')).toBe(1); // F1 台账不新增（恰一次）
+    expect((await getRow('session', 655))!.penalty).toBe('0.00'); // 新行零摊扣
+    // 收据持久锚在册（重放证据）
+    const receipts = await pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM settlement.settlement_penalty_receipts WHERE penalty_key = $1`,
+      ['penalty/session-655/cancel-60'],
+    );
+    expect(receipts.rows[0]!.n).toBe(1);
+  });
+
+  it('E9 F-1 P2 回归：同行二次违约覆盖 anchor 后首键重放——摊扣不双计（恰一次）', async () => {
+    await enter({ refId: 651, gross: '100.00', lawyer: LAWYER });
+    await settlements.applyPenalty(
+      penaltyInput({ amount: '30.00', key: 'penalty/session-652/cancel-30' }),
+    ); // penalty=30，detail 锚=K1
+    await settlements.applyPenalty(
+      penaltyInput({ amount: '10.00', key: 'penalty/session-652/cancel-10' }),
+    ); // penalty=40，detail 锚被 K2 覆盖（旧探测单槽缺陷位）
+    const replay = await settlements.applyPenalty(
+      penaltyInput({ amount: '30.00', key: 'penalty/session-652/cancel-30' }),
+    );
+    expect(replay).toMatchObject({ replayed: true, from_settlement: '30.00', debt: '0.00' });
+    expect(await countLedgersByDirection(pool, 'DEDUCT')).toBe(2); // K1+K2 各一笔，不新增
+    expect((await getRow('session', 651))!.penalty).toBe('40.00'); // 30+10，摊扣不双计
+  });
+
   // =========================================================================
   // F. markAbsenceShare：R-03 触发位 + 70/30 构成复核（§10-3）
   // =========================================================================

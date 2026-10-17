@@ -81,6 +81,9 @@ describe('F3 事件消费端（需 PG）', () => {
   let executors: ScheduleExecutorRegistry;
   let settlements: SettlementService;
   let relay: OutboxRelayService;
+  let wechat: MockChannelAdapter;
+  let alipay: MockChannelAdapter;
+  let routerNow = DAY;
   let orderSeq = 0;
 
   const createPaidOrder = async (cash = '100.00'): Promise<PaymentOrderView> => {
@@ -144,13 +147,13 @@ describe('F3 事件消费端（需 PG）', () => {
 
   beforeAll(async () => {
     pool = await ensureTestDatabase();
-    const wechat = new MockChannelAdapter(
+    wechat = new MockChannelAdapter(
       'wechat_ecom',
       'mock-wechat-mch',
       'test-secret-w',
       () => new Date(DAY),
     );
-    const alipay = new MockChannelAdapter(
+    alipay = new MockChannelAdapter(
       'alipay',
       'mock-alipay-mch',
       'test-secret-a',
@@ -159,10 +162,12 @@ describe('F3 事件消费端（需 PG）', () => {
     poolSvc = new PgPoolService(pool);
     outbox = new OutboxService();
     const guard = new StateTransitionGuardService(new StateTransitionLogService(), poolSvc);
+    // 路由钟可变（⑨ F-2 用例推过降级窗口：300s 内存窗 + 固定钟会让故障消除后的重试仍拒）
+    routerNow = DAY;
     const router = new ChannelRouter({
       adapters: [wechat, alipay],
       switchWindowMs: PAYMENT_SWITCH_WINDOW_MS_DEFAULT,
-      now: () => DAY,
+      now: () => routerNow,
     });
     payment = new PaymentGatewayService(
       poolSvc,
@@ -199,7 +204,8 @@ describe('F3 事件消费端（需 PG）', () => {
       merchants,
       payment,
     );
-    relay = new OutboxRelayService(poolSvc, { batch: 50, maxRetry: 2 });
+    // 退避零化：重试路径（F-2 READY 滞留重驱动）在测试内即时可达
+    relay = new OutboxRelayService(poolSvc, { batch: 50, maxRetry: 2, backoffMs: () => 0 });
     new SettlementJobExecutors(executors, settlements).onModuleInit();
     new SettlementConsumer(relay, settlements).onModuleInit();
   });
@@ -209,9 +215,12 @@ describe('F3 事件消费端（需 PG）', () => {
   });
   beforeEach(async () => {
     await truncateAll(pool);
+    routerNow = DAY;
   });
   afterEach(async () => {
     await truncateAll(pool);
+    wechat.fault = null;
+    alipay.fault = null;
   });
 
   it('① §10-1 时间注入全链：RoomClosed 直投 → HOLD+job；24h 内 tick 不放行；到期 tick → READY→SETTLED（F1 SPLIT+SplitSettled）', async () => {
@@ -396,5 +405,38 @@ describe('F3 事件消费端（需 PG）', () => {
         query: async () => ({ rows: [], rowCount: 0 }),
       } as never),
     ).rejects.toMatchObject({ code: 'E_INVALID_ARGUMENT' });
+  });
+
+  it('⑨ F-2 READY 滞留重驱动：释放后结算首跳失败（双通道故障）→ relay 重试经 READY 直驱补结算', async () => {
+    await seedFirmMerchant(pool, FIRM, 'ACTIVE');
+    const order = await createPaidOrder('100.00');
+    await recordEvent(
+      ROOM_CLOSED_TOPIC,
+      roomClosed({ session_id: 807, payment_order_id: order.id }),
+    );
+    await relay.tick();
+    await travelCreated(807);
+
+    // 首跳：工单释放成功（READY 已提交），分账指令双通道故障 → handler 抛错进重试轨道
+    wechat.fault = { kind: 'CHANNEL_ERROR' };
+    alipay.fault = { kind: 'CHANNEL_ERROR' };
+    await recordEvent(TICKET_RESOLVED_TOPIC, {
+      ticket_id: 3003,
+      ref_type: 'session',
+      ref_id: 807,
+    } satisfies TicketResolvedPayload);
+    const first = await relay.tick();
+    // 3=retried：TicketResolved 结算首跳失败 + SettlementHeld/Released 暂无消费方（H4=M2 位）入重试轨道
+    expect(first.retried).toBe(3);
+    expect(await getRow('session', 807)).toMatchObject({ status: 'READY' }); // READY 滞留面
+
+    // 故障消除 → 重试路径：对已 READY 行直驱补结算（F-2 修复位；未修=恒滞留 READY）
+    wechat.fault = null;
+    alipay.fault = null;
+    routerNow = DAY + PAYMENT_SWITCH_WINDOW_MS_DEFAULT + 1_000; // 推过降级窗口（路由内存态）
+    const second = await relay.tick();
+    expect(second.dispatched).toBe(1); // TicketResolved 重试直驱补结算（SENT）
+    expect((await getRow('session', 807))!.status).toBe('SETTLED');
+    expect((await getPaymentOrderById(pool, order.id))['status']).toBe('SPLIT');
   });
 });

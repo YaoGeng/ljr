@@ -11,15 +11,20 @@
  *   ④ FirmMerchantSuspended（payment.firm_merchant.suspended，A3b 真事件）：该律所未结算全量挂起
  *      SUSPENDED（R-07；CHANGING 变更期暂停语义同拒语义已在 assertSplittable 侧，事件驱动挂起位）；
  *   ⑤ FirmMerchantActivated（payment.firm_merchant.activated，A3b 真事件）：恢复重驱动——READY 化
- *      行逐条 runSettlementById（F1 外部指令在消费链承担，resume 原子面只做状态迁移）；部分失败
- *      整体抛错进 relay 重试轨道，重入由 §10-7 幂等短路只补未结算行；
+ *      行 + 已 READY 滞留行（F-2）逐条 runSettlementById（F1 外部指令在消费链承担，resume 原子面
+ *      只做状态迁移）；部分失败整体抛错进 relay 重试轨道，重入由 F-2 READY 直驱 + §10-7 幂等
+ *      短路只补未结算行；
  *   ⑥ TicketResolved（ops.ticket.resolved，H3=M2 合成桩）：HOLD 工单挂起释放——冻结期未满仅闭
- *      工单不放行（R-02 双条件）；期满释放 + runSettlementById 重驱动；结算行不存在=时序桩 warn。
+ *      工单不放行（R-02 双条件，24h job 到期放行）；释放与重试路径恒直驱 runSettlementById
+ *      （F-2：释放已提交而结算首跳失败的 READY 滞留行由此补结算，幂等 no-op 兜底其余态）；
+ *      结算行不存在=时序桩 warn。
  *   ScheduleJobFired(SETTLE_HOLD_RELEASE) 的消费真通路=I2 执行器（settlement.executors，同事务
- *   承接），本消费器不重复注册（事件本身为审计/扇出位——报告注明）。
+ *   承接——执行器抛错随抢占事务整体回滚自 HOLD 重试，无 READY 滞留面），本消费器不重复注册
+ *   （事件本身为审计/扇出位——报告注明）。
  *
  * 事务形态（credit/firm-merchant 消费先例）：handler 不用 relay 认领事务的 uow——服务自持事务，
- * 崩溃窗口由消费幂等（UNIQUE ref / 状态守卫 / §10-7）收敛（at-least-once 语义内）。
+ * 「释放/恢复先提交、结算后行」的崩溃与失败窗口由 F-2 READY 直驱（重投恒补结算）+ 消费幂等
+ * （UNIQUE ref / 状态守卫 / §10-7）收敛（at-least-once 语义内）。
  */
 import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import {
@@ -229,8 +234,9 @@ export function createFirmMerchantActivatedHandler(settlements: SettlementServic
       );
     }
     const res = await settlements.resumeForFirm(payload.firm_id);
+    const toDrive = [...res.readied, ...res.ready]; // F-2：恢复时已 READY 滞留行（此前结算首跳失败）同样直驱
     const failures: string[] = [];
-    for (const id of res.readied) {
+    for (const id of toDrive) {
       try {
         const run = await settlements.runSettlementById(id); // R-01 唯一解冻节点重驱动
         logger.log(
@@ -241,14 +247,14 @@ export function createFirmMerchantActivatedHandler(settlements: SettlementServic
       }
     }
     if (failures.length > 0) {
-      // 部分失败进 relay 重试轨道：重入由 resume 幂等（非 SUSPENDED 短路）+ §10-7 只补未结算行
+      // 部分失败进 relay 重试轨道：重入由 resume 幂等（非 SUSPENDED 短路）+ F-2 READY 直驱 + §10-7 只补未结算行
       throw new AppError(
         ErrorCode.OutboxHandlerFailed,
         `FirmMerchantActivated 重驱动部分失败（firm=${payload.firm_id}）：${failures.join('；')}`,
       );
     }
     logger.log(
-      `进件恢复传导：firm=${payload.firm_id} readied=${res.readied.length} reheld=${res.reheld}（event_id=${event.eventId}）`,
+      `进件恢复传导：firm=${payload.firm_id} readied=${res.readied.length} reheld=${res.reheld} ready=${res.ready.length}（event_id=${event.eventId}）`,
     );
   };
 }
@@ -287,16 +293,17 @@ export function createTicketResolvedHandler(settlements: SettlementService): Out
       return;
     }
     if (!rel.released) {
-      // R-02 双条件：工单闭而冻结期未满 → 只闭工单不放行（24h job 到期后放行）
+      // 未放行两态：HOLD_24H=冻结期未满仅闭工单（24h job 到期放行）；READY=F-2 重试直驱位
       logger.log(
         `工单释放未放行：${payload.ref_type}=${payload.ref_id} blocked=${String(rel.blocked)}（ticket=${payload.ticket_id}）`,
       );
-      return;
     }
     if (rel.settlement_id !== null) {
-      const run = await settlements.runSettlementById(rel.settlement_id); // 释放+重驱动链（R-01）
+      // F-2：释放/重试路径恒直驱（释放已提交而结算首跳失败的 READY 滞留行由此补结算；
+      // 幂等——HOLD/SUSPENDED/SETTLED 行 runSettlement 短路 no-op）
+      const run = await settlements.runSettlementById(rel.settlement_id);
       logger.log(
-        `工单释放放行：${payload.ref_type}=${payload.ref_id} settled=${run.settled} suspended=${run.suspended ?? false}（ticket=${payload.ticket_id}）`,
+        `工单释放处理：${payload.ref_type}=${payload.ref_id} settled=${run.settled} status=${String(run.status ?? 'READY')}（ticket=${payload.ticket_id}）`,
       );
     }
   };

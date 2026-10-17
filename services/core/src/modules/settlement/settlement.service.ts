@@ -41,7 +41,6 @@ import {
   SETTLEMENT_RELEASED_TOPIC,
   SPLIT_SETTLED_TOPIC,
   isValidIdempotencyKey,
-  type Money,
   type SettlementDebtIncurredPayload,
   type SettlementHeldPayload,
   type SettlementReleasedPayload,
@@ -231,11 +230,14 @@ export class SettlementService {
       if (held.rows.length === 0) {
         throw new AppError(ErrorCode.StateStaleEntity, `结算行 ${row.id} 已被并发迁移`);
       }
+      // job 预写（M-1 DB 钟）：dueAt=now()+24h 由 DB 取值，消除应用钟漂移滞留面
+      // （到期判定事实源=DB 钟 created_at+interval，注册跨度同钟同源）
+      const due = await uow.query<{ due: Date }>(`SELECT (now() + ${HOLD_INTERVAL}) AS due`);
       await this.scheduler.registerJob(uow, {
         jobType: 'SETTLE_HOLD_RELEASE',
         refType: 'settlement',
         refId: Number(row.id),
-        dueAt: new Date(Date.now() + 24 * 3_600_000),
+        dueAt: new Date(due.rows[0]!.due),
       });
       await this.outbox.recordOutbox(uow, {
         type: SETTLEMENT_HELD_TOPIC,
@@ -519,19 +521,31 @@ export class SettlementService {
   /**
    * 进件恢复重驱动（FirmMerchantActivated）：SUSPENDED 行逐条判定释放条件——满足（冻结期满+
    * 无工单）→ READY（调用方对 readied 行续跑 runSettlement 完成重驱动）；未满足 → 回 HOLD
-   * （锚仍=created_at）+ SETTLE_HOLD_RELEASE job 重注册（原 job 可能已被消费）。
+   * （锚仍=created_at）+ SETTLE_HOLD_RELEASE job 重注册（原 job 可能已被消费，dueAt=DB 钟，
+   * M-1）。
+   *
+   * F-2：该律所已 READY 的滞留行（此前释放成功而结算首跳失败的重试面）一并收集返回
+   * （ready）——消费链对 readied+ready 恒直驱 runSettlementById（幂等：非 READY no-op），
+   * 消除「释放已提交而结算永久滞留 READY」的重驱死角。
    */
-  async resumeForFirm(firmId: number): Promise<{ readied: number[]; reheld: number }> {
+  async resumeForFirm(
+    firmId: number,
+  ): Promise<{ readied: number[]; reheld: number; ready: number[] }> {
     assertPositiveInt(firmId, 'firm_id');
     const readied: number[] = [];
+    const ready: number[] = [];
     let reheld = 0;
     await this.pool.withTransaction(async (uow) => {
       const rows = await uow.query<SettlementRow>(
         `SELECT ${ROW_COLS} FROM settlement.settlements
-          WHERE firm_id = $1 AND status = 'SUSPENDED' ORDER BY id FOR UPDATE`,
+          WHERE firm_id = $1 AND status IN ('SUSPENDED', 'READY') ORDER BY id FOR UPDATE`,
         [firmId],
       );
       for (const row of rows.rows) {
+        if (row.status === 'READY') {
+          ready.push(Number(row.id)); // F-2 滞留行收集（结算驱动归消费链，本面只做状态盘点）
+          continue;
+        }
         const refType = row.ref_type as SettlementRefType;
         const refId = Number(row.ref_id);
         const due = await uow.query<{ ok: boolean }>(
@@ -583,20 +597,23 @@ export class SettlementService {
           if (updated.rows.length === 0) {
             throw new AppError(ErrorCode.StateStaleEntity, `结算行 ${row.id} 已被并发迁移`);
           }
-          // job 重注册：dueAt=created_at+24h（已过则即刻到期由执行器回查兜底）
-          const createdAt = new Date(updated.rows[0]!.created_at);
-          const dueAt = new Date(createdAt.getTime() + 24 * 3_600_000);
+          // job 重注册（M-1 DB 钟）：dueAt=GREATEST(created_at+24h, now()+1s)（已过则即刻到期由执行器回查兜底）
+          const dueRow = await uow.query<{ due: Date }>(
+            `SELECT GREATEST(created_at + ${HOLD_INTERVAL}, now() + interval '1 second') AS due
+               FROM settlement.settlements WHERE id = $1`,
+            [row.id],
+          );
           await this.scheduler.registerJob(uow, {
             jobType: 'SETTLE_HOLD_RELEASE',
             refType: 'settlement',
             refId: Number(row.id),
-            dueAt: dueAt.getTime() <= Date.now() ? new Date(Date.now() + 1_000) : dueAt,
+            dueAt: new Date(dueRow.rows[0]!.due),
           });
           reheld += 1;
         }
       }
     });
-    return { readied, reheld };
+    return { readied, reheld, ready };
   }
 
   // ===========================================================================
@@ -634,47 +651,60 @@ export class SettlementService {
     const key = assertPenaltyKey(input.idempotency_key);
     const depositKey = ['deposit', ...key.split('/').slice(1)].join('/'); // 保证金腿派生键
 
-    // 幂等重放（§10-7）：本域扣减留痕承载（F1 台账 UNIQUE 为资金面真兜底）
-    const replay = await this.pool.query<{
-      id: string;
-      deduction_detail: SettlementDeductionDetail;
-    }>(
-      `SELECT id, deduction_detail FROM settlement.settlements
-        WHERE lawyer_id = $1 AND deduction_detail->'items' @> $2::jsonb LIMIT 1`,
-      [ownerId, JSON.stringify([{ idempotency_key: key }])],
-    );
-    const prior = replay.rows[0];
-    if (prior) {
-      const detail = prior.deduction_detail;
-      const same =
-        detail !== null &&
-        detail.amount === input.amount &&
-        detail.base_ref.ref_type === input.base_ref.ref_type &&
-        detail.base_ref.ref_id === input.base_ref.ref_id &&
-        detail.reason === input.reason;
-      if (!same) {
-        throw new AppError(
-          ErrorCode.PaymentDuplicateKey,
-          `幂等键 ${key} 已绑定其他载荷（同键须同载荷重放）`,
-        );
-      }
-      const confirmed = (leg: DeductionLeg['leg']): Money =>
-        centsToMoney(
-          detail.items
-            .filter((it) => it.leg === leg && it.status === 'CONFIRMED')
-            .reduce((s, it) => s + moneyToCents(it.amount), 0),
-        );
-      return {
-        replayed: true,
-        from_settlement: confirmed('settlement'),
-        from_deposit: confirmed('deposit'),
-        debt: detail.debt,
-        items: detail.items,
-      };
-    }
-
     return this.pool.withTransaction(async (uow) => {
-      // 待结算余额（R-04 事实源=本域台账）：未终态行 net 合计，FIFO 摊扣
+      // ① 持久幂等收据（F-1 修复件，V28）：claim 先于一切资金/行动作——冲突=同键重放短路
+      //（修 P1「首扣全走保证金腿 detail 无承载行后重放 Fresh 重扣」/P2「同行二次违约覆盖
+      // anchor 后首键重放摊扣双计」——deduction_detail 单槽 last-writer-wins 不再作重放锚，
+      // 收据为唯一持久锚；claim 随事务回滚不烧键，F1 台账 UNIQUE 仍为资金面真兜底）
+      const claim = await uow.query<{ id: string }>(
+        `INSERT INTO settlement.settlement_penalty_receipts
+           (penalty_key, settlement_id, amount, f1_ledger_keys, result_detail)
+         VALUES ($1, NULL, $2::numeric, '[]'::jsonb, NULL::jsonb)
+         ON CONFLICT (penalty_key) DO NOTHING
+         RETURNING id`,
+        [key, input.amount],
+      );
+      if (claim.rows.length === 0) {
+        // ② 幂等短路：读回收据比对载荷（异载荷 409），同载荷重放原结果（恰一次）
+        const prior = await uow.query<{
+          amount: string;
+          result_detail:
+            | (ApplyPenaltyResult & {
+                base_ref: { readonly ref_type: string; readonly ref_id: number };
+                reason: string;
+              })
+            | null;
+        }>(
+          `SELECT amount::text AS amount, result_detail
+             FROM settlement.settlement_penalty_receipts WHERE penalty_key = $1`,
+          [key],
+        );
+        const receipt = prior.rows[0];
+        if (!receipt || receipt.result_detail === null) {
+          throw new AppError(ErrorCode.InternalError, `幂等收据 ${key} 不可读或未落定（不应触达）`);
+        }
+        const same =
+          dbNumericToCents(receipt.amount) === amountCents &&
+          receipt.result_detail.base_ref.ref_type === input.base_ref.ref_type &&
+          receipt.result_detail.base_ref.ref_id === input.base_ref.ref_id &&
+          receipt.result_detail.reason === input.reason;
+        if (!same) {
+          throw new AppError(
+            ErrorCode.PaymentDuplicateKey,
+            `幂等键 ${key} 已绑定其他载荷（同键须同载荷重放）`,
+          );
+        }
+        return {
+          replayed: true,
+          from_settlement: receipt.result_detail.from_settlement,
+          from_deposit: receipt.result_detail.from_deposit,
+          debt: receipt.result_detail.debt,
+          items: receipt.result_detail.items,
+        };
+      }
+      const receiptId = Number(claim.rows[0]!.id);
+
+      // ③ 待结算余额（R-04 事实源=本域台账）：未终态行 net 合计，FIFO 摊扣
       const rows = await uow.query<SettlementRow>(
         `SELECT ${ROW_COLS} FROM settlement.settlements
           WHERE lawyer_id = $1 AND status IN ('PENDING', 'HOLD', 'READY', 'SUSPENDED')
@@ -817,13 +847,34 @@ export class SettlementService {
         legs
           .filter((it) => it.leg === leg && it.status === 'CONFIRMED')
           .reduce((s, it) => s + moneyToCents(it.amount), 0);
-      return {
+      const result: ApplyPenaltyResult = {
         replayed: false,
         from_settlement: centsToMoney(confirmedSum('settlement')),
         from_deposit: centsToMoney(confirmedSum('deposit')),
         debt: centsToMoney(debtCents),
         items: legs,
       };
+
+      // ④ 收据落定（F-1，与 claim 同事务——提交行必有完整快照，重放短路可信赖）
+      await uow.query(
+        `UPDATE settlement.settlement_penalty_receipts
+           SET settlement_id = $2, f1_ledger_keys = $3::jsonb, result_detail = $4::jsonb
+         WHERE id = $1`,
+        [
+          receiptId,
+          touched.length > 0 ? touched[touched.length - 1]! : null,
+          JSON.stringify(
+            legs.map((l) => ({
+              leg: l.leg,
+              key: l.idempotency_key,
+              status: l.status,
+              ledger_id: l.ledger_id,
+            })),
+          ),
+          JSON.stringify({ ...result, base_ref: input.base_ref, reason: input.reason }),
+        ],
+      );
+      return result;
     });
   }
 
