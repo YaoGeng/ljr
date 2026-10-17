@@ -675,7 +675,8 @@ export class EnrollmentService {
   // 查询面（§5 GET /enrollments/mine：{status, amounts, refund_status}）
   // ===========================================================================
 
-  async listMine(userId: number): Promise<EnrollmentMineItem[]> {    assertPositiveInt(userId, 'user_id');
+  async listMine(userId: number): Promise<EnrollmentMineItem[]> {
+    assertPositiveInt(userId, 'user_id');
     const rows = await this.pool.query<EnrollmentRow>(
       `SELECT ${ENROLLMENT_COLS} FROM trade.enrollments
         WHERE user_id = $1 ORDER BY id DESC LIMIT 100`,

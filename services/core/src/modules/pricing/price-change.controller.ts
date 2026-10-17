@@ -54,7 +54,10 @@ export class PriceChangeController {
   @Post('pricing/change/:id/revoke')
   @UseGuards(IdentityAuthGuard, IdentityRoleGuard)
   @RequireRole('lawyer')
-  revoke(@Param('id') id: string, @CurrentIdentity() identity: IdentityClaims): Promise<{ status: string }> {
+  revoke(
+    @Param('id') id: string,
+    @CurrentIdentity() identity: IdentityClaims,
+  ): Promise<{ status: string }> {
     return this.priceChange.revoke(parseHistoryId(id), identity.userId);
   }
 

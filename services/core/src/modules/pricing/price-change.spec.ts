@@ -31,15 +31,10 @@ import { IDENTITY_CONFIG, type IdentityConfig } from '../identity/identity.confi
 import { NotifyDispatcherService } from '../notify/notify-dispatcher.service';
 import { NotifyTemplateService } from '../notify/notify-template.service';
 import { PointsService } from '../benefits/points.service';
-import {
-  deleteTemplateRaw,
-  listNotificationsRaw,
-  seedTemplateRaw,
-} from '../notify/notify-fixture';
+import { deleteTemplateRaw, listNotificationsRaw, seedTemplateRaw } from '../notify/notify-fixture';
 import { PricingConfigService } from './pricing.service';
 import {
   seedGroupBuyRaw,
-  seedPaidEnrollmentRaw,
   type SeedPaidEnrollmentOptions,
   seedSessionRaw,
 } from '../trade/trade-fixture';
@@ -120,7 +115,9 @@ describe('C6 改价与补偿（§4/§5/§7/§9/§10，需 PG）', () => {
       .send({ new_version_draft: body } as object);
 
   const approve = (historyId: number, body: unknown) =>
-    request(app.getHttpServer()).post(`/pricing/change/${historyId}/approve`).send(body as object);
+    request(app.getHttpServer())
+      .post(`/pricing/change/${historyId}/approve`)
+      .send(body as object);
 
   const revoke = (historyId: number, token?: string) =>
     request(app.getHttpServer())
@@ -132,11 +129,7 @@ describe('C6 改价与补偿（§4/§5/§7/§9/§10，需 PG）', () => {
 
   // ---------- 夹具：B3 版本行 / trade 场次·拼团·报名 / 时间旅行 ----------
 
-  const seedVersion = async (
-    lawyerId: number,
-    perHead: string,
-    version = 1,
-  ): Promise<void> => {
+  const seedVersion = async (lawyerId: number, perHead: string, version = 1): Promise<void> => {
     await pool.query(
       `INSERT INTO pricing.price_versions
          (lawyer_id, version, per_head, session_total, group_size, accept_min, accept_max,
@@ -153,7 +146,13 @@ describe('C6 改价与补偿（§4/§5/§7/§9/§10，需 PG）', () => {
     paid: SeedPaidEnrollmentOptions = { userId: 0, cash: '100.00', points: 0, unitPrice: '100.00' },
   ): Promise<number> => {
     slotSeq += 1;
-    return seedSessionRaw(pool, lawyerId, status, slotSeq, userId === undefined ? undefined : { ...paid, userId });
+    return seedSessionRaw(
+      pool,
+      lawyerId,
+      status,
+      slotSeq,
+      userId === undefined ? undefined : { ...paid, userId },
+    );
   };
 
   const seedGroupBuy = (lawyerId: number, status: string): Promise<number> =>
@@ -369,7 +368,11 @@ describe('C6 改价与补偿（§4/§5/§7/§9/§10，需 PG）', () => {
       points: 0,
       unitPrice: '100.00',
     });
-    await seedSession(LAWYER_LE10, 'FINISHED', USER_C, { cash: '30.00', points: 0, unitPrice: '100.00' }); // 已完成服务 → 不在补偿对象
+    await seedSession(LAWYER_LE10, 'FINISHED', USER_C, {
+      cash: '30.00',
+      points: 0,
+      unitPrice: '100.00',
+    }); // 已完成服务 → 不在补偿对象
 
     const res = await postChange(LAWYER_LE10, {
       base_version: 1,
@@ -441,7 +444,11 @@ describe('C6 改价与补偿（§4/§5/§7/§9/§10，需 PG）', () => {
 
   it('R-01③ 在团降价>10%：approve(true) → 补偿 + PRICE_COUPON_INSTRUCTED 券指令出箱（F4 ②全量消费位，②补验）', async () => {
     await seedVersion(LAWYER_GT10, '100.00');
-    await seedSession(LAWYER_GT10, 'CREATED', USER_A, { cash: '100.00', points: 0, unitPrice: '100.00' });
+    await seedSession(LAWYER_GT10, 'CREATED', USER_A, {
+      cash: '100.00',
+      points: 0,
+      unitPrice: '100.00',
+    });
 
     const res = await postChange(LAWYER_GT10, {
       base_version: 1,
@@ -498,7 +505,11 @@ describe('C6 改价与补偿（§4/§5/§7/§9/§10，需 PG）', () => {
     expect(await balanceOf(USER_A)).toBe(0);
     expect(await notificationsOf(USER_A)).toHaveLength(0);
     const [row] = await histRows(LAWYER_LE10);
-    expect(row).toMatchObject({ result: 'REJECTED', approval_id: '8803', approval_source: 'MANUAL' });
+    expect(row).toMatchObject({
+      result: 'REJECTED',
+      approval_id: '8803',
+      approval_source: 'MANUAL',
+    });
 
     // 同 history 再 approve(true)：幂等键=history，终态不翻案（H3 侧以 TicketResolved 重驱动=M2）
     const flip = await approve(historyId, { approved: true, approval_id: 8803 });
@@ -732,7 +743,11 @@ describe('C6 改价与补偿（§4/§5/§7/§9/§10，需 PG）', () => {
 
   it('GET /pricing/histories：§5 列表契约字段全回显；无记录=空数组；缺失 lawyer_id → 400', async () => {
     await seedVersion(LAWYER_FREE, '100.00');
-    await postChange(LAWYER_FREE, { base_version: 1, per_head: '97.00', one_on_one_prices: VALID_1V1 });
+    await postChange(LAWYER_FREE, {
+      base_version: 1,
+      per_head: '97.00',
+      one_on_one_prices: VALID_1V1,
+    });
 
     const list = await histories(LAWYER_FREE);
     expect(list.status).toBe(200);
@@ -759,7 +774,8 @@ describe('C6 改价与补偿（§4/§5/§7/§9/§10，需 PG）', () => {
   });
 
   it('DB 层 CHECK 兜底：direction 越域 / change_pct<0 / credit_penalty>0 / result 越域 → 23514', async () => {
-    const insert = (sql: string, params: readonly unknown[]) => pool.query(sql, params as unknown[]);
+    const insert = (sql: string, params: readonly unknown[]) =>
+      pool.query(sql, params as unknown[]);
     await expect(
       insert(
         `INSERT INTO pricing.pricing_histories

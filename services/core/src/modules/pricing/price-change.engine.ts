@@ -73,7 +73,11 @@ export function classifyChange(
   const direction: ChangeDirection = newCents > oldCents ? 'UP' : 'DOWN';
   const delta = Math.abs(newCents - oldCents);
   const kind: PriceChangeKind =
-    direction === 'UP' ? 'PRICE_UP' : isDownLe10(oldCents, delta) ? 'PRICE_DOWN_LE10' : 'PRICE_DOWN_GT10';
+    direction === 'UP'
+      ? 'PRICE_UP'
+      : isDownLe10(oldCents, delta)
+        ? 'PRICE_DOWN_LE10'
+        : 'PRICE_DOWN_GT10';
   return {
     direction,
     kind,

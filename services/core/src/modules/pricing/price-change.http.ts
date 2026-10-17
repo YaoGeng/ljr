@@ -35,7 +35,10 @@ export function parseApproveBody(body: unknown): ApproveInput {
   }
   const raw = body as Record<string, unknown>;
   if (typeof raw['approved'] !== 'boolean') {
-    throw new AppError(ErrorCode.InvalidArgument, `approved 须为布尔：${JSON.stringify(raw['approved'])}`);
+    throw new AppError(
+      ErrorCode.InvalidArgument,
+      `approved 须为布尔：${JSON.stringify(raw['approved'])}`,
+    );
   }
   const approvalId = raw['approval_id'];
   if (typeof approvalId !== 'number' || !Number.isInteger(approvalId) || approvalId <= 0) {

@@ -11,11 +11,7 @@
 import type { Pool } from 'pg';
 
 /** 自插一个非关键 INBOX 模板（ON CONFLICT 幂等；用后须删，参照数据纪律） */
-export async function seedTemplateRaw(
-  pool: Pool,
-  code: string,
-  content: string,
-): Promise<void> {
+export async function seedTemplateRaw(pool: Pool, code: string, content: string): Promise<void> {
   await pool.query(
     `INSERT INTO notify.notification_templates (code, channel, content, version, critical)
      VALUES ($1, 'INBOX', $2, 1, false) ON CONFLICT (code) DO NOTHING`,
