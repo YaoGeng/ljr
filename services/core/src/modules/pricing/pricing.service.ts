@@ -157,6 +157,123 @@ export class PricingConfigService {
     };
   }
 
+  // ---------- C6 消费位（M1-W3 T9，R-W3-P 版本单写者）：生效/恢复经 B3 导出方法 ----------
+  //
+  // C6 不直写 price_versions（B3 §9「禁止改价直接改 price_versions」+ 版本分配/校验/事件
+  // 单点收口在本服务）。两方法皆为「调用方事务内」形态（InTx 同形先例=F4 freezeInTx）：
+  // C6 的改价历史行 + 版本落版 + 事件出箱必须同一 DB 事务。绕过 R-04 在团闸是有意为之——
+  // C6 即在团改价的正门（B3 PUT 直改才是被闸对象）。
+
+  /**
+   * 按草案创建新版本（C6 生效路径）：内容校验（R-01/R-02 双层）复用 normalizePricingWrite
+   * （draft.base_version 为客户端乐观锁令牌，版本号由本方法锁内分配，C6 语义=目标版本号）；
+   * advisory lock 串行化 + UNIQUE(lawyer_id, version) 兜底与 putPricing 同款；落版成功即出箱
+   * PriceVersionCreated（B3 §6 事件面不变，I1 参与者通知消费位）。缓存失效由调用方在提交后
+   * 调 invalidateCurrentCache（写后失效纪律，R-W2-8）。
+   */
+  async createVersionFromDraftInTx(
+    uow: SqlExecutor,
+    lawyerId: number,
+    draft: PutPricingInput,
+  ): Promise<{ version: number }> {
+    this.assertLawyerId(lawyerId);
+    const normalized = normalizePricingWrite(draft);
+    await uow.query(
+      `SELECT pg_advisory_xact_lock(hashtext('pricing.price_versions:' || $1::text))`,
+      [lawyerId],
+    );
+    const cur = await uow.query<{ version: number }>(
+      `SELECT version FROM pricing.price_versions
+        WHERE lawyer_id = $1 ORDER BY version DESC LIMIT 1`,
+      [lawyerId],
+    );
+    const nextVersion = (cur.rows[0]?.version ?? 0) + 1;
+    await uow.query(
+      `INSERT INTO pricing.price_versions
+         (lawyer_id, version, per_head, session_total, group_size, accept_min, accept_max,
+          room_modes, one_on_one_prices)
+       VALUES ($1, $2, $3::numeric, $4::numeric, $5, $6, $7, $8::varchar[], $9::jsonb)`,
+      [
+        lawyerId,
+        nextVersion,
+        normalized.per_head,
+        normalized.session_total,
+        normalized.group_size,
+        normalized.accept_min,
+        normalized.accept_max,
+        normalized.room_modes,
+        JSON.stringify(normalized.one_on_one_prices),
+      ],
+    );
+    await this.outbox.recordOutbox(uow, {
+      type: PRICE_VERSION_CREATED_TOPIC,
+      payload: { lawyer_id: lawyerId, version: nextVersion },
+    });
+    return { version: nextVersion };
+  }
+
+  /**
+   * 恢复指定版本内容为新版本（C6 撤销路径，R-04「恢复上一版本」）：版本行不可变（R-03），
+   * 恢复=INSERT 新版本（当前最大+1）承载 targetVersion 的内容快照——版本链单调，永不回写。
+   * targetVersion 行缺失=InternalError（恢复前提=C6 历史行 old_version 指向在册版本，不应触达）。
+   */
+  async restoreVersionInTx(
+    uow: SqlExecutor,
+    lawyerId: number,
+    targetVersion: number,
+  ): Promise<{ version: number }> {
+    this.assertLawyerId(lawyerId);
+    await uow.query(
+      `SELECT pg_advisory_xact_lock(hashtext('pricing.price_versions:' || $1::text))`,
+      [lawyerId],
+    );
+    const src = await uow.query<PriceVersionRow>(
+      `SELECT ${SELECT_COLUMNS} FROM pricing.price_versions
+        WHERE lawyer_id = $1 AND version = $2`,
+      [lawyerId, targetVersion],
+    );
+    const row = src.rows[0];
+    if (!row) {
+      throw new AppError(
+        ErrorCode.InternalError,
+        `恢复目标版本不存在（不应触达）：lawyer=${lawyerId} version=${targetVersion}`,
+      );
+    }
+    const cur = await uow.query<{ version: number }>(
+      `SELECT version FROM pricing.price_versions
+        WHERE lawyer_id = $1 ORDER BY version DESC LIMIT 1`,
+      [lawyerId],
+    );
+    const nextVersion = (cur.rows[0]?.version ?? 0) + 1;
+    await uow.query(
+      `INSERT INTO pricing.price_versions
+         (lawyer_id, version, per_head, session_total, group_size, accept_min, accept_max,
+          room_modes, one_on_one_prices)
+       VALUES ($1, $2, $3::numeric, $4::numeric, $5, $6, $7, $8::varchar[], $9::jsonb)`,
+      [
+        lawyerId,
+        nextVersion,
+        row.per_head,
+        row.session_total,
+        row.group_size,
+        row.accept_min,
+        row.accept_max,
+        row.room_modes,
+        JSON.stringify(row.one_on_one_prices),
+      ],
+    );
+    await this.outbox.recordOutbox(uow, {
+      type: PRICE_VERSION_CREATED_TOPIC,
+      payload: { lawyer_id: lawyerId, version: nextVersion },
+    });
+    return { version: nextVersion };
+  }
+
+  /** 当前版本缓存失效（C6 生效/恢复提交后调用；写后失效纪律，测试与 I1 事件消费同口径） */
+  invalidateCurrentCache(lawyerId: number): number {
+    return this.cache.invalidateLawyer(lawyerId);
+  }
+
   // ---------- 内部件 ----------
 
   private async readCurrent(exec: SqlExecutor, lawyerId: number): Promise<CurrentPricingView> {

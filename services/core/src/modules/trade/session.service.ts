@@ -606,6 +606,20 @@ export class SessionService {
   }
 
   /**
+   * C6 消费位（M1-W3 T9，R-W2-9 在团判定换装的一翼）：该律师有无进行中场次（终态集外，
+   * TERMINAL_STATUSES_SQL 同口径）。只读面（池连接）；C6 改价引擎在团判定 =
+   * 本方法 OR GroupBuyService.hasActiveGroupBuys（禁跨 schema join，导出服务查询面）。
+   */
+  async hasActiveSessions(lawyerId: number): Promise<boolean> {
+    const res = await this.pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM trade.sessions
+        WHERE lawyer_id = $1 AND status NOT IN (${TERMINAL_STATUSES_SQL})`,
+      [assertPositiveInt(lawyerId, 'lawyer_id')],
+    );
+    return (res.rows[0]?.n ?? 0) > 0;
+  }
+
+  /**
    * 截止流标：仍 CREATED 且 joined<capacity → FAILED（STL 留痕）+SessionFailed 出箱+
    * 占用锁同事务释放（架构 §4.2；reason=session_failed）。已终态/已满员 → {failed:false}
    * （回查兜底双保险：满员未推进 FULL 属 C3 职责，绝不容截止 job 误杀）。

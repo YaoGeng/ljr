@@ -154,6 +154,12 @@ export interface PayGuardOutcome {
   readonly enrollment_id: number;
 }
 
+/** C6 补偿对象条目（listActivePaidForLawyer 出参；paid_full_cents=paid_amount 全额整化分，D17） */
+export interface ActivePaidEnrollmentItem {
+  readonly user_id: number;
+  readonly paid_full_cents: number;
+}
+
 @Injectable()
 export class EnrollmentService {
   constructor(
@@ -628,11 +634,48 @@ export class EnrollmentService {
   }
 
   // ===========================================================================
+  // C6 消费位（M1-W3 T9）：该律师的活跃 PAID 报名（补偿对象=已支付且未完成服务用户，R-05/D17）
+  // ===========================================================================
+
+  /**
+   * 律师维度已支付报名清单（C6 改价补偿对象的事实源）：pay_status=PAID 且所属场次/拼团
+   * 未完成服务——session 排除 FINISHED/HOLD/SETTLED（服务完成）与 FAILED/CANCELLED（流标/
+   * 取消退款轨道）；groupbuy 排除 EXPIRED/REJECTED/REFUNDED（CONVERTED 在册=服务经转化后
+   * 场次交付，W3 口径随拼团行计，报告注明）。paid_full_cents=paid_amount 全额整化分
+   * （D17 裁决：cash 分 + points，1 积分=1 分）。同 schema join（trade 域内，架构 §3.2 红线
+   * 只禁跨 schema）；只读池连接。
+   */
+  async listActivePaidForLawyer(lawyerId: number): Promise<ActivePaidEnrollmentItem[]> {
+    assertPositiveInt(lawyerId, 'lawyer_id');
+    const res = await this.pool.query<{
+      user_id: string;
+      cash: string;
+      points: number;
+    }>(
+      `SELECT e.user_id::text AS user_id, e.cash_amount::text AS cash, e.points_amount AS points
+         FROM trade.enrollments e
+         JOIN trade.sessions s ON e.ref_type = 'session' AND s.id = e.ref_id
+        WHERE s.lawyer_id = $1 AND e.pay_status = 'PAID'
+          AND s.status NOT IN ('FINISHED', 'HOLD', 'SETTLED', 'FAILED', 'CANCELLED')
+        UNION ALL
+       SELECT e.user_id::text AS user_id, e.cash_amount::text AS cash, e.points_amount AS points
+         FROM trade.enrollments e
+         JOIN trade.group_buys g ON e.ref_type = 'groupbuy' AND g.id = e.ref_id
+        WHERE g.lawyer_id = $1 AND e.pay_status = 'PAID'
+          AND g.status NOT IN ('EXPIRED', 'REJECTED', 'REFUNDED')`,
+      [lawyerId],
+    );
+    return res.rows.map((r) => ({
+      user_id: Number(r.user_id),
+      paid_full_cents: moneyToCents(r.cash) + r.points,
+    }));
+  }
+
+  // ===========================================================================
   // 查询面（§5 GET /enrollments/mine：{status, amounts, refund_status}）
   // ===========================================================================
 
-  async listMine(userId: number): Promise<EnrollmentMineItem[]> {
-    assertPositiveInt(userId, 'user_id');
+  async listMine(userId: number): Promise<EnrollmentMineItem[]> {    assertPositiveInt(userId, 'user_id');
     const rows = await this.pool.query<EnrollmentRow>(
       `SELECT ${ENROLLMENT_COLS} FROM trade.enrollments
         WHERE user_id = $1 ORDER BY id DESC LIMIT 100`,
