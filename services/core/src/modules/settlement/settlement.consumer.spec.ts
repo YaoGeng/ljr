@@ -35,6 +35,7 @@ import { FirmMerchantService } from '../payment/firm-merchant.service';
 import type { PaymentOrderView } from '../payment/payment.types';
 import { countLedgersByDirection, getPaymentOrderById } from '../payment/order-fixture';
 import { seedFirmMerchant, setFirmMerchantStatus } from '../payment/firm-merchant.fixture';
+import { countJobLogsByResult } from '../schedule/job-fixture';
 import { OpenTicketGate } from './settlement.gate';
 import { SettlementConsumer, createRoomClosedHandler } from './settlement.consumer';
 import { SettlementJobExecutors } from './settlement.executors';
@@ -184,7 +185,7 @@ describe('F3 事件消费端（需 PG）', () => {
       guard,
       executors,
       new SchedulerAlertService(new MockPhoneAlertSink()),
-      { batch: 10 },
+      { batch: 10, backoffMs: () => 0 }, // 退避零化：job 重试路径（⑩ F-2 round2 执行器链）在测试内即时可达
     );
     merchants = new FirmMerchantService(
       poolSvc,
@@ -438,5 +439,35 @@ describe('F3 事件消费端（需 PG）', () => {
     expect(second.dispatched).toBe(1); // TicketResolved 重试直驱补结算（SENT）
     expect((await getRow('session', 807))!.status).toBe('SETTLED');
     expect((await getPaymentOrderById(pool, order.id))['status']).toBe('SPLIT');
+  });
+
+  it('⑩ F-2 round2 执行器链：24h 到期释放后结算首跳失败→整体回滚自 HOLD，job 重试补结算（无 READY 滞留）', async () => {
+    await seedFirmMerchant(pool, FIRM, 'ACTIVE');
+    const order = await createPaidOrder('100.00');
+    await recordEvent(
+      ROOM_CLOSED_TOPIC,
+      roomClosed({ session_id: 808, payment_order_id: order.id }),
+    );
+    await relay.tick();
+    await travelCreated(808);
+    const held = await getRow('session', 808);
+    await travelJob(held!.id as number);
+
+    // 首跳：抢占事务内释放+结算——结算抛 E_CHANNEL_UNAVAILABLE 须整体回滚到 HOLD（FIRM_REVERIFY 范式）
+    wechat.fault = { kind: 'CHANNEL_ERROR' };
+    alipay.fault = { kind: 'CHANNEL_ERROR' };
+    const first = await scheduler.tick();
+    expect(first.retried).toBe(1); // job 退避重试（未 DONE 未 CANCELLED）
+    expect(await getRow('session', 808)).toMatchObject({ status: 'HOLD' }); // 未滞留 READY（回滚复位）
+
+    // 故障消除 → 重试：释放+结算同占抢事务补齐 → DONE
+    wechat.fault = null;
+    alipay.fault = null;
+    routerNow = DAY + PAYMENT_SWITCH_WINDOW_MS_DEFAULT + 1_000;
+    const second = await scheduler.tick();
+    expect(second.done).toBe(1);
+    expect((await getRow('session', 808))!.status).toBe('SETTLED');
+    expect((await getPaymentOrderById(pool, order.id))['status']).toBe('SPLIT');
+    expect(await countJobLogsByResult(pool, 'SETTLE_HOLD_RELEASE', 'DONE')).toBe(1); // 重试补齐 DONE（log 只记真实发生的重试）
   });
 });

@@ -83,3 +83,17 @@ export async function listJobsByType(
     due_at: r.due_at,
   }));
 }
+
+/** job 执行日志按结果计数（「重试补齐 DONE」类断言用；owner=schedule 唯一合法直读点） */
+export async function countJobLogsByResult(
+  pool: Pool,
+  jobType: string,
+  result: string,
+): Promise<number> {
+  const res = await pool.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM schedule.schedule_job_log
+      WHERE job_type = $1 AND result = $2`,
+    [jobType, result],
+  );
+  return res.rows[0]!.n;
+}

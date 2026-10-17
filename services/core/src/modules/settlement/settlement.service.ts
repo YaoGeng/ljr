@@ -285,7 +285,22 @@ export class SettlementService {
     reason: 'HOLD_EXPIRED' | 'TICKET_RESOLVED',
   ): Promise<ReleaseHoldResult> {
     assertPositiveInt(settlementId, 'settlement_id');
-    const outcome = await this.pool.withTransaction(async (uow) => {
+    return this.pool.withTransaction((uow) => this.releaseDueHoldInTx(uow, settlementId, reason));
+  }
+
+  /**
+   * 释放 InTx 变体（F-2 round2）：业务效果做进调用方事务——SETTLE_HOLD_RELEASE 执行器以抢占
+   * 事务 uow 调用（FIRM_REVERIFY/suspendOverdueInTx 同款范式），释放+结算同占抢事务：结算抛错
+   * 整体回滚到 HOLD、job 退避重试，消除「释放独立提交而结算首跳失败→recheck 见 READY 判
+   * superseded→job CANCELLED→READY 行无驱动滞留」的复审残留面。工单闸（H3=M2 换装位）在
+   * 抢占事务内查询——W3 无源恒 false，有源时源实现方自持连接（与 schedule_jobs 锁无环）。
+   */
+  async releaseDueHoldInTx(
+    uow: SqlExecutor,
+    settlementId: number,
+    reason: 'HOLD_EXPIRED' | 'TICKET_RESOLVED',
+  ): Promise<ReleaseHoldResult> {
+    {
       const row = await this.lockById(uow, settlementId);
       if (!row) throw new AppError(ErrorCode.NotFound, `结算行 ${settlementId} 不存在`);
       if (row.status !== 'HOLD') return { released: false }; // 幂等/并发败者
@@ -329,8 +344,7 @@ export class SettlementService {
         } satisfies SettlementReleasedPayload,
       });
       return { released: true } as const;
-    });
-    return outcome;
+    }
   }
 
   /** ref 定位变体（TicketResolved 消费链按结算实体 ref 释放；语义同 releaseDueHold，带行 id 供重驱动链） */
@@ -362,66 +376,84 @@ export class SettlementService {
   }): Promise<RunSettleResult> {
     const refType = assertRefType(ref.ref_type);
     const refId = assertPositiveInt(ref.ref_id, 'ref_id');
-    const row0 = await this.getByRef(refType, refId);
-    if (!row0) {
-      throw new AppError(ErrorCode.NotFound, `结算行不存在：${refType}=${refId}`);
-    }
-    const settlementId = Number(row0.id);
-    if (row0.status === 'SETTLED') {
-      return { settlement_id: settlementId, settled: false, already_settled: true }; // §10-7 幂等无操作
-    }
-    if (row0.status !== 'READY') {
-      return {
-        settlement_id: settlementId,
-        settled: false,
-        status: row0.status as SettlementStatus,
-      };
-    }
+    return this.pool.withTransaction((uow) => this.runSettlementInTx(uow, refType, refId));
+  }
 
-    // R-07 进件前置 + F1 通道定位（经 F1 导出读面；跨 schema 禁直查 payment_orders）
-    const order = row0.payment_order_id
-      ? await this.payment.findOrderById(Number(row0.payment_order_id))
-      : null;
-    if (!order) {
-      throw new AppError(
-        ErrorCode.NotFound,
-        `F1 支付单不可读：settlement=${settlementId} payment_order_id=${String(row0.payment_order_id)}（进重试轨道，不静默）`,
-      );
-    }
-    try {
-      await this.merchants.assertSplittable(Number(row0.firm_id), order.channel);
-    } catch (e) {
-      if (e instanceof AppError && e.code === ErrorCode.MerchantNotActive) {
-        await this.suspendOne(settlementId, 'READY', 'MERCHANT_NOT_ACTIVE');
-        return { settlement_id: settlementId, settled: false, suspended: true };
+  /**
+   * RUN_SETTLE InTx 变体（F-2 round2）：DB 面全在调用方事务内（执行器以抢占事务 uow 承接——
+   * 释放+结算同占抢事务，结算抛错整体回滚到 HOLD、job 退避重试，无 READY 滞留面）。
+   * ⚠/pay/split 为外部通道指令（自身事务先行提交）：抢占事务回滚时指令已落地——重试经 F1 同键
+   * 幂等（settle/{ref}-{id}/split）重放不双扣（applyPenalty 腿同款语义，mock 同步确认；
+   * 真实通道 M2 换装时经 outbox/Inbox 舞蹈承接崩溃窗口）。消费链（TicketResolved/进件恢复）
+   * 仍走公开包装（自持事务），驱动语义不变。
+   */
+  async runSettlementInTx(
+    uow: SqlExecutor,
+    refType: SettlementRefType,
+    refId: number,
+  ): Promise<RunSettleResult> {
+    {
+      const row0 = await this.getByRefInTx(uow, refType, refId);
+      if (!row0) {
+        throw new AppError(ErrorCode.NotFound, `结算行不存在：${refType}=${refId}`);
       }
-      throw e;
-    }
+      const settlementId = Number(row0.id);
+      if (row0.status === 'SETTLED') {
+        return { settlement_id: settlementId, settled: false, already_settled: true }; // §10-7 幂等无操作
+      }
+      if (row0.status !== 'READY') {
+        return {
+          settlement_id: settlementId,
+          settled: false,
+          status: row0.status as SettlementStatus,
+        };
+      }
 
-    // 分账构成（Σsplits=net=gross−penalty 恒等式；fee=建行固化值）→ F1 /pay/split 指令面
-    const composed = composeSplits({
-      firm_id: Number(row0.firm_id),
-      gross_cents: dbNumericToCents(row0.gross),
-      penalty_cents: dbNumericToCents(row0.penalty),
-      platform_fee_cents: dbNumericToCents(row0.platform_fee),
-      share_mode: row0.share_mode as ShareMode,
-    });
-    if (composed.splits.length > 0) {
-      await this.payment.split({
-        order_id: order.id,
-        splits: composed.splits,
-        idempotency_key: `settle/${refType}-${refId}/split`, // §5 幂等键=ref_type+ref_id（F1 UNIQUE 兜底）
+      // R-07 进件前置 + F1 通道定位（经 F1 导出读面；跨 schema 禁直查 payment_orders）
+      const order = row0.payment_order_id
+        ? await this.payment.findOrderById(Number(row0.payment_order_id))
+        : null;
+      if (!order) {
+        throw new AppError(
+          ErrorCode.NotFound,
+          `F1 支付单不可读：settlement=${settlementId} payment_order_id=${String(row0.payment_order_id)}（进重试轨道，不静默）`,
+        );
+      }
+      try {
+        await this.merchants.assertSplittable(Number(row0.firm_id), order.channel);
+      } catch (e) {
+        if (e instanceof AppError && e.code === ErrorCode.MerchantNotActive) {
+          await this.suspendOneInTx(uow, settlementId, 'READY', 'MERCHANT_NOT_ACTIVE');
+          return { settlement_id: settlementId, settled: false, suspended: true };
+        }
+        throw e;
+      }
+
+      // 分账构成（Σsplits=net=gross−penalty 恒等式；fee=建行固化值）→ F1 /pay/split 指令面
+      const composed = composeSplits({
+        firm_id: Number(row0.firm_id),
+        gross_cents: dbNumericToCents(row0.gross),
+        penalty_cents: dbNumericToCents(row0.penalty),
+        platform_fee_cents: dbNumericToCents(row0.platform_fee),
+        share_mode: row0.share_mode as ShareMode,
       });
-    } else {
-      // 零可分净额（违约金吃满）：无资金可分，跳过指令面仍终态化（F1 单闭单位=M2 D4）
-      this.logger.log(
-        `结算零可分净额，跳过 /pay/split：settlement=${settlementId} ${refType}=${refId}`,
-      );
-    }
+      if (composed.splits.length > 0) {
+        await this.payment.split({
+          order_id: order.id,
+          splits: composed.splits,
+          idempotency_key: `settle/${refType}-${refId}/split`, // §5 幂等键=ref_type+ref_id（F1 UNIQUE 兜底）
+        });
+      } else {
+        // 零可分净额（违约金吃满）：无资金可分，跳过指令面仍终态化（F1 单闭单位=M2 D4）
+        this.logger.log(
+          `结算零可分净额，跳过 /pay/split：settlement=${settlementId} ${refType}=${refId}`,
+        );
+      }
 
-    const settled = await this.pool.withTransaction(async (uow) => {
       const row = await this.lockById(uow, settlementId);
-      if (!row || row.status !== 'READY') return false; // 并发败者幂等
+      if (!row || row.status !== 'READY') {
+        return { settlement_id: settlementId, settled: false }; // 并发败者幂等
+      }
       await this.guard.assertTransition(SETTLEMENT_MACHINE, {
         entityId: settlementId,
         from: 'READY',
@@ -450,24 +482,26 @@ export class SettlementService {
           splits: composed.splits satisfies readonly SettlementSplitItem[],
         } satisfies SplitSettledPayload,
       });
-      return true;
-    });
-    return { settlement_id: settlementId, settled };
+      return { settlement_id: settlementId, settled: true };
+    }
   }
 
-  /** id 定位变体（job 执行器/进件恢复消费链按 settlement 行 id 续跑；语义同 runSettlement） */
+  /** id 定位变体（进件恢复消费链按 settlement 行 id 续跑；语义同 runSettlement，自持事务） */
   async runSettlementById(settlementId: number): Promise<RunSettleResult> {
     assertPositiveInt(settlementId, 'settlement_id');
-    const row = await this.pool.query<SettlementRow>(
+    return this.pool.withTransaction((uow) => this.runSettlementByIdInTx(uow, settlementId));
+  }
+
+  /** id 定位 InTx 变体（F-2 round2：SETTLE_HOLD_RELEASE 执行器以抢占事务 uow 承接） */
+  async runSettlementByIdInTx(uow: SqlExecutor, settlementId: number): Promise<RunSettleResult> {
+    assertPositiveInt(settlementId, 'settlement_id');
+    const row = await uow.query<SettlementRow>(
       `SELECT ref_type, ref_id FROM settlement.settlements WHERE id = $1`,
       [settlementId],
     );
     const r = row.rows[0];
     if (!r) throw new AppError(ErrorCode.NotFound, `结算行 ${settlementId} 不存在`);
-    return this.runSettlement({
-      ref_type: r.ref_type as SettlementRefType,
-      ref_id: Number(r.ref_id),
-    });
+    return this.runSettlementInTx(uow, r.ref_type as SettlementRefType, Number(r.ref_id));
   }
 
   // ===========================================================================
@@ -956,13 +990,14 @@ export class SettlementService {
     return res.rows[0] ?? null;
   }
 
-  /** 单行挂起（R-07 runSettlement 前置断言失败路径；from 收窄由调用方传入） */
-  private async suspendOne(
+  /** 单行挂起 InTx（R-07 runSettlement 前置断言失败路径；from 收窄由调用方传入；随调用方事务） */
+  private async suspendOneInTx(
+    uow: SqlExecutor,
     settlementId: number,
     from: SettlementStatus,
     holdReason: string,
   ): Promise<void> {
-    await this.pool.withTransaction(async (uow) => {
+    {
       const row = await this.lockById(uow, settlementId);
       if (!row || row.status !== from) return; // 并发已迁移（幂等）
       await this.guard.assertTransition(SETTLEMENT_MACHINE, {
@@ -992,6 +1027,6 @@ export class SettlementService {
           reason: holdReason,
         } satisfies SettlementHeldPayload,
       });
-    });
+    }
   }
 }
