@@ -57,6 +57,21 @@ import {
   GroupBuyExpiredPayload,
   ENROLLMENT_PAID_TOPIC,
   EnrollmentPaidPayload,
+  ROOM_CLOSED_TOPIC,
+  RoomClosedPayload,
+  ONE_ON_ONE_SETTLED_TOPIC,
+  OneOnOneSettledPayload,
+  TICKET_RESOLVED_TOPIC,
+  TicketResolvedPayload,
+  SPLIT_SETTLED_TOPIC,
+  SplitSettledPayload,
+  SettlementSplitItem,
+  SETTLEMENT_HELD_TOPIC,
+  SettlementHeldPayload,
+  SETTLEMENT_RELEASED_TOPIC,
+  SettlementReleasedPayload,
+  SETTLEMENT_DEBT_INCURRED_TOPIC,
+  SettlementDebtIncurredPayload,
   TRAINING_CONSENT_GRANTED_TOPIC,
   TRAINING_CONSENT_REVOKED_TOPIC,
   TrainingConsentGrantedPayload,
@@ -465,5 +480,105 @@ describe('C3 报名与支付成团事件契约（M1-W3 T7）：EnrollmentPaid �
       amounts: { paid: '50.00', cash: '50.00', points: 0 },
     };
     expect(groupJoin.ref_type).toBe('groupbuy');
+  });
+});
+
+describe('F3 分账结算事件契约（M1-W3 T8）：3 生产契约（H4/F4/I1 消费=M2 联调，出箱即止）', () => {
+  it('SplitSettled：topic=settlement.split.settled，{settlement_id, ref, session_id, net, fee, splits}（F3 §6 逐字扩展 ref/session_id 兼容位；金额 Money 字符串禁 float）', () => {
+    expect(SPLIT_SETTLED_TOPIC).toBe('settlement.split.settled');
+    const splits: SettlementSplitItem[] = [
+      { payee_type: 'lawyer_firm', payee_id: 31, amount: '68.60' },
+      { payee_type: 'platform', payee_id: 0, amount: '1.40' },
+    ];
+    const payload: SplitSettledPayload = {
+      settlement_id: 7,
+      ref_type: 'session',
+      ref_id: 61,
+      session_id: 61,
+      net: '70.00',
+      fee: '0.00',
+      splits,
+    };
+    expect(payload.session_id).toBe(61);
+    expect(payload.fee).toBe('0.00');
+    const ooo: SplitSettledPayload = {
+      settlement_id: 8,
+      ref_type: 'one_on_one',
+      ref_id: 501,
+      session_id: null,
+      net: '95.00',
+      fee: '5.00',
+      splits: [{ payee_type: 'lawyer_firm', payee_id: 31, amount: '95.00' }],
+    };
+    expect(ooo.session_id).toBeNull();
+  });
+
+  it('SettlementHeld：topic=settlement.settlement.held，{settlement_id, ref, session_id, reason}', () => {
+    expect(SETTLEMENT_HELD_TOPIC).toBe('settlement.settlement.held');
+    const payload: SettlementHeldPayload = {
+      settlement_id: 7,
+      ref_type: 'session',
+      ref_id: 61,
+      session_id: 61,
+      reason: 'HOLD_24H',
+    };
+    expect(payload.reason).toBe('HOLD_24H');
+  });
+
+  it('SettlementReleased：topic=settlement.settlement.released，{settlement_id, ref, session_id, reason}', () => {
+    expect(SETTLEMENT_RELEASED_TOPIC).toBe('settlement.settlement.released');
+    const payload: SettlementReleasedPayload = {
+      settlement_id: 7,
+      ref_type: 'session',
+      ref_id: 61,
+      session_id: 61,
+      reason: 'HOLD_EXPIRED',
+    };
+    expect(payload.reason).toBe('HOLD_EXPIRED');
+  });
+
+  it('SettlementDebtIncurred：topic=settlement.deduction.debt_incurred，{lawyer_id, firm_id, amount, ref}（R-04 扣减不足挂欠款，G1 消费发暂停接单限制令=M2 联调）', () => {
+    expect(SETTLEMENT_DEBT_INCURRED_TOPIC).toBe('settlement.deduction.debt_incurred');
+    const payload: SettlementDebtIncurredPayload = {
+      lawyer_id: 9101,
+      firm_id: 31,
+      amount: '20.00',
+      ref_type: 'session',
+      ref_id: 88,
+    };
+    expect(payload.amount).toBe('20.00');
+  });
+});
+
+describe('F3 消费契约（M1-W3 T8 消费方定型，R-W2-A 口径；生产方 D1/D6/H3=M2 import 同一契约）', () => {
+  it('RoomClosed：topic=fulfillment.room.closed，{session_id, lawyer_id, firm_id, gross, payment_order_id}（W3=合成事件桩）', () => {
+    expect(ROOM_CLOSED_TOPIC).toBe('fulfillment.room.closed');
+    const payload: RoomClosedPayload = {
+      session_id: 61,
+      lawyer_id: 9101,
+      firm_id: 31,
+      gross: '100.00',
+      payment_order_id: 9001,
+    };
+    expect(payload.gross).toBe('100.00');
+  });
+
+  it('OneOnOneSettled：topic=fulfillment.one_on_one.settled，{order_id, lawyer_id, firm_id, gross, net, payment_order_id}（F3 §3 {order_id, gross, net} 逐字 + 归属/指令定位增补；net=D6 实结参考价，F3 构成以 gross 为基）', () => {
+    expect(ONE_ON_ONE_SETTLED_TOPIC).toBe('fulfillment.one_on_one.settled');
+    const payload: OneOnOneSettledPayload = {
+      order_id: 501,
+      lawyer_id: 9101,
+      firm_id: 31,
+      gross: '100.00',
+      net: '100.00',
+      payment_order_id: 9002,
+    };
+    expect(payload.order_id).toBe(501);
+  });
+
+  it('TicketResolved：topic=ops.ticket.resolved，{ticket_id, ref_type, ref_id}（H3 工单关闭 → F3 HOLD 释放；W3=合成事件桩）', () => {
+    expect(TICKET_RESOLVED_TOPIC).toBe('ops.ticket.resolved');
+    const payload: TicketResolvedPayload = { ticket_id: 3001, ref_type: 'session', ref_id: 61 };
+    expect(payload.ticket_id).toBe(3001);
   });
 });

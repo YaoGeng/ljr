@@ -525,3 +525,123 @@ export interface RefundFailedPayload {
   /** 最近一次失败摘要（H3 工单记账锚点） */
   readonly last_error: string;
 }
+
+// ---------------------------------------------------------------------------
+// F3 分账结算（M1-W3 T8）：3 生产契约（消费：H4 指标、F4 备付台账②全量、I1 通知=M2 联调——
+// 本批生产方定型契约，出箱即止；G1 消费 SettlementDebtIncurred 发暂停接单限制令=M2 联调）。
+// schema=settlement（分账状态域，架构 §3.2）。金额一律 Money 字符串（NUMERIC 禁 float）。
+// 消费契约（消费方定型，R-W2-A 口径；生产方 D1/D6/D3/H3=M2 import 同一契约联调对齐）：
+//   RoomClosed / OneOnOneSettled / TicketResolved 三件 W3 无生产方=合成事件桩（测试直投
+//   outbox 沿 T2/T6 先例）；AttendanceAdjudicated/SessionCancelled 契约已在 D3/D4 段定型
+//   （D4 调用方经 F3 内部命令 APPLY_PENALTY 扣减——R-W3-A：W3 带金额入参，快照回查=M2 换装位）；
+//   FirmMerchantActivated/Suspended 为 A3b 真事件（上方段）。
+// ---------------------------------------------------------------------------
+
+/** 分账完成（F3 §6 生产 → H4/F4/I1 消费位=M2 联调；唯一解冻节点 READY→SETTLED 同事务出箱）。 */
+export const SPLIT_SETTLED_TOPIC = 'settlement.split.settled';
+
+/** 分账构成明细项（payee_type 词汇与 F1 SplitItem 对齐：lawyer_firm→律所对公；platform→平台
+ *  服务费/缺席 30% 备付，无业务实体位 payee_id=0 哨兵）。 */
+export interface SettlementSplitItem {
+  readonly payee_type: 'lawyer_firm' | 'platform';
+  readonly payee_id: number;
+  readonly amount: Money;
+}
+
+export interface SplitSettledPayload {
+  readonly settlement_id: number;
+  readonly ref_type: 'session' | 'one_on_one';
+  readonly ref_id: number;
+  /** F3 §6 逐字兼容位：ref_type='session' 时=ref_id；one_on_one 时=null（订单号即 ref_id） */
+  readonly session_id: number | null;
+  /** 可分配净额 = gross − penalty − platform_fee（恒等式：Σsplits === net，构成校验锚点） */
+  readonly net: Money;
+  /** 平台服务费（fee_versions 版本化；R-06 0% 起步，D20 ⚠W3 默认 0.0000） */
+  readonly fee: Money;
+  /** 构成全明细：律所份额 + 平台服务费 + 缺席 30% 备付份额（F4 ②全量按此记账备付台账，M2 联调） */
+  readonly splits: readonly SettlementSplitItem[];
+}
+
+/** 结算挂起（F3 §6 生产 → H4/I1 消费位=M2 联调）。PENDING→HOLD（24h 冻结期，R-02）与
+ *  HOLD/READY→SUSPENDED（进件非 ACTIVE 挂起，R-07）同构出箱。 */
+export const SETTLEMENT_HELD_TOPIC = 'settlement.settlement.held';
+
+export interface SettlementHeldPayload {
+  readonly settlement_id: number;
+  readonly ref_type: 'session' | 'one_on_one';
+  readonly ref_id: number;
+  readonly session_id: number | null;
+  /** 挂起事由（settlements.hold_reason 同文）：HOLD_24H | OPEN_TICKETS | MERCHANT_NOT_ACTIVE */
+  readonly reason: string;
+}
+
+/** 结算释放（F3 §6 生产 → H4/I1 消费位=M2 联调）。HOLD→READY：24h 到期或工单关闭后释放、
+ *  进件恢复重驱动（唯一解冻分账节点 READY→SETTLED 的前置）。 */
+export const SETTLEMENT_RELEASED_TOPIC = 'settlement.settlement.released';
+
+export interface SettlementReleasedPayload {
+  readonly settlement_id: number;
+  readonly ref_type: 'session' | 'one_on_one';
+  readonly ref_id: number;
+  readonly session_id: number | null;
+  /** 释放事由：HOLD_EXPIRED（24h 到期）| TICKET_RESOLVED（工单关闭释放）| MERCHANT_RECOVERED（进件恢复） */
+  readonly reason: string;
+}
+
+/** 违约欠款挂账（F3 §6 生产，R-04 扣减不足时出箱 → G1 消费发 SUSPEND_TAKE 类限制令（M2 联调）、
+ *  I1/H4 扇出；F3 侧只出箱——架构 §4.4「不足挂欠款+暂停接单」）。 */
+export const SETTLEMENT_DEBT_INCURRED_TOPIC = 'settlement.deduction.debt_incurred';
+
+export interface SettlementDebtIncurredPayload {
+  readonly lawyer_id: number;
+  /** 律所（有结算行锚定时携带；无行可锚=全部走保证金亦不足时为 null） */
+  readonly firm_id: number | null;
+  /** 未能收回的欠款额（待结算余额与保证金专户均不足部分） */
+  readonly amount: Money;
+  /** 违约基数引用（C3 价格快照实体；APPLY_PENALTY base_ref 透传） */
+  readonly ref_type: string;
+  readonly ref_id: number;
+}
+
+/** 房间关闭（D1 §6 生产，M2 落位 → F3 结算进 PENDING（R-01 链头）、F2 无人到场退款、H2。
+ *  W3=F3 合成事件桩（测试直投 outbox）；契约由消费方 F3 定型（R-W2-A）：载荷携带结算构成
+ *  所需最小集——F3 禁跨 schema 读 trade/F1（架构 §3.2），gross 为入账总额快照、
+ *  payment_order_id 为 F1 分账指令定位（W3 单单绑定；多单会话=M2 D1 联调换装位）。 */
+export const ROOM_CLOSED_TOPIC = 'fulfillment.room.closed';
+
+export interface RoomClosedPayload {
+  readonly session_id: number;
+  readonly lawyer_id: number;
+  readonly firm_id: number;
+  /** 入账总额快照（F1 冻结额口径；F3 结算基数） */
+  readonly gross: Money;
+  /** F1 支付单 id（RUN_SETTLE 的 /pay/split 指令定位；R-07 assertSplittable 取通道） */
+  readonly payment_order_id: number;
+}
+
+/** 1对1 结算完成（D6 §6 生产，M2 落位 → F3 结算进 PENDING；W3=F3 合成事件桩）。
+ *  载荷 {order_id, gross, net} 为 F3 §3 逐字 + lawyer_id/firm_id/payment_order_id 增补
+ *  （结算行归属与 F1 分账指令定位，契约定型注记）。net=D6 实结参考价：F3 构成计算以 gross
+ *  （预付冻结额）为基（多退少补差额退款在 D6/F1 完成，M2 联调对齐位——报告偏差节同口径）。 */
+export const ONE_ON_ONE_SETTLED_TOPIC = 'fulfillment.one_on_one.settled';
+
+export interface OneOnOneSettledPayload {
+  readonly order_id: number;
+  readonly lawyer_id: number;
+  readonly firm_id: number;
+  /** 预付全额（F3 结算 gross 与构成基数） */
+  readonly gross: Money;
+  /** D6 实结参考价（F3 构成不消费——见事件注记） */
+  readonly net: Money;
+  readonly payment_order_id: number;
+}
+
+/** 纠纷工单关闭（H3 §6 生产，M2 落位 → F3 HOLD 释放（R-02 工单挂起解除）；W3=F3 合成事件桩）。
+ *  ref=纠纷关联的结算实体（settlements.ref 词汇）。 */
+export const TICKET_RESOLVED_TOPIC = 'ops.ticket.resolved';
+
+export interface TicketResolvedPayload {
+  readonly ticket_id: number;
+  readonly ref_type: 'session' | 'one_on_one';
+  readonly ref_id: number;
+}
