@@ -9,12 +9,24 @@
  *
  * 鉴权口径：/pay/* 为「对 Core」内部契约面（模块化单体=进程内服务调用为主，HTTP 面是契约
  * 钉死与联调通道；§5 未列鉴权列）——服务剥离（V2 演进）后由服务间认证接管（报告注明）；
- * /callbacks/* 由通道调用（验签即鉴权）；/admin/* 运营手动触发（H1 鉴权接线 M2 统一处理）。
+ * /callbacks/* 由通道调用（验签即鉴权）；/admin/payment/reconcile=运营手动触发面（W3 T10
+ * 修复轮，评审 Important-1：⚠决策位占位兑现）挂 @RequireRole('admin')——未认证 401 /
+ * 未持 admin 旗标 403；服务剥离后由服务间认证接管。
  * 回调验签需原始字节（rawBody）——进程入口 main.ts 以 rawBody:true 装载。
  */
-import { Body, Controller, HttpCode, Param, Post, Req, UseFilters } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  Param,
+  Post,
+  Req,
+  UseFilters,
+  UseGuards,
+} from '@nestjs/common';
 import { AppError, ErrorCode } from '@ljr/shared';
 import { AppHttpExceptionFilter } from '../../infrastructure/app-error.filter';
+import { IdentityAuthGuard, IdentityRoleGuard, RequireRole } from '../identity/identity.guards';
 import type { RawBodyRequest } from './payment.http';
 import {
   parseDeductBody,
@@ -77,8 +89,10 @@ export class PaymentController {
     return this.gateway.ingestCallback(channel, req.rawBody, signature ?? null);
   }
 
-  /** POST /admin/payment/reconcile（⚠W3-10：手动触发；T+1 定时挂 I2 属 M2） */
+  /** POST /admin/payment/reconcile（⚠W3-10：手动触发；T+1 定时挂 I2 属 M2；W3 T10 修复轮 admin 守卫） */
   @Post('admin/payment/reconcile')
+  @UseGuards(IdentityAuthGuard, IdentityRoleGuard)
+  @RequireRole('admin')
   @HttpCode(200)
   reconcile(@Body() body: unknown): Promise<unknown> {
     return this.recon.reconcile(parseReconcileBody(body));

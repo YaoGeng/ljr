@@ -1,11 +1,14 @@
 import 'reflect-metadata';
+import { randomBytes } from 'node:crypto';
 import request from 'supertest';
 import { ErrorCode } from '@ljr/shared';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { JwtService } from '@nestjs/jwt';
 import type { Pool } from 'pg';
 import { ensureTestDatabase, truncateAll } from '../../infrastructure/testing/db';
+import { IDENTITY_CONFIG, type IdentityConfig } from '../identity/identity.config';
 import { KNOWLEDGE_CONFIG, KNOWLEDGE_DEFAULT_CONFIG } from './knowledge.config';
 import { chunkText } from './knowledge.chunker';
 import { EMBEDDING_PROVIDER } from './knowledge.embedding';
@@ -473,16 +476,32 @@ describe('E3 知识库 REST 契约（§5 POST /admin/specialty/{key}/knowledge�
   let pool: Pool;
   let app: INestApplication;
   let svc: KnowledgeService;
+  let adminToken: string;
+  let userToken: string;
+
+  const adminPost = (url: string) =>
+    request(app.getHttpServer()).post(url).set('Authorization', `Bearer ${adminToken}`);
 
   beforeAll(async () => {
     pool = await ensureTestDatabase();
+    const jwtSecret = randomBytes(32).toString('hex');
+    const identityConfig: IdentityConfig = {
+      phoneDataKey: randomBytes(32),
+      phoneBlindPepper: randomBytes(32).toString('hex'),
+      jwtSecret,
+    };
     const moduleRef = await Test.createTestingModule({ imports: [SpecialtyKnowledgeModule] })
       .overrideProvider(KNOWLEDGE_CONFIG)
       .useValue(SPEC_OPTS)
+      .overrideProvider(IDENTITY_CONFIG)
+      .useValue(identityConfig)
       .compile();
     app = moduleRef.createNestApplication();
     await app.init();
     svc = app.get(KnowledgeService);
+    const jwt = new JwtService({ secret: jwtSecret });
+    adminToken = await jwt.signAsync({ sub: '990013', role: 'user', roles: ['user', 'admin'] });
+    userToken = await jwt.signAsync({ sub: '990014', role: 'user', roles: ['user'] });
   });
 
   afterAll(async () => {
@@ -499,36 +518,45 @@ describe('E3 知识库 REST 契约（§5 POST /admin/specialty/{key}/knowledge�
   });
 
   it('POST 201 {doc_id,created,process_status}；幂等重放；400 BAD_FORMAT 各形；400 SPECIALTY_UNSUPPORTED', async () => {
-    const ok = await request(app.getHttpServer())
-      .post('/admin/specialty/labor_arbitration/knowledge')
-      .send({ file_ref: `inline:${DOC_B}`, source_type: 'official', license_status: 'granted' });
+    const ok = await adminPost('/admin/specialty/labor_arbitration/knowledge').send({
+      file_ref: `inline:${DOC_B}`,
+      source_type: 'official',
+      license_status: 'granted',
+    });
     expect(ok.status).toBe(201);
     expect(ok.body).toMatchObject({ created: true, process_status: 'PENDING' });
     expect(typeof ok.body.doc_id).toBe('number');
     await svc.waitIngestIdle();
 
-    const replay = await request(app.getHttpServer())
-      .post('/admin/specialty/labor_arbitration/knowledge')
-      .send({ file_ref: `inline:${DOC_B}`, source_type: 'official', license_status: 'granted' });
+    const replay = await adminPost('/admin/specialty/labor_arbitration/knowledge').send({
+      file_ref: `inline:${DOC_B}`,
+      source_type: 'official',
+      license_status: 'granted',
+    });
     expect(replay.status).toBe(201);
     expect(replay.body.doc_id).toBe(ok.body.doc_id);
     expect(replay.body.created).toBe(false);
 
-    const noLicense = await request(app.getHttpServer())
-      .post('/admin/specialty/labor_arbitration/knowledge')
-      .send({ file_ref: 'inline:正文', source_type: 'official' });
+    const noLicense = await adminPost('/admin/specialty/labor_arbitration/knowledge').send({
+      file_ref: 'inline:正文',
+      source_type: 'official',
+    });
     expect(noLicense.status).toBe(400);
     expect(noLicense.body.code).toBe('E_BAD_FORMAT');
 
-    const badRef = await request(app.getHttpServer())
-      .post('/admin/specialty/labor_arbitration/knowledge')
-      .send({ file_ref: 's3://bucket/x.pdf', source_type: 'official', license_status: 'granted' });
+    const badRef = await adminPost('/admin/specialty/labor_arbitration/knowledge').send({
+      file_ref: 's3://bucket/x.pdf',
+      source_type: 'official',
+      license_status: 'granted',
+    });
     expect(badRef.status).toBe(400);
     expect(badRef.body.code).toBe('E_BAD_FORMAT');
 
-    const unsupported = await request(app.getHttpServer())
-      .post('/admin/specialty/trade/knowledge')
-      .send({ file_ref: 'inline:正文', source_type: 'official', license_status: 'granted' });
+    const unsupported = await adminPost('/admin/specialty/trade/knowledge').send({
+      file_ref: 'inline:正文',
+      source_type: 'official',
+      license_status: 'granted',
+    });
     expect(unsupported.status).toBe(400);
     expect(unsupported.body.code).toBe('E_SPECIALTY_UNSUPPORTED');
 
@@ -538,5 +566,30 @@ describe('E3 知识库 REST 契约（§5 POST /admin/specialty/{key}/knowledge�
       [ok.body.doc_id],
     );
     expect(doc.rows[0]!.title).toBe(DOC_B.slice(0, 64));
+  });
+
+  it('G-A 精神同款机械接线（评审 Important-1）：未认证 401 / 未持 admin 旗标 403 / admin 201（守卫放行入队）', async () => {
+    const body = {
+      file_ref: `inline:${DOC_B}`,
+      source_type: 'official',
+      license_status: 'granted',
+    };
+    const anon = await request(app.getHttpServer())
+      .post('/admin/specialty/labor_arbitration/knowledge')
+      .send(body);
+    expect(anon.status).toBe(401);
+    expect(anon.body.code).toBe('E_UNAUTHORIZED');
+
+    const asUser = await request(app.getHttpServer())
+      .post('/admin/specialty/labor_arbitration/knowledge')
+      .set('Authorization', `Bearer ${userToken}`)
+      .send(body);
+    expect(asUser.status).toBe(403);
+    expect(asUser.body.code).toBe('E_ROLE_FORBIDDEN');
+
+    const ok = await adminPost('/admin/specialty/labor_arbitration/knowledge').send(body);
+    expect(ok.status).toBe(201);
+    expect(ok.body).toMatchObject({ created: true, process_status: 'PENDING' });
+    await svc.waitIngestIdle();
   });
 });

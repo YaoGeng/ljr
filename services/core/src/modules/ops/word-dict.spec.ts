@@ -1,12 +1,15 @@
 import 'reflect-metadata';
+import { randomBytes } from 'node:crypto';
 import request from 'supertest';
 import { ErrorCode } from '@ljr/shared';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { JwtService } from '@nestjs/jwt';
 import type { Pool } from 'pg';
 import { ensureTestDatabase, truncateAll } from '../../infrastructure/testing/db';
 import { PgPoolService } from '../../infrastructure/sql';
+import { IDENTITY_CONFIG, type IdentityConfig } from '../identity/identity.config';
 import { SchedulerService } from '../schedule/scheduler.service';
 import { RULE_CURRENT_CACHE, InProcessRuleCurrentCache } from './rule-center.cache';
 import { RULE_PUBLISHED_TOPIC } from './rule-center.events';
@@ -385,14 +388,33 @@ describe('H5 词库 REST 契约（§5 /admin/risk/dictionaries，需 PG）', () 
   let app: INestApplication;
   let cache: WordDictAutomatonCache;
   let ruleCache: InProcessRuleCurrentCache;
+  let adminToken: string;
+  let userToken: string;
+
+  const adminGet = (url: string) =>
+    request(app.getHttpServer()).get(url).set('Authorization', `Bearer ${adminToken}`);
+  const adminPut = (url: string) =>
+    request(app.getHttpServer()).put(url).set('Authorization', `Bearer ${adminToken}`);
 
   beforeAll(async () => {
     pool = await ensureTestDatabase();
-    const moduleRef = await Test.createTestingModule({ imports: [WordDictModule] }).compile();
+    const jwtSecret = randomBytes(32).toString('hex');
+    const identityConfig: IdentityConfig = {
+      phoneDataKey: randomBytes(32),
+      phoneBlindPepper: randomBytes(32).toString('hex'),
+      jwtSecret,
+    };
+    const moduleRef = await Test.createTestingModule({ imports: [WordDictModule] })
+      .overrideProvider(IDENTITY_CONFIG)
+      .useValue(identityConfig)
+      .compile();
     app = moduleRef.createNestApplication();
     await app.init();
     cache = app.get(WordDictAutomatonCache);
     ruleCache = app.get<InProcessRuleCurrentCache>(RULE_CURRENT_CACHE);
+    const jwt = new JwtService({ secret: jwtSecret });
+    adminToken = await jwt.signAsync({ sub: '990009', role: 'user', roles: ['user', 'admin'] });
+    userToken = await jwt.signAsync({ sub: '990010', role: 'user', roles: ['user'] });
   });
 
   afterAll(async () => {
@@ -410,13 +432,11 @@ describe('H5 词库 REST 契约（§5 /admin/risk/dictionaries，需 PG）', () 
   });
 
   it('PUT 新建 → 重放幂等 created:false → 400 E_DUP_WORD / 400 非法 action / 400 非法 dict_type / 400 base_version', async () => {
-    const put1 = await request(app.getHttpServer())
-      .put('/admin/risk/dictionaries')
-      .send({
-        dict_type: 'legal_industry',
-        base_version: 0,
-        words: [{ word: '包赢', action: 'REVIEW' }],
-      });
+    const put1 = await adminPut('/admin/risk/dictionaries').send({
+      dict_type: 'legal_industry',
+      base_version: 0,
+      words: [{ word: '包赢', action: 'REVIEW' }],
+    });
     expect(put1.status).toBe(200);
     expect(put1.body).toMatchObject({
       dictType: 'legal_industry',
@@ -426,52 +446,50 @@ describe('H5 词库 REST 契约（§5 /admin/risk/dictionaries，需 PG）', () 
       created: true,
     });
 
-    const replay = await request(app.getHttpServer())
-      .put('/admin/risk/dictionaries')
-      .send({
-        dict_type: 'legal_industry',
-        base_version: 0,
-        words: [{ word: '包赢', action: 'REVIEW' }],
-      });
+    const replay = await adminPut('/admin/risk/dictionaries').send({
+      dict_type: 'legal_industry',
+      base_version: 0,
+      words: [{ word: '包赢', action: 'REVIEW' }],
+    });
     expect(replay.status).toBe(200);
     expect(replay.body.created).toBe(false);
 
-    const dup = await request(app.getHttpServer())
-      .put('/admin/risk/dictionaries')
-      .send({
-        dict_type: 'legal_industry',
-        base_version: 1,
-        words: [
-          { word: '词一', action: 'MARK' },
-          { word: '词一', action: 'BLOCK' },
-        ],
-      });
+    const dup = await adminPut('/admin/risk/dictionaries').send({
+      dict_type: 'legal_industry',
+      base_version: 1,
+      words: [
+        { word: '词一', action: 'MARK' },
+        { word: '词一', action: 'BLOCK' },
+      ],
+    });
     expect(dup.status).toBe(400);
     expect(dup.body.code).toBe('E_DUP_WORD');
 
-    const badAction = await request(app.getHttpServer())
-      .put('/admin/risk/dictionaries')
-      .send({
-        dict_type: 'legal_industry',
-        base_version: 1,
-        words: [{ word: 'x', action: 'NOPE' }],
-      });
+    const badAction = await adminPut('/admin/risk/dictionaries').send({
+      dict_type: 'legal_industry',
+      base_version: 1,
+      words: [{ word: 'x', action: 'NOPE' }],
+    });
     expect(badAction.status).toBe(400);
     expect(badAction.body.code).toBe('E_INVALID_ARGUMENT');
 
-    const badDict = await request(app.getHttpServer())
-      .put('/admin/risk/dictionaries')
-      .send({ dict_type: 'nope', base_version: 0, words: [] });
+    const badDict = await adminPut('/admin/risk/dictionaries').send({
+      dict_type: 'nope',
+      base_version: 0,
+      words: [],
+    });
     expect(badDict.status).toBe(400);
 
-    const badBase = await request(app.getHttpServer())
-      .put('/admin/risk/dictionaries')
-      .send({ dict_type: 'legal_industry', base_version: -1, words: [] });
+    const badBase = await adminPut('/admin/risk/dictionaries').send({
+      dict_type: 'legal_industry',
+      base_version: -1,
+      words: [],
+    });
     expect(badBase.status).toBe(400);
   });
 
   it('GET 当前生效版本视图：缺省两库（无版本库 version=0 words=[]）；?dict_type= 过滤', async () => {
-    const empty = await request(app.getHttpServer()).get('/admin/risk/dictionaries');
+    const empty = await adminGet('/admin/risk/dictionaries');
     expect(empty.status).toBe(200);
     expect(empty.body).toEqual([
       {
@@ -490,17 +508,13 @@ describe('H5 词库 REST 契约（§5 /admin/risk/dictionaries，需 PG）', () 
       },
     ]);
 
-    await request(app.getHttpServer())
-      .put('/admin/risk/dictionaries')
-      .send({
-        dict_type: 'legal_industry',
-        base_version: 0,
-        words: [{ word: '包赢', action: 'REVIEW' }],
-      });
+    await adminPut('/admin/risk/dictionaries').send({
+      dict_type: 'legal_industry',
+      base_version: 0,
+      words: [{ word: '包赢', action: 'REVIEW' }],
+    });
 
-    const one = await request(app.getHttpServer()).get(
-      '/admin/risk/dictionaries?dict_type=legal_industry',
-    );
+    const one = await adminGet('/admin/risk/dictionaries?dict_type=legal_industry');
     expect(one.status).toBe(200);
     expect(one.body).toHaveLength(1);
     expect(one.body[0]).toMatchObject({
@@ -510,9 +524,23 @@ describe('H5 词库 REST 契约（§5 /admin/risk/dictionaries，需 PG）', () 
     });
     expect(typeof one.body[0].effectiveAt).toBe('string');
 
-    const badFilter = await request(app.getHttpServer()).get(
-      '/admin/risk/dictionaries?dict_type=nope',
-    );
+    const badFilter = await adminGet('/admin/risk/dictionaries?dict_type=nope');
     expect(badFilter.status).toBe(400);
+  });
+
+  it('G-A 精神同款机械接线（评审 Important-1）：未认证 401 / 未持 admin 旗标 403 / admin 200', async () => {
+    const anon = await request(app.getHttpServer()).get('/admin/risk/dictionaries');
+    expect(anon.status).toBe(401);
+    expect(anon.body.code).toBe('E_UNAUTHORIZED');
+
+    const asUser = await request(app.getHttpServer())
+      .get('/admin/risk/dictionaries')
+      .set('Authorization', `Bearer ${userToken}`);
+    expect(asUser.status).toBe(403);
+    expect(asUser.body.code).toBe('E_ROLE_FORBIDDEN');
+
+    const ok = await adminGet('/admin/risk/dictionaries');
+    expect(ok.status).toBe(200);
+    expect(ok.body).toHaveLength(2); // 双库缺省视图（version=0）
   });
 });

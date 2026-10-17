@@ -6,6 +6,7 @@
  */
 import { Module } from '@nestjs/common';
 import { InfrastructureModule } from '../../infrastructure/infrastructure.module';
+import { IdentityAuthModule } from '../identity/identity-auth.module';
 import { ObservabilityModule } from '../../observability/observability.module';
 import { SchedulerModule } from '../schedule/scheduler.module';
 import { InProcessRuleCurrentCache, RULE_CURRENT_CACHE } from './rule-center.cache';
@@ -20,7 +21,8 @@ import { RuleCenterService } from './rule-center.service';
   // ObservabilityModule（@Global）：TRACE_LOGGER 注入源（window_not_due 的 best-effort 告警，
   // 评审修复 Important-2）——显式 import 使本模块独立装配（模块级测试）也自洽；
   // AppModule 已 import，进程内 dedupe 为同一实例
-  imports: [InfrastructureModule, ObservabilityModule, SchedulerModule],
+  // IdentityAuthModule（叶子）：/admin/rules 管理面的 JWT/角色守卫件（W3 T10 修复轮 G-A 接线）
+  imports: [InfrastructureModule, ObservabilityModule, SchedulerModule, IdentityAuthModule],
   controllers: [RuleAdminController, RuleAppController, RoomNoticeController],
   providers: [
     // 配置装配（LJR_RULE_* env > 代码默认）：RuleCenterConfig 是纯 interface，经 Symbol token

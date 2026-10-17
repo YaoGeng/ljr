@@ -15,6 +15,7 @@
  */
 import { Module } from '@nestjs/common';
 import { InfrastructureModule } from '../../infrastructure/infrastructure.module';
+import { IdentityAuthModule } from '../identity/identity-auth.module';
 import { ObservabilityModule } from '../../observability/observability.module';
 import { knowledgeConfig, KNOWLEDGE_CONFIG } from './knowledge.config';
 import { EMBEDDING_PROVIDER, mockEmbeddingProviderFactory } from './knowledge.embedding';
@@ -27,7 +28,8 @@ import { SpecialtyConfigService } from './specialty.service';
   // InfrastructureModule：PgPoolService/OutboxService（KnowledgeUpdated/QuestionTreeUpdated 出箱）；
   // ObservabilityModule（@Global）：TRACE_LOGGER（ingest FAILED 的运维侧 warn）——显式 import
   // 使本模块独立装配（模块级测试）也自洽；AppModule 已 import，进程内 dedupe 为同一实例
-  imports: [InfrastructureModule, ObservabilityModule],
+  // IdentityAuthModule（叶子）：/admin/specialty 管理面的 JWT/角色守卫件（W3 T10 修复轮 G-A 接线）
+  imports: [InfrastructureModule, ObservabilityModule, IdentityAuthModule],
   controllers: [SpecialtyAdminController, SpecialtyPublicController],
   providers: [
     // 配置装配（文档口径默认值；W1 不开 env 覆盖）：KnowledgeConfig 是纯 interface，经 Symbol

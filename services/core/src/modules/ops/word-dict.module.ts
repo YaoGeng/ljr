@@ -6,6 +6,7 @@
  */
 import { Module } from '@nestjs/common';
 import { InfrastructureModule } from '../../infrastructure/infrastructure.module';
+import { IdentityAuthModule } from '../identity/identity-auth.module';
 import { RuleCenterModule } from './rule-center.module';
 import { WordAdminController } from './word-admin.controller';
 import { WordDictAutomatonCache } from './word-dict.cache';
@@ -15,7 +16,8 @@ import { WordDictService } from './word-dict.service';
   // InfrastructureModule：PgPoolService/OutboxService（本模块自身写面——risk_records/DictionaryUpdated
   // 出箱；InfrastructureModule 不 re-export，须显式 import）；RuleCenterModule：H7 免公示通道与
   // 现行版查询（词库版本化唯一事实源的机制 API）
-  imports: [InfrastructureModule, RuleCenterModule],
+  // IdentityAuthModule（叶子）：/admin/risk/dictionaries 管理面的 JWT/角色守卫件（W3 T10 修复轮）
+  imports: [InfrastructureModule, RuleCenterModule, IdentityAuthModule],
   controllers: [WordAdminController],
   providers: [WordDictAutomatonCache, WordDictService],
   exports: [

@@ -1,11 +1,14 @@
 import 'reflect-metadata';
+import { randomBytes } from 'node:crypto';
 import request from 'supertest';
 import { ErrorCode } from '@ljr/shared';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { JwtService } from '@nestjs/jwt';
 import type { Pool } from 'pg';
 import { ensureTestDatabase, truncateAll } from '../../infrastructure/testing/db';
+import { IDENTITY_CONFIG, type IdentityConfig } from '../identity/identity.config';
 import { SpecialtyKnowledgeModule } from './specialty.module';
 import { SpecialtyConfigService } from './specialty.service';
 import { QUESTION_TREE_UPDATED_TOPIC } from './specialty.events';
@@ -308,15 +311,31 @@ describe('E3 专项配置包机制（需 PG）', () => {
 describe('E3 专项配置 REST 契约（§5，需 PG）', () => {
   let pool: Pool;
   let app: INestApplication;
+  let adminToken: string;
+  let userToken: string;
+
+  const adminPut = (url: string) =>
+    request(app.getHttpServer()).put(url).set('Authorization', `Bearer ${adminToken}`);
 
   beforeAll(async () => {
     pool = await ensureTestDatabase();
+    const jwtSecret = randomBytes(32).toString('hex');
+    const identityConfig: IdentityConfig = {
+      phoneDataKey: randomBytes(32),
+      phoneBlindPepper: randomBytes(32).toString('hex'),
+      jwtSecret,
+    };
     const moduleRef = await Test.createTestingModule({ imports: [SpecialtyKnowledgeModule] })
       .overrideProvider(KNOWLEDGE_CONFIG)
       .useValue(KNOWLEDGE_DEFAULT_CONFIG)
+      .overrideProvider(IDENTITY_CONFIG)
+      .useValue(identityConfig)
       .compile();
     app = moduleRef.createNestApplication();
     await app.init();
+    const jwt = new JwtService({ secret: jwtSecret });
+    adminToken = await jwt.signAsync({ sub: '990011', role: 'user', roles: ['user', 'admin'] });
+    userToken = await jwt.signAsync({ sub: '990012', role: 'user', roles: ['user'] });
   });
 
   afterAll(async () => {
@@ -332,47 +351,54 @@ describe('E3 专项配置 REST 契约（§5，需 PG）', () => {
   });
 
   it('PUT /admin/specialty/{key}/question-tree：200 {specialty,version,created}；400 E_INVALID_TREE/E_SPECIALTY_UNSUPPORTED/E_INVALID_ARGUMENT', async () => {
-    const ok = await request(app.getHttpServer())
-      .put('/admin/specialty/labor_arbitration/question-tree')
-      .send({ tree: TREE_V1, base_version: 0 });
+    const ok = await adminPut('/admin/specialty/labor_arbitration/question-tree').send({
+      tree: TREE_V1,
+      base_version: 0,
+    });
     expect(ok.status).toBe(200);
     expect(ok.body).toEqual({ specialty: 'labor_arbitration', version: 1, created: true });
 
-    const replay = await request(app.getHttpServer())
-      .put('/admin/specialty/labor_arbitration/question-tree')
-      .send({ tree: TREE_V1, base_version: 0 });
+    const replay = await adminPut('/admin/specialty/labor_arbitration/question-tree').send({
+      tree: TREE_V1,
+      base_version: 0,
+    });
     expect(replay.status).toBe(200);
     expect(replay.body.created).toBe(false);
 
-    const badTree = await request(app.getHttpServer())
-      .put('/admin/specialty/labor_arbitration/question-tree')
-      .send({ tree: { root: 'ghost', nodes: [] }, base_version: 1 });
+    const badTree = await adminPut('/admin/specialty/labor_arbitration/question-tree').send({
+      tree: { root: 'ghost', nodes: [] },
+      base_version: 1,
+    });
     expect(badTree.status).toBe(400);
     expect(badTree.body.code).toBe('E_INVALID_TREE');
 
-    const unsupported = await request(app.getHttpServer())
-      .put('/admin/specialty/trade/question-tree')
-      .send({ tree: TREE_V1, base_version: 0 });
+    const unsupported = await adminPut('/admin/specialty/trade/question-tree').send({
+      tree: TREE_V1,
+      base_version: 0,
+    });
     expect(unsupported.status).toBe(400);
     expect(unsupported.body.code).toBe('E_SPECIALTY_UNSUPPORTED');
 
-    const badBase = await request(app.getHttpServer())
-      .put('/admin/specialty/labor_arbitration/question-tree')
-      .send({ tree: TREE_V1, base_version: -1 });
+    const badBase = await adminPut('/admin/specialty/labor_arbitration/question-tree').send({
+      tree: TREE_V1,
+      base_version: -1,
+    });
     expect(badBase.status).toBe(400);
     expect(badBase.body.code).toBe('E_INVALID_ARGUMENT');
   });
 
   it('PUT /admin/specialty/{key}/prompts：200 {specialty,version,created}；409 过期基数', async () => {
-    const ok = await request(app.getHttpServer())
-      .put('/admin/specialty/labor_arbitration/prompts')
-      .send({ prompts: PROMPTS_V1, base_version: 0 });
+    const ok = await adminPut('/admin/specialty/labor_arbitration/prompts').send({
+      prompts: PROMPTS_V1,
+      base_version: 0,
+    });
     expect(ok.status).toBe(200);
     expect(ok.body).toEqual({ specialty: 'labor_arbitration', version: 1, created: true });
 
-    const stale = await request(app.getHttpServer())
-      .put('/admin/specialty/labor_arbitration/prompts')
-      .send({ prompts: PROMPTS_V1, base_version: 7 });
+    const stale = await adminPut('/admin/specialty/labor_arbitration/prompts').send({
+      prompts: PROMPTS_V1,
+      base_version: 7,
+    });
     expect(stale.status).toBe(409);
     expect(stale.body.code).toBe('E_CONFLICT');
   });
@@ -383,9 +409,10 @@ describe('E3 专项配置 REST 契约（§5，需 PG）', () => {
     );
     expect(missing.status).toBe(404);
 
-    await request(app.getHttpServer())
-      .put('/admin/specialty/labor_arbitration/question-tree')
-      .send({ tree: TREE_V1, base_version: 0 });
+    await adminPut('/admin/specialty/labor_arbitration/question-tree').send({
+      tree: TREE_V1,
+      base_version: 0,
+    });
 
     const ok = await request(app.getHttpServer()).get(
       '/specialty/question-tree?key=labor_arbitration',
@@ -398,5 +425,27 @@ describe('E3 专项配置 REST 契约（§5，需 PG）', () => {
 
     const noKey = await request(app.getHttpServer()).get('/specialty/question-tree');
     expect(noKey.status).toBe(400);
+  });
+
+  it('G-A 精神同款机械接线（评审 Important-1）：/admin/specialty 未认证 401 / 未持 admin 旗标 403 / admin 200', async () => {
+    const anon = await request(app.getHttpServer())
+      .put('/admin/specialty/labor_arbitration/prompts')
+      .send({ prompts: PROMPTS_V1, base_version: 0 });
+    expect(anon.status).toBe(401);
+    expect(anon.body.code).toBe('E_UNAUTHORIZED');
+
+    const asUser = await request(app.getHttpServer())
+      .put('/admin/specialty/labor_arbitration/prompts')
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({ prompts: PROMPTS_V1, base_version: 0 });
+    expect(asUser.status).toBe(403);
+    expect(asUser.body.code).toBe('E_ROLE_FORBIDDEN');
+
+    const ok = await adminPut('/admin/specialty/labor_arbitration/prompts').send({
+      prompts: PROMPTS_V1,
+      base_version: 0,
+    });
+    expect(ok.status).toBe(200);
+    expect(ok.body).toEqual({ specialty: 'labor_arbitration', version: 1, created: true });
   });
 });

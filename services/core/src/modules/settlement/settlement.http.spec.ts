@@ -28,7 +28,7 @@ import { SettlementService } from './settlement.service';
 /**
  * F3 REST 面 e2e（§5 契约表逐字 + Task 8 简报；需 PG）：
  *   GET /lawyer/settlements        → 本人结算列表（@RequireRole('lawyer') + @CurrentIdentity）
- *   GET /admin/settlements?status= → 后台视图（TODO(H1-W3-T10) 鉴权占位照 A3b 先例；status 越域 400）
+ *   GET /admin/settlements?status= → 后台视图（W3 T10 G-A 已接线 @RequireRole('admin')；status 越域 400）
  * 种子经应用服务真链（F1 支付单→enterSettlement），不出 SQL 直插（契约形状即断言对象）。
  */
 

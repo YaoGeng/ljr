@@ -1,12 +1,15 @@
 import 'reflect-metadata';
+import { randomBytes } from 'node:crypto';
 import request from 'supertest';
 import { ErrorCode } from '@ljr/shared';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { JwtService } from '@nestjs/jwt';
 import type { Pool } from 'pg';
 import { ensureTestDatabase, truncateAll } from '../../infrastructure/testing/db';
 import { PgPoolService } from '../../infrastructure/sql';
+import { IDENTITY_CONFIG, type IdentityConfig } from '../identity/identity.config';
 import { SchedulerService } from '../schedule/scheduler.service';
 import { RULE_CURRENT_CACHE, InProcessRuleCurrentCache } from './rule-center.cache';
 import { RULE_CENTER_DEFAULT_CONFIG } from './rule-center.config';
@@ -507,14 +510,33 @@ describe('H7 REST 契约（§5，需 PG）', () => {
   let app: INestApplication;
   let svc: RuleCenterService;
   let cache: InProcessRuleCurrentCache;
+  let adminToken: string;
+  let userToken: string;
+
+  const adminGet = (url: string) =>
+    request(app.getHttpServer()).get(url).set('Authorization', `Bearer ${adminToken}`);
+  const adminPost = (url: string) =>
+    request(app.getHttpServer()).post(url).set('Authorization', `Bearer ${adminToken}`);
 
   beforeAll(async () => {
     pool = await ensureTestDatabase();
-    const moduleRef = await Test.createTestingModule({ imports: [RuleCenterModule] }).compile();
+    const jwtSecret = randomBytes(32).toString('hex');
+    const identityConfig: IdentityConfig = {
+      phoneDataKey: randomBytes(32),
+      phoneBlindPepper: randomBytes(32).toString('hex'),
+      jwtSecret,
+    };
+    const moduleRef = await Test.createTestingModule({ imports: [RuleCenterModule] })
+      .overrideProvider(IDENTITY_CONFIG)
+      .useValue(identityConfig)
+      .compile();
     app = moduleRef.createNestApplication();
     await app.init();
     svc = app.get(RuleCenterService);
     cache = app.get<InProcessRuleCurrentCache>(RULE_CURRENT_CACHE);
+    const jwt = new JwtService({ secret: jwtSecret });
+    adminToken = await jwt.signAsync({ sub: '990007', role: 'user', roles: ['user', 'admin'] });
+    userToken = await jwt.signAsync({ sub: '990008', role: 'user', roles: ['user'] });
   });
 
   afterAll(async () => {
@@ -531,9 +553,11 @@ describe('H7 REST 契约（§5，需 PG）', () => {
   });
 
   it('POST /admin/rules 建草案 → 重放幂等 created:false；内容不等 409 E_RULE_PUBLISHING', async () => {
-    const create = await request(app.getHttpServer())
-      .post('/admin/rules')
-      .send({ rule_key: 'credit.rules', version: 1, content: { max: 5 } });
+    const create = await adminPost('/admin/rules').send({
+      rule_key: 'credit.rules',
+      version: 1,
+      content: { max: 5 },
+    });
     expect(create.status).toBe(200);
     expect(create.body).toMatchObject({
       ruleKey: 'credit.rules',
@@ -542,37 +566,43 @@ describe('H7 REST 契约（§5，需 PG）', () => {
       created: true,
     });
 
-    const replay = await request(app.getHttpServer())
-      .post('/admin/rules')
-      .send({ rule_key: 'credit.rules', version: 1, content: { max: 5 } });
+    const replay = await adminPost('/admin/rules').send({
+      rule_key: 'credit.rules',
+      version: 1,
+      content: { max: 5 },
+    });
     expect(replay.status).toBe(200);
     expect(replay.body.created).toBe(false);
 
-    const conflict = await request(app.getHttpServer())
-      .post('/admin/rules')
-      .send({ rule_key: 'credit.rules', version: 1, content: { max: 6 } });
+    const conflict = await adminPost('/admin/rules').send({
+      rule_key: 'credit.rules',
+      version: 1,
+      content: { max: 6 },
+    });
     expect(conflict.status).toBe(409);
     expect(conflict.body.code).toBe('E_RULE_PUBLISHING');
 
-    const bad = await request(app.getHttpServer())
-      .post('/admin/rules')
-      .send({ rule_key: 'BAD KEY!', version: 1, content: {} });
+    const bad = await adminPost('/admin/rules').send({
+      rule_key: 'BAD KEY!',
+      version: 1,
+      content: {},
+    });
     expect(bad.status).toBe(400);
     expect(bad.body.code).toBe('E_INVALID_ARGUMENT');
 
     // R15：wordlist.* 保留前缀经通用管理面拒绝（词库专用通道=H5，防绕过词库结构校验）
-    const reserved = await request(app.getHttpServer())
-      .post('/admin/rules')
-      .send({ rule_key: 'wordlist.legal_industry', version: 1, content: { words: [] } });
+    const reserved = await adminPost('/admin/rules').send({
+      rule_key: 'wordlist.legal_industry',
+      version: 1,
+      content: { words: [] },
+    });
     expect(reserved.status).toBe(400);
     expect(reserved.body.code).toBe('E_RULE_KEY_RESERVED');
   });
 
   it('POST /admin/rules/:key/publish → 200 effectiveAt；未知 404；已生效 409', async () => {
     await svc.createDraft({ ruleKey: 'credit.rules', version: 1, content: { max: 5 } });
-    const publish = await request(app.getHttpServer())
-      .post('/admin/rules/credit.rules/publish')
-      .send({ version: 1 });
+    const publish = await adminPost('/admin/rules/credit.rules/publish').send({ version: 1 });
     expect(publish.status).toBe(200);
     expect(publish.body).toMatchObject({
       ruleKey: 'credit.rules',
@@ -581,9 +611,7 @@ describe('H7 REST 契约（§5，需 PG）', () => {
     });
     expect(Date.parse(publish.body.effectiveAt) - Date.now()).toBeGreaterThan(6.9 * DAY);
 
-    const missing = await request(app.getHttpServer())
-      .post('/admin/rules/credit.rules/publish')
-      .send({ version: 99 });
+    const missing = await adminPost('/admin/rules/credit.rules/publish').send({ version: 99 });
     expect(missing.status).toBe(404);
     expect(missing.body.code).toBe('E_NOT_FOUND');
 
@@ -591,31 +619,23 @@ describe('H7 REST 契约（§5，需 PG）', () => {
     await svc.createDraft({ ruleKey: 'credit.rules', version: 2, content: { max: 6 } });
     await svc.submitForPublication('credit.rules', 2, { now: new Date(Date.now() - 8 * DAY) });
     await app.get(SchedulerService).tick('normal');
-    const again = await request(app.getHttpServer())
-      .post('/admin/rules/credit.rules/publish')
-      .send({ version: 2 });
+    const again = await adminPost('/admin/rules/credit.rules/publish').send({ version: 2 });
     expect(again.status).toBe(409);
     expect(again.body.code).toBe('E_RULE_PUBLISHING');
   });
 
   it('POST /admin/rules/:key/abandon → 200；404；PUBLISHED 409', async () => {
     await svc.createDraft({ ruleKey: 'credit.rules', version: 1, content: { max: 5 } });
-    const ok = await request(app.getHttpServer())
-      .post('/admin/rules/credit.rules/abandon')
-      .send({ version: 1 });
+    const ok = await adminPost('/admin/rules/credit.rules/abandon').send({ version: 1 });
     expect(ok.status).toBe(200);
     expect(ok.body.publishStatus).toBe('ABANDONED');
 
-    const missing = await request(app.getHttpServer())
-      .post('/admin/rules/credit.rules/abandon')
-      .send({ version: 9 });
+    const missing = await adminPost('/admin/rules/credit.rules/abandon').send({ version: 9 });
     expect(missing.status).toBe(404);
 
     await svc.createDraft({ ruleKey: 'credit.rules', version: 2, content: { max: 6 } });
     await svc.submitForPublication('credit.rules', 2, { now: new Date() });
-    const conflict = await request(app.getHttpServer())
-      .post('/admin/rules/credit.rules/abandon')
-      .send({ version: 2 });
+    const conflict = await adminPost('/admin/rules/credit.rules/abandon').send({ version: 2 });
     expect(conflict.status).toBe(409);
     expect(conflict.body.code).toBe('E_STATE_ILLEGAL_TRANSITION');
   });
@@ -632,19 +652,19 @@ describe('H7 REST 契约（§5，需 PG）', () => {
     await app.get(SchedulerService).tick('normal'); // v1 已过公示期 → EFFECTIVE
     await svc.submitForPublication('credit.rules', 2, { now: new Date() });
 
-    const all = await request(app.getHttpServer()).get('/admin/rules');
+    const all = await adminGet('/admin/rules');
     expect(all.status).toBe(200);
     expect(all.body).toHaveLength(3);
 
-    const byKey = await request(app.getHttpServer()).get('/admin/rules/credit.rules');
+    const byKey = await adminGet('/admin/rules/credit.rules');
     expect(byKey.status).toBe(200);
     expect(byKey.body.map((r: { version: number }) => r.version)).toEqual([2, 1]);
 
-    const byStatus = await request(app.getHttpServer()).get('/admin/rules?status=PUBLISHED');
+    const byStatus = await adminGet('/admin/rules?status=PUBLISHED');
     expect(byStatus.body).toHaveLength(1);
     expect(byStatus.body[0]).toMatchObject({ ruleKey: 'credit.rules', version: 2 });
 
-    const badStatus = await request(app.getHttpServer()).get('/admin/rules?status=NOPE');
+    const badStatus = await adminGet('/admin/rules?status=NOPE');
     expect(badStatus.status).toBe(400);
   });
 
@@ -699,5 +719,21 @@ describe('H7 REST 契约（§5，需 PG）', () => {
       version: 1,
       content: { title: '须知', paragraphs: ['p1'], disclosures: ['披露'] },
     });
+  });
+
+  it('G-A 精神同款机械接线（评审 Important-1）：/admin/rules* 未认证 401 / 未持 admin 旗标 403 / admin 200', async () => {
+    const anon = await request(app.getHttpServer()).get('/admin/rules');
+    expect(anon.status).toBe(401);
+    expect(anon.body.code).toBe('E_UNAUTHORIZED');
+
+    const asUser = await request(app.getHttpServer())
+      .get('/admin/rules')
+      .set('Authorization', `Bearer ${userToken}`);
+    expect(asUser.status).toBe(403);
+    expect(asUser.body.code).toBe('E_ROLE_FORBIDDEN');
+
+    const ok = await adminGet('/admin/rules');
+    expect(ok.status).toBe(200);
+    expect(ok.body).toEqual([]);
   });
 });

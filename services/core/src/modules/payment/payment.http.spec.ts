@@ -4,6 +4,7 @@ import request from 'supertest';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { JwtService } from '@nestjs/jwt';
 import type { Pool } from 'pg';
 import { PAYMENT_CALLBACK_INBOXED_TOPIC } from '@ljr/shared';
 import { ensureTestDatabase, truncateAll } from '../../infrastructure/testing/db';
@@ -24,7 +25,7 @@ interface MockChannelLike {
 /**
  * F1 HTTP 契约（§5 表逐字 + Task 1 简报）：
  *   POST /pay/orders|refund|split|deduct（对 Core 指令面）+ POST /callbacks/{channel}（验签 200/403）
- *   + POST /admin/payment/reconcile（⚠W3-10 手动触发面）。
+ *   + POST /admin/payment/reconcile（⚠W3-10 手动触发面；W3 T10 修复轮 G-A 接线 @RequireRole('admin')）。
  * 回调驱动器（测试侧）：同款 env 密钥签发报文打 HTTP 入口（真实可打路径——rawBody 字节级验签）。
  * 错误体形态：infrastructure AppHttpExceptionFilter {code, message}。
  */
@@ -46,6 +47,12 @@ function testConfig(): PaymentConfig {
 }
 
 describe('F1 HTTP 契约（§5，需 PG）', () => {
+  let adminToken: string;
+  let userToken: string;
+
+  const adminPost = (url: string) =>
+    request(app.getHttpServer()).post(url).set('Authorization', `Bearer ${adminToken}`);
+
   let pool: Pool;
   let app: INestApplication;
   let cfg: PaymentConfig;
@@ -84,6 +91,10 @@ describe('F1 HTTP 契约（§5，需 PG）', () => {
       .compile();
     app = moduleRef.createNestApplication({ rawBody: true });
     await app.init();
+    // admin 形态 token（PaymentModule 已 import IdentityAuthModule，JwtService=守卫同实例同密钥）
+    const jwt = app.get(JwtService);
+    adminToken = await jwt.signAsync({ sub: '990015', role: 'user', roles: ['user', 'admin'] });
+    userToken = await jwt.signAsync({ sub: '990016', role: 'user', roles: ['user'] });
   });
 
   afterAll(async () => {
@@ -270,18 +281,33 @@ describe('F1 HTTP 契约（§5，需 PG）', () => {
     expect(events.rows[0]!.n).toBe(1); // 恰一次出箱
   });
 
-  it('POST /admin/payment/reconcile {period}：200 对账摘要；非法 period 400（⚠W3-10 手动触发面）', async () => {
-    const ok = await request(app.getHttpServer())
-      .post('/admin/payment/reconcile')
-      .send({ period: '2026-10-16' });
+  it('POST /admin/payment/reconcile {period}：200 对账摘要；非法 period 400（⚠W3-10 手动触发面；W3 T10 修复轮 admin 夹具）', async () => {
+    const ok = await adminPost('/admin/payment/reconcile').send({ period: '2026-10-16' });
     expect(ok.status).toBe(200);
     expect(ok.body.period).toBe('2026-10-16');
     expect(ok.body.per_channel.length).toBe(2);
 
-    const bad = await request(app.getHttpServer())
-      .post('/admin/payment/reconcile')
-      .send({ period: 'yesterday' });
+    const bad = await adminPost('/admin/payment/reconcile').send({ period: 'yesterday' });
     expect(bad.status).toBe(400);
     expect(bad.body.code).toBe('E_INVALID_ARGUMENT');
+  });
+
+  it('G-A 精神同款机械接线（评审 Important-1）：/admin/payment/reconcile 未认证 401 / 未持 admin 旗标 403 / admin 200', async () => {
+    const anon = await request(app.getHttpServer())
+      .post('/admin/payment/reconcile')
+      .send({ period: '2026-10-16' });
+    expect(anon.status).toBe(401);
+    expect(anon.body.code).toBe('E_UNAUTHORIZED');
+
+    const asUser = await request(app.getHttpServer())
+      .post('/admin/payment/reconcile')
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({ period: '2026-10-16' });
+    expect(asUser.status).toBe(403);
+    expect(asUser.body.code).toBe('E_ROLE_FORBIDDEN');
+
+    const ok = await adminPost('/admin/payment/reconcile').send({ period: '2026-10-16' });
+    expect(ok.status).toBe(200);
+    expect(ok.body.period).toBe('2026-10-16');
   });
 });
