@@ -23,7 +23,7 @@ sessions(
   session_total numeric(12,2) NOT NULL,        -- 场次总价基数（违约金计算用）
   capacity smallint NOT NULL, joined smallint NOT NULL DEFAULT 0,
   enroll_deadline timestamptz NOT NULL, room_mode varchar(32) NOT NULL,
-  specialty varchar(32) NOT NULL DEFAULT 'labor_arbitration',  -- 垂直维度（2026-10-17 双维度框架，V31）
+  specialty varchar(32) NOT NULL DEFAULT 'labor_arbitration',  -- 垂直维度（2026-10-17 双维度框架，V33）
   city varchar(32) NOT NULL DEFAULT '北京',                     -- 城市维度（默认=律师执业城市；城市码口径 ⚠W3-10）
   status varchar(20) NOT NULL,                 -- 见状态机
   created_at timestamptz, CHECK (joined <= capacity), CHECK (capacity BETWEEN 2 AND 50)
@@ -68,7 +68,7 @@ CREATED → FAILED(截止未满) → REFUNDED
 - [x] 停接律师开团被 403（证据：commits 1b7d2ab..f598393，task-4-report §6——G1 BAN_PUBLISH 经 CreditService.listActiveRestrictions 既有导出面（credit 零改动），领域+HTTP 双用例 403 E_RESTRICTED）
 - [ ] stats 四率出数（H4 数据源联调）（M2 联调项——W3 两率真出数：enroll_rate=Σjoined/Σcapacity（用例 4/10=0.4）、group_rate=成团链场次/总场次（1/2=0.5），上海日界区间公式在册；attendance/ooo 两率=D3/D6 桩恒 null（JSDoc 标注），H4 联调=M2-W2，task-4-report §5/§6）
 - [ ] takedown 后列表卡片摘要同步隐藏（LawyerProfileTakedown 消费，H1 联调=W3）（顺延后续批（终审交接）——H1 实力档案 2026-10-16 增量（R-04~R-07/lawyer_public_profiles/takedown）W3 未施工（task-10-report §偏差-7），LawyerProfileTakedown 事件与消费端均不存在，未施工不勾）
-- [ ] 双维度字段物化与 ?city= 筛选（默认值/过滤命中/空集，2026-10-17 增量，随 V31）（顺延双维度增量批（T11.5）——T4 交付 specialty 参数形态收口但恒真未过滤（task-4-report §7-7）；city 物化与双维过滤=序 11.5 施工（迁移号以实际为准已更正 V33），勾账时点无交付报告未验证）
+- [x] 双维度字段物化与 ?city= 筛选（默认值/过滤命中/空集，2026-10-17 增量，随 V33）（T11.5 交付：commit 6313153，评审 Approved——V33 sessions +specialty/city；city 物化=执业城市 null 兜底北京（getPracticeCity 导出面禁直查）；specialty 转真过滤+?city= 双维 WHERE（三处空集实证）；w3-smoke +3 断言=city 物化 DB 行值+?city=北京 命中+?city=上海 空集；session.service.spec「缺省北京 vs 登记上海」双律师对照用例；T4 期 specialty 恒真未过滤（task-4-report §7-7）已由本批转真）
 
 ## 11. 待澄清点
 - ⚠04§8-3 B2C 截止时间默认规则。

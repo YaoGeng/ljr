@@ -21,7 +21,7 @@ group_buys(
   sub_min smallint NOT NULL, sub_max smallint NOT NULL,
   share_price numeric(10,2) NOT NULL,          -- = session_total_default ÷ sub_min（发布时固化）
   question_tags jsonb NOT NULL, deadline timestamptz NOT NULL,
-  city varchar(32) NOT NULL DEFAULT '北京',      -- 城市维度（2026-10-17 双维度框架，V31；城市码口径 ⚠W3-10）
+  city varchar(32) NOT NULL DEFAULT '北京',      -- 城市维度（2026-10-17 双维度框架，V33；城市码口径 ⚠W3-10）
   status varchar(20) NOT NULL, lawyer_confirm_by timestamptz NULL,
   CHECK (sub_min <= sub_max)
 )
@@ -64,7 +64,7 @@ PUBLISHED/REACHED → CONVERTED（C4 认领转化）
 - [x] 未支付 10min 锁释放后他人可发布同段（B2 联调）（证据：commits b66e511..79e485b，task-5-report §2——§10③ B2 SLOT_TTL 真路径（owner 夹具回拨 ttl_at+job due_at→scheduler.tick 释放）→他人同段发布成功；先证他人同段 409 SLOT_TAKEN）
 - [x] 一键重新发起复制参数且原任务状态不变（证据：commits b66e511..79e485b，task-5-report §2——recreate 用例：复制 lawyer/slot/sub 范围/标签+source_id 落列+share_price 按 B3 现值重解算、原任务恒 EXPIRED、同 source 重放幂等（评审 F2② 修复用例：B3 配置事后变化原样重发=原任务））
 - [x] 达 sub_min 后新加入被拒（守卫）（证据：commits b66e511..79e485b，task-5-report §2——R-05 达 sub_min 守卫用例：REACHED→PENDING_LAWYER+assertJoinable 409 E_REACHED_LOCKED（合成驱动=简报口径）；T7 成团守卫落位后 w3-smoke ⑦ 段真链实证（第三人加入 409 E_REACHED_LOCKED））
-- [ ] 发布物化 city/specialty 且 ?city= 筛选生效（2026-10-17 双维度增量，随 V31）（顺延双维度增量批（T11.5）——specialty 已随 V24 物化并真实过滤（task-5-report §6-11）；city 增列与 ?city= 筛选=序 11.5 施工（迁移号以实际为准已更正 V33），勾账时点无交付报告未验证）
+- [x] 发布物化 city/specialty 且 ?city= 筛选生效（2026-10-17 双维度增量，随 V33）（T11.5 交付：commit 6313153，评审 Approved——V33 group_buys +city；resolvePublishPlan 经 getPracticeCity 解算（recreate 同管线取现值）发布事务物化带出；公开列表 &city= 与 specialty 双维 AND 过滤；group-buy.service.spec「缺省北京 vs 登记上海」对照+空集用例；specialty 物化先随 V24（task-5-report §6-11））
 
 ## 11. 待澄清点
 - ⚠04§8-14 截止延长；发起人在他人加入后的取消路径未定义（新增待澄清，建议走客服工单）。
