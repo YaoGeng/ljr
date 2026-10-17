@@ -11,7 +11,8 @@
  *         （A3b 进件前 firm_id=null，简报裁决）；suspend 发 LawyerSuspended{lawyer_user_id,
  *         reason}；恢复不发事件（§6 仅两个生产事件）。
  *   查询面：GET /lawyer/audit-status（本人视角）；isAuditPassed=R-01 内部闸口（W3 C3/
- *         接单大厅消费，本批查询面交付、列表联调=W3 桩 §10-1）。
+ *         接单大厅消费，本批查询面交付、列表联调=W3 桩 §10-1）；getPracticeCity=执业城市
+ *         导出面（序 11.5 V33，C1 开团/C2 发布物化 city 的消费缝）。
  *
  * PII 红线（§9 禁止）：license_no 明文只存在于请求入参与列加密入参；落库仅密文+盲索引，
  * 日志只记 user_id/profile_id/版本号，事件载荷仅 lawyer_user_id/firm_id/reason。
@@ -34,11 +35,18 @@ import { IdentityCryptoService } from './identity.crypto';
 import type { LawyerAuditStatus } from './lawyer.machine';
 import { LAWYER_AUDIT_MACHINE } from './lawyer.machine';
 import type { LawyerAuditAction, QualificationFileInput } from './lawyer.http';
-import { assertLicenseNo, parseFirmName, parseQualificationFiles } from './lawyer.http';
+import {
+  assertLicenseNo,
+  parseFirmName,
+  parsePracticeCity,
+  parseQualificationFiles,
+} from './lawyer.http';
 
 export interface QualificationSubmitInput {
   readonly licenseNo: string;
   readonly firmName?: string;
+  /** 执业城市（序 11.5 V33 维度列）：可选，缺省 '北京'（DEFAULT_PRACTICE_CITY/V33 DEFAULT 同源） */
+  readonly city?: string;
   readonly files: readonly QualificationFileInput[];
 }
 
@@ -80,6 +88,8 @@ export interface QualificationProfileView {
   readonly firm_name: string | null;
   /** A3b 进件回填的律所 id（trade/pricing 域裸引用；进件前 null） */
   readonly firm_id: number | null;
+  /** 执业城市登记面（序 11.5 V33）：「执业城市登记面随审核带出」最小实现 */
+  readonly city: string;
   readonly material_version: number;
   readonly submitted_at: string | null;
   readonly audited_at: string | null;
@@ -102,6 +112,7 @@ interface ViewRow {
   readonly user_id: string;
   readonly firm_id: string | null;
   readonly firm_name: string | null;
+  readonly city: string;
   readonly audit_status: LawyerAuditStatus;
   readonly material_version: number;
   readonly submitted_at: Date | null;
@@ -132,6 +143,9 @@ const ACTION_TO_STATUS: Record<LawyerAuditAction, LawyerAuditStatus> = {
 function isUniqueViolation(e: unknown): boolean {
   return typeof e === 'object' && e !== null && (e as { code?: string }).code === '23505';
 }
+
+/** 执业城市缺省值（序 11.5 V33：与 lawyer_profiles.city 列 DEFAULT 同源；⚠W3-10 城市码=中文名称字符串） */
+const DEFAULT_PRACTICE_CITY = '北京';
 
 function isPositiveInt(v: unknown): v is number {
   return typeof v === 'number' && Number.isInteger(v) && v > 0 && v <= Number.MAX_SAFE_INTEGER;
@@ -179,6 +193,7 @@ export class LawyerQualificationService {
     // 形态防呆（REST 与服务层共用同一事实源，lawyer.http）：不产生任何状态迁移
     const licenseNo = assertLicenseNo(input.licenseNo);
     const firmName = parseFirmName(input.firmName);
+    const city = parsePracticeCity(input.city); // 序 11.5：缺省/空白归 absent（落 DEFAULT 北京）
     const files = parseQualificationFiles(input.files);
     // 盲索引先行（Important-1）：指纹的 license 组件=盲索引派生值，明文不出本函数入参生命周期
     const licenseBlind = this.crypto.blindIndex(licenseNo);
@@ -229,10 +244,18 @@ export class LawyerQualificationService {
           const inserted = await uow.query<{ id: string }>(
             `INSERT INTO identity.lawyer_profiles
                (user_id, license_no_enc, license_no_blind_idx, firm_name,
-                material_version, material_fingerprint, audit_status, submitted_at)
-             VALUES ($1, $2, $3, $4, $5, $6, 'SUBMITTED', now())
+                material_version, material_fingerprint, audit_status, submitted_at, city)
+             VALUES ($1, $2, $3, $4, $5, $6, 'SUBMITTED', now(), $7)
              RETURNING id`,
-            [userId, licenseEnc, licenseBlind, firmName ?? null, version, fingerprint],
+            [
+              userId,
+              licenseEnc,
+              licenseBlind,
+              firmName ?? null,
+              version,
+              fingerprint,
+              city ?? DEFAULT_PRACTICE_CITY,
+            ],
           );
           profileId = Number(inserted.rows[0]!.id);
         } else {
@@ -240,8 +263,9 @@ export class LawyerQualificationService {
             `UPDATE identity.lawyer_profiles SET
                license_no_enc = $1, license_no_blind_idx = $2, firm_name = $3,
                material_version = $4, material_fingerprint = $5, audit_status = 'SUBMITTED',
-               submitted_at = now(), audited_at = NULL, auditor_id = NULL, reject_reason = NULL
-             WHERE id = $6 AND audit_status = $7
+               submitted_at = now(), audited_at = NULL, auditor_id = NULL, reject_reason = NULL,
+               city = COALESCE($6, city)
+             WHERE id = $7 AND audit_status = $8
              RETURNING id`,
             [
               licenseEnc,
@@ -249,6 +273,7 @@ export class LawyerQualificationService {
               firmName ?? null,
               version,
               fingerprint,
+              city ?? null, // 序 11.5：重提携带则更新、未携带保留原值（null=不改动）
               current.id,
               current.audit_status,
             ],
@@ -426,6 +451,19 @@ export class LawyerQualificationService {
     return found.rows.length > 0;
   }
 
+  /**
+   * 执业城市导出面（序 11.5 V33）：C1 开团/C2 发布物化 city 的唯一取数缝（禁 trade 直查
+   * identity 表——跨模块取数走导出服务）。PASSED 返回 city（含缺省北京）；非 PASSED/无行
+   * 返回 null（消费方兜底缺省）。与 isAuditPassed 同模块同形态导出。
+   */
+  async getPracticeCity(lawyerUserId: number): Promise<string | null> {
+    const found = await this.pool.query<{ city: string }>(
+      `SELECT city FROM identity.lawyer_profiles WHERE user_id = $1 AND audit_status = 'PASSED'`,
+      [lawyerUserId],
+    );
+    return found.rows[0]?.city ?? null;
+  }
+
   // ===========================================================================
   // H1 导出面（W3 T10）：工作台队列 / 档案视图（只读；H1 禁 join identity 表——架构 §3.2，
   // 经本服务面取数）。出参一律无 license 字段（PII 红线 §9）。
@@ -498,7 +536,7 @@ export class LawyerQualificationService {
       throw new AppError(ErrorCode.InvalidArgument, 'lawyer_profiles.id 必须为正整数');
     }
     const found = await this.pool.query<ViewRow>(
-      `SELECT id, user_id, firm_id, firm_name, audit_status, material_version,
+      `SELECT id, user_id, firm_id, firm_name, city, audit_status, material_version,
               submitted_at, audited_at, auditor_id, reject_reason
          FROM identity.lawyer_profiles WHERE id = $1`,
       [profileId],
@@ -511,6 +549,7 @@ export class LawyerQualificationService {
       audit_status: r.audit_status,
       firm_name: r.firm_name,
       firm_id: r.firm_id === null ? null : Number(r.firm_id),
+      city: r.city, // 序 11.5：执业城市登记面随审核带出（V33 NOT NULL 列，行必有）
       material_version: r.material_version,
       submitted_at: r.submitted_at === null ? null : new Date(r.submitted_at).toISOString(),
       audited_at: r.audited_at === null ? null : new Date(r.audited_at).toISOString(),

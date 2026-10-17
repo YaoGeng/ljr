@@ -28,6 +28,7 @@ export {
   moneyToCents,
 } from './session.types';
 export { UNIT_PRICE_MAX_CENTS as SHARE_PRICE_MAX_CENTS } from './session.types';
+export { assertCity, DEFAULT_CITY } from './session.types';
 export type { Money } from './session.types';
 
 // ---------------------------------------------------------------------------
@@ -155,12 +156,14 @@ export interface CreateGroupBuyInput {
 
 /** 拼团行视图（DB 行读出口径：金额 Money 字符串/时间 ISO 字符串）。
  *  joined 桩=null：已加入数事实源=C3 enrollments（T7 落位经服务面取数，禁跨 schema join）——
- *  V24 头注⑥，SessionStatsView attendance_rate 同款先例，T7 接线转真。 */
+ *  V24 头注⑥，SessionStatsView attendance_rate 同款先例，T7 接线转真。
+ *  双维度列（序 11.5 V33）：specialty=发布入参；city=发布物化目标律师执业城市（缺省北京）。 */
 export interface GroupBuyView {
   readonly id: number;
   readonly initiator_id: number;
   readonly lawyer_id: number;
   readonly specialty: string;
+  readonly city: string;
   readonly slot_start: string;
   readonly sub_min: number;
   readonly sub_max: number;
@@ -191,7 +194,9 @@ export interface PaymentOrderRefView {
   readonly status: string;
 }
 
-/** GET /group-buys 筛选（§5 ?specialty=；公开列表仅 PUBLISHED，沿 C1 ⚠W3-12 公开面口径） */
+/** GET /group-buys 筛选（§5 ?specialty=；公开列表仅 PUBLISHED，沿 C1 ⚠W3-12 公开面口径）。
+ *  城市维（序 11.5 V33）：?city= 参与真过滤（specialty 本表列先例——与 C1 同为双维 WHERE）。 */
 export interface ListGroupBuysFilter {
   readonly specialty?: string;
+  readonly city?: string;
 }

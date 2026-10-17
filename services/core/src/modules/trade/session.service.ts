@@ -47,8 +47,11 @@ import { SESSION_MACHINE, type SessionStatus } from './session.machine';
 import { SessionListCache } from './session.cache';
 import { TRADE_SESSION_CONFIG, type TradeSessionConfig } from './session.config';
 import {
+  DEFAULT_CITY,
+  SPECIALTY_LABOR_ARBITRATION,
   UNIT_PRICE_MAX_CENTS,
   assertCapacity,
+  assertCity,
   assertIsoDate,
   assertPositiveInt,
   assertPriceMode,
@@ -73,6 +76,8 @@ interface SessionRow {
   readonly id: string;
   readonly lawyer_id: string;
   readonly mode: string;
+  readonly specialty: string;
+  readonly city: string;
   readonly slot_start: Date;
   readonly price_mode: string;
   readonly unit_price: string;
@@ -85,7 +90,7 @@ interface SessionRow {
   readonly created_at: Date;
 }
 
-const SESSION_COLS = `id, lawyer_id, mode, slot_start, price_mode, unit_price::text AS unit_price,
+const SESSION_COLS = `id, lawyer_id, mode, specialty, city, slot_start, price_mode, unit_price::text AS unit_price,
   session_total::text AS session_total, capacity, joined, enroll_deadline, room_mode, status, created_at`;
 
 /** 终态集（session.machine SESSION_TERMINAL_STATUSES 的 SQL 形态；幂等/锁口径共用） */
@@ -109,6 +114,8 @@ function toView(row: SessionRow): SessionView {
     id: Number(row.id),
     lawyer_id: Number(row.lawyer_id),
     mode: row.mode,
+    specialty: row.specialty,
+    city: row.city,
     slot_start: new Date(row.slot_start).toISOString(),
     price_mode: row.price_mode as PriceMode,
     unit_price: row.unit_price,
@@ -212,6 +219,11 @@ export class SessionService {
     );
     this.assertColumnBounds(unitCents, totalCents);
 
+    // 双维度物化（序 11.5 V33）：specialty=V1 恒 labor_arbitration 常量（E3 R-04，M2 接线可
+    // 配置）；city=律师执业城市经 A3a 导出面 getPracticeCity（禁跨 schema 直查），null 兜底北京
+    const specialty = SPECIALTY_LABOR_ARBITRATION;
+    const city = (await this.audit.getPracticeCity(lawyerId)) ?? DEFAULT_CITY;
+
     const view = await this.pool.withTransaction(async (uow) => {
       // 幂等（F1 R-02 口径先例）：同键（lawyer+slot_start，B2C，非终态）同载荷重放原单
       const existing = await uow.query<SessionRow>(
@@ -240,12 +252,14 @@ export class SessionService {
       // INSERT sessions（先）→ B2 lockSlot(ref_id=session.id)（后）——同事务原子（类注语句序说明）
       const inserted = await uow.query<SessionRow>(
         `INSERT INTO trade.sessions
-           (lawyer_id, mode, slot_start, price_mode, unit_price, session_total,
+           (lawyer_id, mode, specialty, city, slot_start, price_mode, unit_price, session_total,
             capacity, joined, enroll_deadline, room_mode, status)
-         VALUES ($1, 'B2C', $2, $3, $4, $5, $6, 0, $7, $8, 'CREATED')
+         VALUES ($1, 'B2C', $2, $3, $4, $5, $6, $7, $8, 0, $9, $10, 'CREATED')
          RETURNING ${SESSION_COLS}`,
         [
           lawyerId,
+          specialty,
+          city,
           slotStart,
           priceMode,
           centsToMoney(unitCents),
@@ -355,6 +369,14 @@ export class SessionService {
 
     const clauses: string[] = [`status = 'CREATED'`]; // ⚠W3-12：公开列表仅报名中
     const params: unknown[] = [];
+    if (normalized.specialty !== undefined) {
+      params.push(normalized.specialty);
+      clauses.push(`specialty = $${params.length}`); // 序 11.5：specialty 转真过滤
+    }
+    if (normalized.city !== undefined) {
+      params.push(normalized.city);
+      clauses.push(`city = $${params.length}`); // 序 11.5：city 维过滤（与 specialty 双维 AND）
+    }
     if (normalized.lawyer !== undefined) {
       params.push(normalized.lawyer);
       clauses.push(`lawyer_id = $${params.length}`);
@@ -535,6 +557,8 @@ export class SessionService {
     }
 
     return this.pool.withTransaction(async (uow) => {
+      // 双维度列（序 11.5 V33）：specialty/city 不显式物化——C4=M2 接线位随拼团任务带出，
+      // 先落 V33 列默认（labor_arbitration/北京），本批单城单垂直下与 B2C 同值
       const inserted = await uow.query<SessionRow>(
         `INSERT INTO trade.sessions
            (lawyer_id, mode, slot_start, price_mode, unit_price, session_total,
@@ -727,7 +751,7 @@ export class SessionService {
     };
   }
 
-  /** 列表筛选归一（400 收口；specialty 形态收口但不参与过滤——类型注释与报告注明口径） */
+  /** 列表筛选归一（400 收口；specialty/city 形态收口且参与真过滤——city×specialty 双维 WHERE，序 11.5） */
   private normalizeListFilter(filter: ListSessionsFilter): ListSessionsFilter {
     if (filter.specialty !== undefined) {
       if (
@@ -741,8 +765,10 @@ export class SessionService {
         );
       }
     }
+    const city = filter.city === undefined ? undefined : assertCity(filter.city);
     return {
       specialty: filter.specialty,
+      city,
       lawyer: filter.lawyer === undefined ? undefined : assertPositiveInt(filter.lawyer, 'lawyer'),
       from: filter.from === undefined ? undefined : assertIsoDate(filter.from, 'from'),
       to: filter.to === undefined ? undefined : assertIsoDate(filter.to, 'to'),

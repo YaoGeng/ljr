@@ -67,12 +67,24 @@ export function parseGroupBuyBody(body: unknown): {
   return out;
 }
 
-/** GET /group-buys 查询形状：?specialty=（缺省=不过滤） */
-export function parseGroupBuyListQuery(query: Record<string, unknown>): { specialty?: string } {
-  const v = query['specialty'];
-  if (v === undefined) return {};
-  if (typeof v !== 'string' || v === '') {
-    throw new AppError(ErrorCode.InvalidArgument, `specialty 须为非空字符串：${JSON.stringify(v)}`);
+/** GET /group-buys 查询形状：?specialty=&city=（缺省=不过滤；城市维=序 11.5） */
+export function parseGroupBuyListQuery(query: Record<string, unknown>): {
+  specialty?: string;
+  city?: string;
+} {
+  const specialty = query['specialty'];
+  if (specialty !== undefined && (typeof specialty !== 'string' || specialty === '')) {
+    throw new AppError(
+      ErrorCode.InvalidArgument,
+      `specialty 须为非空字符串：${JSON.stringify(specialty)}`,
+    );
   }
-  return { specialty: v };
+  const city = query['city'];
+  if (city !== undefined && (typeof city !== 'string' || city === '')) {
+    throw new AppError(ErrorCode.InvalidArgument, `city 须为非空字符串：${JSON.stringify(city)}`);
+  }
+  return {
+    ...(specialty === undefined ? {} : { specialty }),
+    ...(city === undefined ? {} : { city }),
+  };
 }

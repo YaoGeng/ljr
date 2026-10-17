@@ -457,6 +457,8 @@ describe('M1-W3 链 1 ①段烟测（admin→H1→A3b→C1→C3 成团→C2→�
       joined: 0,
       capacity: 2,
       session_total: '200.00', // R-04：100.00×2
+      specialty: 'labor_arbitration', // 序 11.5：双维度出参增列（V33）
+      city: '北京', // 律师提交未携带 city → 执业城市缺省北京（A3a 登记面）
     });
     const s1Id = s1.body.session.id as number;
 
@@ -514,6 +516,26 @@ describe('M1-W3 链 1 ①段烟测（admin→H1→A3b→C1→C3 成团→C2→�
     expect(listed.body.map((s: Record<string, unknown>) => s['id'])).toEqual(
       expect.arrayContaining([s1Id, s2Id]),
     );
+
+    // 双维度物化与过滤（序 11.5 V33）：①DB 行 specialty/city 物化（该律师登记面未携带 city →
+    // 兜底北京）；②?city=北京 命中该场；③?city=上海 空集（过滤真生效）
+    const dimRows = await pool.query<{ specialty: string; city: string }>(
+      `SELECT specialty, city FROM trade.sessions WHERE id IN ($1, $2) ORDER BY id`,
+      [s1Id, s2Id],
+    );
+    expect(dimRows.rows).toEqual([
+      { specialty: 'labor_arbitration', city: '北京' },
+      { specialty: 'labor_arbitration', city: '北京' },
+    ]);
+    const cityHit = await request(app.getHttpServer()).get('/sessions').query({ city: '北京' });
+    expect(cityHit.status).toBe(200);
+    expect(cityHit.body.map((s: Record<string, unknown>) => s['id'])).toEqual(
+      expect.arrayContaining([s1Id, s2Id]),
+    );
+    expect(cityHit.body[0]).toMatchObject({ specialty: 'labor_arbitration', city: '北京' });
+    const cityMiss = await request(app.getHttpServer()).get('/sessions').query({ city: '上海' });
+    expect(cityMiss.status).toBe(200);
+    expect(cityMiss.body).toEqual([]); // 空集=城市过滤真生效（非形态收口摆设）
 
     // =======================================================================
     // 段 6：C3 报名支付成团（A2 沙箱实名→纯现金+带积分报名→回调真入 Inbox→FULL）

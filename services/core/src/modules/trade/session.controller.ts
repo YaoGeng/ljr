@@ -2,7 +2,7 @@
  * C1 REST 面（§5 契约表逐字 + Task 4 简报；不扩面）：
  *   POST /sessions                  {slot_start, price_mode, unit_price?, capacity, enroll_deadline?, room_mode} → {session}
  *                                   409 E_SLOT_TAKEN/E_SESSION_DUP_KEY、403 E_RESTRICTED、429（B2 滥用计数）
- *   GET  /sessions?specialty=&lawyer=&from=&to=   列表（仅 PASSED 律师）→ 裸数组（出参列「列表」无包键）
+ *   GET  /sessions?specialty=&city=&lawyer=&from=&to=   列表（仅 PASSED 律师）→ 裸数组（出参列「列表」无包键）
  *   GET  /sessions/{id}             详情+剩余席位
  *   GET  /lawyer/sessions/stats?from=&to=  四率
  *
@@ -39,7 +39,7 @@ export class SessionController {
       .then((session) => ({ session })); // §5 出参 {session} 包键（{refund}/{result} 同形先例）
   }
 
-  /** GET /sessions?specialty=&lawyer=&from=&to=（§5：列表仅 lawyer 审核 PASSED） */
+  /** GET /sessions?specialty=&city=&lawyer=&from=&to=（§5：列表仅 lawyer 审核 PASSED；city×specialty 双维过滤=序 11.5） */
   @Get('sessions')
   list(@Query() query: Record<string, unknown>): Promise<unknown> {
     return this.sessions.list(parseListQuery(query));

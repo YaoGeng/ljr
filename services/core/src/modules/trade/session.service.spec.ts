@@ -607,6 +607,46 @@ describe('C1 领域层（开团事务/幂等/R-01/R-04/R-05/截止流标/终态 
     expect(failedDetail.remaining).toBe(6);
   });
 
+  it('双维度物化与过滤（序 11.5 V33）：C1 物化 specialty=labor_arbitration + city=执业城市（导出面，null 兜底北京）；GET /sessions city×specialty 双维真过滤；列表/详情出参增列', async () => {
+    // 两律师均 PASSED（列表可见性前提）：9310 未登记城市（→ DEFAULT 北京）、9311 执业上海
+    await seedLawyerProfile(pool, 9310, 'PASSED', 't-dims-bj');
+    await seedLawyerProfile(pool, 9311, 'PASSED', 't-dims-sh', '上海');
+    await seedPricing(9310, { per_head: '50.00' });
+    await seedPricing(9311, { per_head: '50.00' });
+    const bj = await sessions.create(createInput({ lawyer_id: 9310, slot_start: hourAfter(25) }));
+    const sh = await sessions.create(createInput({ lawyer_id: 9311, slot_start: hourAfter(26) }));
+
+    // 物化：specialty=V1 恒 labor_arbitration；city=执业城市（null 兜底北京）
+    expect(bj).toMatchObject({ specialty: 'labor_arbitration', city: '北京' });
+    expect(sh).toMatchObject({ specialty: 'labor_arbitration', city: '上海' });
+    const rows = await pool.query<{ specialty: string; city: string }>(
+      `SELECT specialty, city FROM trade.sessions WHERE id IN ($1, $2) ORDER BY id`,
+      [bj.id, sh.id],
+    );
+    expect(rows.rows).toEqual([
+      { specialty: 'labor_arbitration', city: '北京' },
+      { specialty: 'labor_arbitration', city: '上海' },
+    ]);
+
+    // city×specialty 双维真过滤（?city=；specialty 从形态收口转真过滤）
+    expect((await sessions.list({ city: '北京' })).map((s) => s.id)).toEqual([bj.id]);
+    expect((await sessions.list({ city: '上海' })).map((s) => s.id)).toEqual([sh.id]);
+    expect(await sessions.list({ city: '广州' })).toEqual([]); // 空集=过滤真生效
+    expect((await sessions.list({ specialty: 'labor_arbitration' })).map((s) => s.id)).toEqual([
+      bj.id,
+      sh.id,
+    ]);
+    expect(await sessions.list({ specialty: 'contract_dispute' })).toEqual([]);
+    expect(await sessions.list({ city: '上海', specialty: 'contract_dispute' })).toEqual([]);
+    // 出参增列（列表项 + 详情）
+    const shList = await sessions.list({ city: '上海' });
+    expect(shList[0]).toMatchObject({ specialty: 'labor_arbitration', city: '上海' });
+    expect(await sessions.getDetail(bj.id)).toMatchObject({
+      specialty: 'labor_arbitration',
+      city: '北京',
+    });
+  });
+
   it('R-W3-K 履约 Session 创建服务方法（C2B 确认生成，M2 C4 接线）：mode=C2B 行落库+SessionCreated 出箱+六类 job 预写，B2 不加锁（发布锁 ref=groupbuy 由 C2 持有）', async () => {
     await seedPricing(9101, { per_head: '50.00' });
     const slotStart = hourAfter(30);

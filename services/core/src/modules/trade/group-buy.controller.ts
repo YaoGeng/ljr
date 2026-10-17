@@ -4,7 +4,7 @@
  *                                      question_tags, deadline?} → {group_buy, share_price,
  *                                      payment_order}
  *                                      409 E_SLOT_TAKEN/E_GROUP_BUY_DUP_KEY、400 越界、403 E_RESTRICTED
- *   GET  /group-buys?specialty=       列表（已加入数=桩 null/倒计时 deadline/分摊额）→ 裸数组
+ *   GET  /group-buys?specialty=&city=  列表（已加入数=桩 null/倒计时 deadline/分摊额）→ 裸数组
  *   POST /group-buys/{id}/cancel      → {status}（409 E_HAS_JOINED）
  *   POST /group-buys/{id}/recreate    → {group_buy_id}（幂等键=source_id）
  *
@@ -39,7 +39,7 @@ export class GroupBuyController {
     // §5 出参 {group_buy, share_price, payment_order} 三键（PublishGroupBuyResult 原样出站）
   }
 
-  /** GET /group-buys?specialty=（§5：公开列表，鉴权「否」） */
+  /** GET /group-buys?specialty=&city=（§5：公开列表，鉴权「否」；城市维=序 11.5） */
   @Get('group-buys')
   list(@Query() query: Record<string, unknown>): Promise<unknown> {
     return this.groupBuys.list(parseGroupBuyListQuery(query));

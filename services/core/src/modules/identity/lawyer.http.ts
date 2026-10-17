@@ -16,6 +16,8 @@ export interface QualificationFileInput {
 export interface QualificationBody {
   readonly licenseNo: string;
   readonly firmName?: string;
+  /** 执业城市（序 11.5 V33 维度列）：可选，空白归 absent=缺省 '北京' */
+  readonly city?: string;
   readonly files: QualificationFileInput[];
 }
 
@@ -45,6 +47,21 @@ export function parseFirmName(raw: unknown): string | undefined {
   return trimmed;
 }
 
+/** city：可选执业城市（序 11.5 V33），空白归 absent=缺省 '北京'，上限 32（varchar(32) 列宽；
+ *  ⚠W3-10 城市码=中文名称字符串，多城启动评估代码化=04 §8-25） */
+export function parsePracticeCity(raw: unknown): string | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== 'string') {
+    throw new AppError(ErrorCode.InvalidArgument, 'city 必须为字符串');
+  }
+  const trimmed = raw.trim();
+  if (trimmed === '') return undefined;
+  if (trimmed.length > 32) {
+    throw new AppError(ErrorCode.InvalidArgument, 'city 不得超过 32 字符（varchar(32) 列宽）');
+  }
+  return trimmed;
+}
+
 /** files[]：1-20 件，每件 {kind, ref} 非空且有界（R-W2-7：ref 仅引用文本，不做上传） */
 export function parseQualificationFiles(raw: unknown): QualificationFileInput[] {
   if (!Array.isArray(raw) || raw.length < 1 || raw.length > 20) {
@@ -70,10 +87,16 @@ export function parseQualificationBody(body: unknown): QualificationBody {
   if (typeof body !== 'object' || body === null) {
     throw new AppError(ErrorCode.InvalidArgument, '请求体须为 JSON 对象 {license_no, files}');
   }
-  const raw = body as { license_no?: unknown; firm_name?: unknown; files?: unknown };
+  const raw = body as {
+    license_no?: unknown;
+    firm_name?: unknown;
+    city?: unknown;
+    files?: unknown;
+  };
   return {
     licenseNo: assertLicenseNo(raw.license_no),
     firmName: parseFirmName(raw.firm_name),
+    city: parsePracticeCity(raw.city),
     files: parseQualificationFiles(raw.files),
   };
 }

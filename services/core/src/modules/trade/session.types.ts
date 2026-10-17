@@ -23,6 +23,31 @@ export type PriceMode = (typeof PRICE_MODES)[number];
 export const SESSION_ROOM_MODES = ['text', 'voice', 'video'] as const;
 export type SessionRoomMode = (typeof SESSION_ROOM_MODES)[number];
 
+// ---------------------------------------------------------------------------
+// 双维度框架（序 11.5 V33，D-BP8 翻转：城市×垂直提前至 V1 框架位；加数据不加结构）
+// ---------------------------------------------------------------------------
+
+/** 垂直专项常量：V1 恒 labor_arbitration（E3 R-04 单专项；M2 专项扩展随 E3 接线换可配置） */
+export const SPECIALTY_LABOR_ARBITRATION = 'labor_arbitration';
+
+/** 城市维缺省值（⚠W3-10 城市码=中文名称字符串，多城启动评估 GB/T 2260 代码化=04 §8-25；
+ *  与 V33 列 DEFAULT 同源——C1/C2 物化 null 兜底用） */
+export const DEFAULT_CITY = '北京';
+
+/** 城市维列宽（V33 varchar(32)；specialty 同宽沿 SPECIALTY_MAX_LEN 口径） */
+export const CITY_MAX_LEN = 32;
+
+/** 城市维形态：1..32 字符非空（值域防御在应用层，V24 头注同口径；C1/C2 列表过滤共用） */
+export function assertCity(v: unknown): string {
+  if (typeof v !== 'string' || v.length === 0 || v.length > CITY_MAX_LEN) {
+    throw new AppError(
+      ErrorCode.InvalidArgument,
+      `city 须为 1-${CITY_MAX_LEN} 字符：${JSON.stringify(v)}`,
+    );
+  }
+  return v;
+}
+
 /** NUMERIC(12,2) 上限（整数位 10 位）＝session_total 列上限 */
 const SESSION_TOTAL_MAX_CENTS = 999_999_999_999;
 /** NUMERIC(10,2) 上限（整数位 8 位）＝unit_price 列上限 */
@@ -141,11 +166,15 @@ export interface CreateSessionInput {
   readonly room_mode: SessionRoomMode;
 }
 
-/** 场次行视图（DB 行读出口径：金额 Money 字符串/时间 ISO 字符串） */
+/** 场次行视图（DB 行读出口径：金额 Money 字符串/时间 ISO 字符串）。
+ *  双维度列（序 11.5 V33）：specialty=V1 恒 labor_arbitration；city=物化执业城市（缺省北京）——
+ *  C2B 履约 Session（C4=M2 接线位）先落列默认值。 */
 export interface SessionView {
   readonly id: number;
   readonly lawyer_id: number;
   readonly mode: string;
+  readonly specialty: string;
+  readonly city: string;
   readonly slot_start: string;
   readonly price_mode: PriceMode;
   readonly unit_price: Money;
@@ -175,11 +204,12 @@ export interface SessionStatsView {
   readonly ooo_rate: null;
 }
 
-/** GET /sessions 筛选（§5 ?specialty=&lawyer=&from=&to=；from/to=YYYY-MM-DD 上海日界）。
- *  specialty 形态收口但本批不参与过滤：V1 仅 labor_arbitration 单专项（E3 R-04），
- *  无律师↔专项映射导出面，过滤语义为恒真——报告/头注注明，M2 专项扩展时接线。 */
+/** GET /sessions 筛选（§5 ?specialty=&city=&lawyer=&from=&to=；from/to=YYYY-MM-DD 上海日界）。
+ *  双维过滤（序 11.5 V33）：specialty 与 city 均参与真过滤（city×specialty 双维 WHERE）——
+ *  V1 单专项单城下过滤即全量/空集二值，多城多专项时语义自然成立（加数据不加结构）。 */
 export interface ListSessionsFilter {
   readonly specialty?: string;
+  readonly city?: string;
   readonly lawyer?: number;
   readonly from?: string;
   readonly to?: string;

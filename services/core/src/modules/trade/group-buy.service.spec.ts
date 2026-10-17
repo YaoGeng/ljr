@@ -864,6 +864,35 @@ describe('C2 领域层（发布事务/幂等/R-01/R-02/R-04/R-05/流标/超时�
     expect(empty).toEqual([]); // specialty 过滤真实生效
   });
 
+  it('城市维物化与过滤（序 11.5 V33）：C2 发布物化 group_buys.city=目标律师执业城市（导出面，null 兜底北京）；GET /group-buys &city= 过滤（与 specialty 组合）；出参增列', async () => {
+    await seedLawyerProfile(pool, 9311, 'PASSED', 't5-dims-sh', '上海');
+    await seedLawyerProfile(pool, 9310, 'PASSED', 't5-dims-bj');
+    await seedPricing(9311, { session_total: '100.00', accept_min: 2, accept_max: 8 });
+    await seedPricing(9310, { session_total: '120.00', accept_min: 2, accept_max: 8 });
+    const sh = await groupBuys.create(createInput({ lawyer_id: 9311, slot_start: hourAfter(25) }));
+    const bj = await groupBuys.create(createInput({ lawyer_id: 9310, slot_start: hourAfter(26) }));
+
+    // 物化：city=目标律师执业城市（未登记 → 兜底北京）
+    expect(sh.group_buy.city).toBe('上海');
+    expect(bj.group_buy.city).toBe('北京');
+    const rows = await pool.query<{ city: string }>(
+      `SELECT city FROM trade.group_buys WHERE id IN ($1, $2) ORDER BY id`,
+      [sh.group_buy.id, bj.group_buy.id],
+    );
+    expect(rows.rows.map((r) => r.city)).toEqual(['上海', '北京']);
+
+    // &city= 过滤（specialty 已有，两维组合 AND）
+    expect((await groupBuys.list({ city: '上海' })).map((g) => g.id)).toEqual([sh.group_buy.id]);
+    expect((await groupBuys.list({ city: '北京' })).map((g) => g.id)).toEqual([bj.group_buy.id]);
+    expect(await groupBuys.list({ city: '广州' })).toEqual([]); // 过滤真生效（空集）
+    expect(await groupBuys.list({ specialty: 'labor_arbitration', city: '广州' })).toEqual([]);
+    // 出参增列
+    expect((await groupBuys.list({ city: '上海' }))[0]).toMatchObject({
+      specialty: 'labor_arbitration',
+      city: '上海',
+    });
+  });
+
   it('W1 前置⑤：groupbuy 终态 provider 注册到 B2 注册表（isTerminalBatch 批量形态）；PUBLISHED=false / EXPIRED=true(since=status_since) / 缺实体跳过', async () => {
     const provider = terminals.get('groupbuy');
     expect(provider).toBeInstanceOf(GroupBuyTerminalProvider);

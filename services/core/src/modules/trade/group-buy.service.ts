@@ -67,7 +67,9 @@ import { GROUP_BUY_MACHINE, type GroupBuyStatus } from './group-buy.machine';
 import { GroupBuyListCache } from './group-buy.cache';
 import { TRADE_GROUP_BUY_CONFIG, type TradeGroupBuyConfig } from './group-buy.config';
 import {
+  DEFAULT_CITY,
   SHARE_PRICE_MAX_CENTS,
+  assertCity,
   assertPositiveInt,
   assertQuestionTags,
   assertSpecialty,
@@ -87,6 +89,7 @@ interface GroupBuyRow {
   readonly initiator_id: string;
   readonly lawyer_id: string;
   readonly specialty: string;
+  readonly city: string;
   readonly slot_start: Date;
   readonly sub_min: number;
   readonly sub_max: number;
@@ -99,7 +102,7 @@ interface GroupBuyRow {
   readonly created_at: Date;
 }
 
-const GB_COLS = `id, initiator_id, lawyer_id, specialty, slot_start, sub_min, sub_max,
+const GB_COLS = `id, initiator_id, lawyer_id, specialty, city, slot_start, sub_min, sub_max,
   share_price::text AS share_price, question_tags, deadline, status, lawyer_confirm_by,
   status_since, created_at`;
 
@@ -120,6 +123,7 @@ function toView(row: GroupBuyRow): GroupBuyView {
     initiator_id: Number(row.initiator_id),
     lawyer_id: Number(row.lawyer_id),
     specialty: row.specialty,
+    city: row.city,
     slot_start: new Date(row.slot_start).toISOString(),
     sub_min: row.sub_min,
     sub_max: row.sub_max,
@@ -183,6 +187,9 @@ interface RawPublishInput {
 interface PublishPlan extends RawPublishInput {
   readonly sharePrice: string;
   readonly shareCents: number;
+  /** 城市维（序 11.5 V33）：目标律师执业城市经 A3a 导出面解算（null 兜底北京）——
+   *  与 share_price 同为派生值，不入幂等比较域（评审 F2 口径） */
+  readonly city: string;
 }
 
 @Injectable()
@@ -234,10 +241,11 @@ export class GroupBuyService {
   // ===========================================================================
 
   async list(filter: ListGroupBuysFilter): Promise<GroupBuyView[]> {
-    // specialty 形态收口（400）；本批参与真实过滤（specialty 是本表列——与 C1 恒真口径不同，报告注明）
+    // specialty/city 形态收口（400）；两维均参与真实过滤（specialty/city 是本表列——与 C1 恒真口径不同，报告注明）
     const specialty =
       filter.specialty === undefined ? undefined : assertSpecialty(filter.specialty);
-    const cacheKey = JSON.stringify({ specialty: specialty ?? null });
+    const city = filter.city === undefined ? undefined : assertCity(filter.city);
+    const cacheKey = JSON.stringify({ specialty: specialty ?? null, city: city ?? null });
     const cached = this.cache.get<GroupBuyView[]>(cacheKey);
     if (cached) return cached;
 
@@ -246,6 +254,10 @@ export class GroupBuyService {
     if (specialty !== undefined) {
       params.push(specialty);
       clauses.push(`specialty = $${params.length}`);
+    }
+    if (city !== undefined) {
+      params.push(city);
+      clauses.push(`city = $${params.length}`); // 序 11.5：城市维过滤（与 specialty 双维 AND）
     }
     params.push(500); // 自定护栏：单页上限（§5 未定分页；报告注明）
     const res = await this.pool.query<GroupBuyRow>(
@@ -507,14 +519,15 @@ export class GroupBuyService {
 
       const inserted = await uow.query<GroupBuyRow>(
         `INSERT INTO trade.group_buys
-           (initiator_id, lawyer_id, specialty, slot_start, sub_min, sub_max, share_price,
+           (initiator_id, lawyer_id, specialty, city, slot_start, sub_min, sub_max, share_price,
             question_tags, deadline, status, source_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, 'PUBLISHED', $10)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, 'PUBLISHED', $11)
          RETURNING ${GB_COLS}`,
         [
           plan.initiatorId,
           plan.lawyerId,
           plan.specialty,
+          plan.city, // 序 11.5：重发走与发布全同的解算管线（现执业城市，同事务带出）
           plan.slotStart,
           plan.subMin,
           plan.subMax,
@@ -771,7 +784,9 @@ export class GroupBuyService {
         '分摊额超出 share_price 列宽上限（numeric(10,2)）',
       );
     }
-    return { ...raw, sharePrice: centsToMoney(shareCents), shareCents };
+    // 城市维物化源（序 11.5 V33）：目标律师执业城市（A3a 导出面，禁跨 schema 直查），null 兜底北京
+    const city = (await this.audit.getPracticeCity(raw.lawyerId)) ?? DEFAULT_CITY;
+    return { ...raw, sharePrice: centsToMoney(shareCents), shareCents, city };
   }
 
   /** 幂等键定位（user+slot_start 非终态；快路径无锁读——权威判定在发布事务 FOR UPDATE 内） */
@@ -839,14 +854,15 @@ export class GroupBuyService {
       // INSERT group_buys（先）→ F1 支付单 → B2 lockSlot(payment_order_id)（后）——同事务原子
       const inserted = await uow.query<GroupBuyRow>(
         `INSERT INTO trade.group_buys
-           (initiator_id, lawyer_id, specialty, slot_start, sub_min, sub_max, share_price,
+           (initiator_id, lawyer_id, specialty, city, slot_start, sub_min, sub_max, share_price,
             question_tags, deadline, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, 'PUBLISHED')
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, 'PUBLISHED')
          RETURNING ${GB_COLS}`,
         [
           plan.initiatorId,
           plan.lawyerId,
           plan.specialty,
+          plan.city, // 序 11.5：城市维发布物化（同事务带出）
           plan.slotStart,
           plan.subMin,
           plan.subMax,

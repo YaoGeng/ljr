@@ -69,15 +69,17 @@ export function parseSessionBody(body: unknown): SessionBodyShape {
   return out;
 }
 
-/** GET /sessions 查询形状：?specialty=&lawyer=&from=&to=（缺省=不过滤） */
+/** GET /sessions 查询形状：?specialty=&city=&lawyer=&from=&to=（缺省=不过滤；双维真过滤=序 11.5） */
 export function parseListQuery(query: Record<string, unknown>): {
   specialty?: string;
+  city?: string;
   lawyer?: number;
   from?: string;
   to?: string;
 } {
   return {
     specialty: queryParam(query['specialty'], 'specialty'),
+    city: queryParam(query['city'], 'city'),
     lawyer:
       queryParam(query['lawyer'], 'lawyer') === undefined
         ? undefined

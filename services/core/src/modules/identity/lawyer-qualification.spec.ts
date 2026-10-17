@@ -811,6 +811,89 @@ describe('A3a 领域层（状态机/盲索引唯一/重提版本/事件生产/A1
     expect(JSON.stringify(view)).not.toContain(LICENSE_A); // PII 红线：导出面无明文证号字段
     expect(await service.profileViewById(999999)).toBeUndefined();
   });
+
+  it('城市登记面（序 11.5 V33）：city 形态 400 先行；提交缺省=北京落库；重提携带则更新、未携带保留原值；档案视图出参带 city', async () => {
+    const userId = await seedUser('city');
+    const cityOf = async (uid: number): Promise<string> => {
+      const res = await pool.query<{ city: string }>(
+        'SELECT city FROM identity.lawyer_profiles WHERE user_id = $1',
+        [uid],
+      );
+      return res.rows[0]!.city;
+    };
+
+    // 形态防呆（落库前收口）：city 超 32 字符 → 400（与状态无关，防呆块先于事务守卫）
+    await expect(
+      service.submitQualification(userId, {
+        licenseNo: LICENSE_A,
+        firmName: '北京测试律师事务所',
+        files: licenseFilesV1('city'),
+        city: '市'.repeat(33),
+      }),
+    ).rejects.toMatchObject({ code: ErrorCode.InvalidArgument, httpStatus: 400 });
+
+    // 缺省：未携带 city → V33 DEFAULT '北京' 落库
+    await service.submitQualification(userId, {
+      licenseNo: LICENSE_A,
+      firmName: '北京测试律师事务所',
+      files: licenseFilesV1('city'),
+    });
+    expect(await cityOf(userId)).toBe('北京');
+    const profileId = Number((await profileRow(userId))!.id);
+
+    // REJECTED 重提携带 '上海' → 更新
+    await service.audit(profileId, { action: 'claim' });
+    await service.audit(profileId, { action: 'reject', rejectReason: '材料不全' });
+    await service.submitQualification(userId, {
+      licenseNo: LICENSE_A,
+      files: LICENSE_A_FILES_V2,
+      city: '上海',
+    });
+    expect(await cityOf(userId)).toBe('上海');
+
+    // 再拒 → 重提未携带 → 保留 '上海'（不回退缺省）
+    await service.audit(profileId, { action: 'claim' });
+    await service.audit(profileId, { action: 'reject', rejectReason: '再补' });
+    await service.submitQualification(userId, {
+      licenseNo: LICENSE_A,
+      files: [{ kind: 'LICENSE_PHOTO', ref: 'spec/oss/license-a-v3.jpg' }],
+    });
+    expect(await cityOf(userId)).toBe('上海');
+
+    // A3a 档案视图出参带 city（「执业城市登记面随审核带出」最小实现）
+    const view = await service.profileViewById(profileId);
+    expect(view).toMatchObject({ id: profileId, audit_status: 'SUBMITTED', city: '上海' });
+  });
+
+  it('getPracticeCity 导出面（序 11.5，C1 开团/C2 发布消费缝）：PASSED 返回执业城市（含缺省北京）；非 PASSED/无行返回 null', async () => {
+    const u1 = await seedUser('city-p');
+    const u2 = await seedUser('city-d');
+    const u3 = await seedUser('city-s');
+    await service.submitQualification(u1, {
+      licenseNo: 'LICENSE-CITY-1',
+      files: licenseFilesV1('c1'),
+      city: '上海',
+    });
+    await service.submitQualification(u2, {
+      licenseNo: 'LICENSE-CITY-2',
+      files: licenseFilesV1('c2'),
+    }); // 未携带 → 缺省北京
+    await service.submitQualification(u3, {
+      licenseNo: 'LICENSE-CITY-3',
+      files: licenseFilesV1('c3'),
+    });
+    for (const uid of [u1, u2]) {
+      const pid = Number((await profileRow(uid))!.id);
+      await service.audit(pid, { action: 'claim' });
+      await service.audit(pid, { action: 'approve' });
+    }
+
+    expect(await service.getPracticeCity(u1)).toBe('上海');
+    expect(await service.getPracticeCity(u2)).toBe('北京'); // 未携带 → DEFAULT 物化值
+    expect(await service.getPracticeCity(u3)).toBeNull(); // 非 PASSED（SUBMITTED）
+    expect(await service.getPracticeCity(987654)).toBeNull(); // 无行
+    expect(await service.isAuditPassed(u1)).toBe(true); // 与 isAuditPassed 同模块同形态（消费缝对照）
+  });
 });
 
 /** 确定性交错原语：轮询 pg_stat_activity 等 service 的 INSERT 阻塞在锁上（consent.spec 同款） */

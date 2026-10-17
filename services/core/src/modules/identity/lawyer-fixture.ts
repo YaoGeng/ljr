@@ -12,28 +12,37 @@
 import { createHash } from 'node:crypto';
 import type { Pool } from 'pg';
 
-/** 直插一条档案行（audit_status=PASSED 供列表可见；SUBMITTED 供隐藏侧对照），返回档案 id */
+/** 直插一条档案行（audit_status=PASSED 供列表可见；SUBMITTED 供隐藏侧对照），返回档案 id；
+ *  city 可选（序 11.5 V33 执业城市维：缺省不写列=落 DB DEFAULT '北京'，携带则显式落值——
+ *  供 C1/C2 双维物化用例造「非北京执业城市」律师） */
 export async function seedLawyerProfile(
   pool: Pool,
   userId: number,
   auditStatus: 'PASSED' | 'SUBMITTED',
   tag: string,
+  city?: string,
 ): Promise<number> {
-  const res = await pool.query<{ id: string }>(
-    `INSERT INTO identity.lawyer_profiles
-       (user_id, license_no_enc, license_no_blind_idx, firm_name,
-        material_version, material_fingerprint, audit_status, submitted_at)
-     VALUES ($1, $2, $3, $4, 1, $5, $6, now())
-     RETURNING id`,
-    [
-      userId,
-      Buffer.from(`fixture-enc-${tag}`), // 密文列：夹具只求形态合法，不参与解密断言
-      createHash('sha256').update(`blind:${tag}`).digest('hex'), // char(64) 盲索引形态
-      `夹具律所-${tag}`,
-      createHash('sha256').update(`fp:${tag}`).digest('hex'), // char(64) 指纹形态
-      auditStatus,
-    ],
-  );
+  const sql =
+    city === undefined
+      ? `INSERT INTO identity.lawyer_profiles
+           (user_id, license_no_enc, license_no_blind_idx, firm_name,
+            material_version, material_fingerprint, audit_status, submitted_at)
+         VALUES ($1, $2, $3, $4, 1, $5, $6, now())
+         RETURNING id`
+      : `INSERT INTO identity.lawyer_profiles
+           (user_id, license_no_enc, license_no_blind_idx, firm_name,
+            material_version, material_fingerprint, audit_status, submitted_at, city)
+         VALUES ($1, $2, $3, $4, 1, $5, $6, now(), $7)
+         RETURNING id`;
+  const res = await pool.query<{ id: string }>(sql, [
+    userId,
+    Buffer.from(`fixture-enc-${tag}`), // 密文列：夹具只求形态合法，不参与解密断言
+    createHash('sha256').update(`blind:${tag}`).digest('hex'), // char(64) 盲索引形态
+    `夹具律所-${tag}`,
+    createHash('sha256').update(`fp:${tag}`).digest('hex'), // char(64) 指纹形态
+    auditStatus,
+    ...(city === undefined ? [] : [city]),
+  ]);
   return Number(res.rows[0]!.id);
 }
 
