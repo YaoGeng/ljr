@@ -7,6 +7,7 @@
  * 使用，生产代码禁 import。
  */
 import type { Pool } from 'pg';
+import { centsToMoney, moneyToCents } from './session.types';
 
 export interface SeedPaidEnrollmentOptions {
   /** 报名人（identity 侧用户 id） */
@@ -61,18 +62,20 @@ export async function seedGroupBuyRaw(
   return Number(g.rows[0]!.id);
 }
 
-/** 直插一 PAID 报名行（paid_amount=cash+points/100 全额口径，D17 分母整化的数据源） */
+/** 直插一 PAID 报名行（F-7：paid_amount=全额口径注入=cash 分+points（1 积分=1 分）两位小数化，
+ *  与 C3 报名链「paid=cash+points 折元」一致，D17 分母整化的数据源） */
 export async function seedPaidEnrollmentRaw(
   pool: Pool,
   refType: 'session' | 'groupbuy',
   refId: number,
   o: SeedPaidEnrollmentOptions & { readonly userId: number },
 ): Promise<void> {
+  const paidFull = centsToMoney(moneyToCents(o.cash) + o.points);
   await pool.query(
     `INSERT INTO trade.enrollments
        (ref_type, ref_id, user_id, price_snapshot, unit_price, paid_amount, cash_amount,
         points_amount, price_version_id, pay_status, credit_used)
      VALUES ($1, $2, $3, '{}'::jsonb, $4, $5, $6, $7, 1, 'PAID', 0)`,
-    [refType, refId, o.userId, o.unitPrice, o.cash, o.cash, o.points],
+    [refType, refId, o.userId, o.unitPrice, paidFull, o.cash, o.points],
   );
 }

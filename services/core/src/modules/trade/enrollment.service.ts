@@ -641,9 +641,11 @@ export class EnrollmentService {
    * 律师维度已支付报名清单（C6 改价补偿对象的事实源）：pay_status=PAID 且所属场次/拼团
    * 未完成服务——session 排除 FINISHED/HOLD/SETTLED（服务完成）与 FAILED/CANCELLED（流标/
    * 取消退款轨道）；groupbuy 排除 EXPIRED/REJECTED/REFUNDED（CONVERTED 在册=服务经转化后
-   * 场次交付，W3 口径随拼团行计，报告注明）。paid_full_cents=paid_amount 全额整化分
-   * （D17 裁决：cash 分 + points，1 积分=1 分）。同 schema join（trade 域内，架构 §3.2 红线
-   * 只禁跨 schema）；只读池连接。
+   * 场次交付，W3 口径随拼团行计，报告注明）。**按 user_id 聚合（评审修复轮 F-1/R-W3-Q）**：
+   * 同用户多笔活跃 PAID 报名 cash/points 分别 SUM 合计为一行——补偿占比按用户合计支付额计，
+   * 授予/券指令恰一次（grant 幂等键=(user,kind,ref) 对多笔报名天然同键，不聚合必冲突或双计）。
+   * paid_full_cents=paid_amount 全额整化分（D17 裁决：cash 分 + points，1 积分=1 分）。
+   * 同 schema join（trade 域内，架构 §3.2 红线只禁跨 schema）；只读池连接。
    */
   async listActivePaidForLawyer(lawyerId: number): Promise<ActivePaidEnrollmentItem[]> {
     assertPositiveInt(lawyerId, 'lawyer_id');
@@ -652,17 +654,22 @@ export class EnrollmentService {
       cash: string;
       points: number;
     }>(
-      `SELECT e.user_id::text AS user_id, e.cash_amount::text AS cash, e.points_amount AS points
-         FROM trade.enrollments e
-         JOIN trade.sessions s ON e.ref_type = 'session' AND s.id = e.ref_id
-        WHERE s.lawyer_id = $1 AND e.pay_status = 'PAID'
-          AND s.status NOT IN ('FINISHED', 'HOLD', 'SETTLED', 'FAILED', 'CANCELLED')
-        UNION ALL
-       SELECT e.user_id::text AS user_id, e.cash_amount::text AS cash, e.points_amount AS points
-         FROM trade.enrollments e
-         JOIN trade.group_buys g ON e.ref_type = 'groupbuy' AND g.id = e.ref_id
-        WHERE g.lawyer_id = $1 AND e.pay_status = 'PAID'
-          AND g.status NOT IN ('EXPIRED', 'REJECTED', 'REFUNDED')`,
+      `SELECT t.user_id, SUM(t.cash_amount)::text AS cash, SUM(t.points_amount)::int AS points
+         FROM (
+           SELECT e.user_id::text AS user_id, e.cash_amount, e.points_amount
+             FROM trade.enrollments e
+             JOIN trade.sessions s ON e.ref_type = 'session' AND s.id = e.ref_id
+            WHERE s.lawyer_id = $1 AND e.pay_status = 'PAID'
+              AND s.status NOT IN ('FINISHED', 'HOLD', 'SETTLED', 'FAILED', 'CANCELLED')
+           UNION ALL
+           SELECT e.user_id::text AS user_id, e.cash_amount, e.points_amount
+             FROM trade.enrollments e
+             JOIN trade.group_buys g ON e.ref_type = 'groupbuy' AND g.id = e.ref_id
+            WHERE g.lawyer_id = $1 AND e.pay_status = 'PAID'
+              AND g.status NOT IN ('EXPIRED', 'REJECTED', 'REFUNDED')
+         ) t
+        GROUP BY t.user_id
+        ORDER BY t.user_id`,
       [lawyerId],
     );
     return res.rows.map((r) => ({
