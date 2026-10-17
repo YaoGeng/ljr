@@ -60,6 +60,56 @@ export interface AuditStatusView {
   readonly reason?: string;
 }
 
+/** 工作台队列条目（H1 GET /admin/lawyers；snake_case 出站口径，无 license 字段） */
+export interface SubmissionQueueItem {
+  /** lawyer_profiles.id（H1 审核/档案路由对象 {id}） */
+  readonly id: number;
+  readonly lawyer_user_id: number;
+  readonly audit_status: LawyerAuditStatus;
+  readonly firm_name: string | null;
+  readonly material_version: number;
+  /** 最近一次提交时刻 ISO（SLA 起算事实源；行必有=提交即落） */
+  readonly submitted_at: string | null;
+}
+
+/** 资质档案视图（H1 GET /admin/lawyers/{id}/profile 的 A3a 聚合源；无 license 字段） */
+export interface QualificationProfileView {
+  readonly id: number;
+  readonly lawyer_user_id: number;
+  readonly audit_status: LawyerAuditStatus;
+  readonly firm_name: string | null;
+  /** A3b 进件回填的律所 id（trade/pricing 域裸引用；进件前 null） */
+  readonly firm_id: number | null;
+  readonly material_version: number;
+  readonly submitted_at: string | null;
+  readonly audited_at: string | null;
+  /** W3 T10 G-A 接线后：admin 面新行必落；存量 NULL 行不回填（历史不可变） */
+  readonly auditor_id: number | null;
+  readonly reject_reason?: string | null;
+}
+
+interface QueueRow {
+  readonly id: string;
+  readonly user_id: string;
+  readonly audit_status: LawyerAuditStatus;
+  readonly firm_name: string | null;
+  readonly material_version: number;
+  readonly submitted_at: Date | null;
+}
+
+interface ViewRow {
+  readonly id: string;
+  readonly user_id: string;
+  readonly firm_id: string | null;
+  readonly firm_name: string | null;
+  readonly audit_status: LawyerAuditStatus;
+  readonly material_version: number;
+  readonly submitted_at: Date | null;
+  readonly audited_at: Date | null;
+  readonly auditor_id: string | null;
+  readonly reject_reason: string | null;
+}
+
 interface LawyerProfileRow {
   readonly id: string;
   readonly user_id: string;
@@ -81,6 +131,10 @@ const ACTION_TO_STATUS: Record<LawyerAuditAction, LawyerAuditStatus> = {
 /** 并发窗口唯一约束败退（23505）：user 唯一/盲索引唯一的竞窗兜底入口（显式复检，不吞错） */
 function isUniqueViolation(e: unknown): boolean {
   return typeof e === 'object' && e !== null && (e as { code?: string }).code === '23505';
+}
+
+function isPositiveInt(v: unknown): v is number {
+  return typeof v === 'number' && Number.isInteger(v) && v > 0 && v <= Number.MAX_SAFE_INTEGER;
 }
 
 /**
@@ -247,11 +301,35 @@ export class LawyerQualificationService {
   }
 
   /**
-   * POST /admin/lawyers/{id}/audit（H1 审核操作面，契约归 A3a）：{id}=lawyer_profiles.id；
-   * 全动作经守卫（前置缺失=非法迁移拒绝并留痕）；approve/suspend 同事务发领域事件。
-   * auditor_id=R-W2-F admin 鉴权占位期间 NULL（H1 接线后取 admin claims 回填）。
+   * 审核动作（自管事务形态，既有调用兼容）：auditorId 传 admin claims userId 时回填
+   * auditor_id（⚠W3-8/G-A R-W2-G 绑定项）；服务级内部调用不传保持 NULL（历史行为）。
+   * H1 ops 控制器（同一 HTTP 面）走 auditWithExecutor 与 ops.audit_logs 同事务缝合。
    */
-  async audit(profileId: number, input: AuditActionInput): Promise<{ status: LawyerAuditStatus }> {
+  async audit(
+    profileId: number,
+    input: AuditActionInput,
+    auditorId?: number,
+  ): Promise<{ status: LawyerAuditStatus }> {
+    return this.pool.withTransaction((uow) =>
+      this.auditWithExecutor(uow, profileId, input, auditorId ?? null),
+    );
+  }
+
+  /**
+   * 审核动作（外部事务形态，W3 T10 H1 缝合点）：{id}=lawyer_profiles.id；全动作经守卫
+   * （前置缺失=非法迁移拒绝并留痕）；approve/suspend 同事务发领域事件；每个动作都回填
+   * auditor_id（auditorId=null=服务级内部调用，历史上恒 NULL 的兼容形态；存量 NULL 行
+   * 不回填——历史不可变，新行必落）。
+   */
+  async auditWithExecutor(
+    uow: SqlExecutor,
+    profileId: number,
+    input: AuditActionInput,
+    auditorId: number | null,
+  ): Promise<{ status: LawyerAuditStatus }> {
+    if (auditorId !== null && !isPositiveInt(auditorId)) {
+      throw new AppError(ErrorCode.InvalidArgument, 'auditor_id 必须为正整数或 null');
+    }
     // action 专属必填项在事务外先校验（reject_reason/suspend reason；parseAuditActionBody 同规则）
     if (input.action === 'reject' && (!input.rejectReason || input.rejectReason.trim() === '')) {
       throw new AppError(ErrorCode.InvalidArgument, '拒绝必须携带 reject_reason');
@@ -261,7 +339,7 @@ export class LawyerQualificationService {
     }
     const to = ACTION_TO_STATUS[input.action];
 
-    return this.pool.withTransaction(async (uow) => {
+    {
       const row = await this.profileByIdForUpdate(uow, profileId);
       if (row === undefined) {
         throw new AppError(ErrorCode.NotFound, `律师资质档案 ${profileId} 不存在`);
@@ -276,14 +354,17 @@ export class LawyerQualificationService {
       });
 
       const updates: Record<LawyerAuditAction, { set: string; values: unknown[] }> = {
-        claim: { set: `audit_status = 'IN_REVIEW'`, values: [] },
-        approve: { set: `audit_status = 'PASSED', audited_at = now()`, values: [] },
-        reject: {
-          set: `audit_status = 'REJECTED', audited_at = now(), reject_reason = $3`,
-          values: [input.rejectReason],
+        claim: { set: `audit_status = 'IN_REVIEW', auditor_id = $3`, values: [auditorId] },
+        approve: {
+          set: `audit_status = 'PASSED', audited_at = now(), auditor_id = $3`,
+          values: [auditorId],
         },
-        suspend: { set: `audit_status = 'SUSPENDED'`, values: [] },
-        resume: { set: `audit_status = 'PASSED'`, values: [] },
+        reject: {
+          set: `audit_status = 'REJECTED', audited_at = now(), auditor_id = $3, reject_reason = $4`,
+          values: [auditorId, input.rejectReason],
+        },
+        suspend: { set: `audit_status = 'SUSPENDED', auditor_id = $3`, values: [auditorId] },
+        resume: { set: `audit_status = 'PASSED', auditor_id = $3`, values: [auditorId] },
       };
       const plan = updates[input.action];
       const updated = await uow.query<{ id: string }>(
@@ -317,7 +398,7 @@ export class LawyerQualificationService {
         `lawyer.audit: ${input.action} profile_id=${profileId} user_id=${userId} ${row.audit_status}→${to}`,
       );
       return { status: to };
-    });
+    }
   }
 
   /** GET /lawyer/audit-status（本人视角）：无档案=DRAFT；REJECTED 附拒绝事由（§5 {status, reason?}） */
@@ -343,6 +424,99 @@ export class LawyerQualificationService {
       [lawyerUserId],
     );
     return found.rows.length > 0;
+  }
+
+  // ===========================================================================
+  // H1 导出面（W3 T10）：工作台队列 / 档案视图（只读；H1 禁 join identity 表——架构 §3.2，
+  // 经本服务面取数）。出参一律无 license 字段（PII 红线 §9）。
+  // ===========================================================================
+
+  /**
+   * 入驻审核工作台队列（H1 GET /admin/lawyers 数据源）：statuses 缺省=审核队列
+   * （SUBMITTED|IN_REVIEW）；提交时间 ASC（最久在审在前=SLA 剩余最小排序语义，H1 R-01 看板），
+   * id ASC 稳定次序；分页（page 从 1 起，pageSize 上限 100）。
+   */
+  async listSubmissions(filter: {
+    readonly statuses?: readonly LawyerAuditStatus[];
+    readonly page?: number;
+    readonly pageSize?: number;
+  }): Promise<{ items: SubmissionQueueItem[]; total: number }> {
+    const VALID: readonly LawyerAuditStatus[] = [
+      'SUBMITTED',
+      'IN_REVIEW',
+      'PASSED',
+      'REJECTED',
+      'SUSPENDED',
+    ];
+    const statuses = filter.statuses ?? ['SUBMITTED', 'IN_REVIEW'];
+    if (statuses.length === 0) {
+      throw new AppError(ErrorCode.InvalidArgument, 'statuses 不能为空（缺省=审核队列）');
+    }
+    for (const s of statuses) {
+      if (!VALID.includes(s)) {
+        throw new AppError(ErrorCode.InvalidArgument, `status 非法：${String(s)}`);
+      }
+    }
+    const page = filter.page ?? 1;
+    const pageSize = Math.min(filter.pageSize ?? 20, 100);
+    if (!isPositiveInt(page) || !isPositiveInt(filter.pageSize ?? 1)) {
+      throw new AppError(ErrorCode.InvalidArgument, 'page/pageSize 必须为正整数');
+    }
+
+    const found = await this.pool.query<QueueRow>(
+      `SELECT id, user_id, audit_status, firm_name, material_version, submitted_at
+         FROM identity.lawyer_profiles
+        WHERE audit_status = ANY($1::varchar[])
+        ORDER BY submitted_at ASC NULLS LAST, id ASC
+        LIMIT $2 OFFSET $3`,
+      [statuses, pageSize, (page - 1) * pageSize],
+    );
+    const counted = await this.pool.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM identity.lawyer_profiles WHERE audit_status = ANY($1::varchar[])`,
+      [statuses],
+    );
+    return {
+      items: found.rows.map((r) => ({
+        id: Number(r.id),
+        lawyer_user_id: Number(r.user_id),
+        audit_status: r.audit_status,
+        firm_name: r.firm_name,
+        material_version: r.material_version,
+        submitted_at: r.submitted_at === null ? null : new Date(r.submitted_at).toISOString(),
+      })),
+      total: Number(counted.rows[0]?.n ?? 0),
+    };
+  }
+
+  /**
+   * 资质档案视图（H1 GET /admin/lawyers/{id}/profile 的 A3a 聚合源；{id}=lawyer_profiles.id）。
+   * 只读导出：状态/用户/律所（firm_name/firm_id）/材料版本/提交与审核时刻/auditor_id；
+   * 无 license 字段（PII 红线）；未知 id → undefined（H1 侧映射 404）。
+   */
+  async profileViewById(profileId: number): Promise<QualificationProfileView | undefined> {
+    if (!isPositiveInt(profileId)) {
+      throw new AppError(ErrorCode.InvalidArgument, 'lawyer_profiles.id 必须为正整数');
+    }
+    const found = await this.pool.query<ViewRow>(
+      `SELECT id, user_id, firm_id, firm_name, audit_status, material_version,
+              submitted_at, audited_at, auditor_id, reject_reason
+         FROM identity.lawyer_profiles WHERE id = $1`,
+      [profileId],
+    );
+    const r = found.rows[0];
+    if (r === undefined) return undefined;
+    return {
+      id: Number(r.id),
+      lawyer_user_id: Number(r.user_id),
+      audit_status: r.audit_status,
+      firm_name: r.firm_name,
+      firm_id: r.firm_id === null ? null : Number(r.firm_id),
+      material_version: r.material_version,
+      submitted_at: r.submitted_at === null ? null : new Date(r.submitted_at).toISOString(),
+      audited_at: r.audited_at === null ? null : new Date(r.audited_at).toISOString(),
+      auditor_id: r.auditor_id === null ? null : Number(r.auditor_id),
+      ...(r.reject_reason === null ? {} : { reject_reason: r.reject_reason }),
+    };
   }
 
   // ---------- 内部查询 ----------

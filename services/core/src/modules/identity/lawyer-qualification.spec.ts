@@ -13,6 +13,7 @@ import {
 } from '@ljr/shared';
 import { OutboxRelayService } from '../../infrastructure/outbox/outbox-relay.service';
 import { StateTransitionGuardService } from '../../infrastructure/state-machine/state-transition-guard.service';
+import { PgPoolService } from '../../infrastructure/sql';
 import { ensureTestDatabase, truncateAll } from '../../infrastructure/testing/db';
 import { IDENTITY_CONFIG, type IdentityConfig } from './identity.config';
 import { IdentityCryptoService } from './identity.crypto';
@@ -78,6 +79,7 @@ describe('A3a 领域层（状态机/盲索引唯一/重提版本/事件生产/A1
         firm_name: string | null;
         submitted_at: Date | null;
         audited_at: Date | null;
+        auditor_id: string | null;
         reject_reason: string | null;
       }
     | undefined
@@ -91,10 +93,11 @@ describe('A3a 领域层（状态机/盲索引唯一/重提版本/事件生产/A1
       firm_name: string | null;
       submitted_at: Date | null;
       audited_at: Date | null;
+      auditor_id: string | null;
       reject_reason: string | null;
     }>(
       `SELECT id, audit_status, material_version, material_fingerprint, license_no_blind_idx,
-              firm_name, submitted_at, audited_at, reject_reason
+              firm_name, submitted_at, audited_at, auditor_id, reject_reason
          FROM identity.lawyer_profiles WHERE user_id = $1`,
       [userId],
     );
@@ -675,6 +678,132 @@ describe('A3a 领域层（状态机/盲索引唯一/重提版本/事件生产/A1
       "SELECT (kind || '|' || file_ref) AS text FROM identity.qualification_files",
     );
     for (const row of fileTexts.rows) expect(row.text).not.toContain(LICENSE_A);
+  });
+
+  // ---------- W3 T10：H1 导出面（G-A R-W2-G auditor_id 回填绑定 + 工作台/档案只读导出） ----------
+
+  it('H1 导出面（R-W2-G 绑定项）：audit 带 auditorId → lawyer_profiles.auditor_id 落值（claim/approve/reject/suspend/resume 全动作）；存量服务级调用不传保持 NULL 兼容', async () => {
+    const userId = await seedUser('auditor');
+    await service.submitQualification(userId, {
+      licenseNo: LICENSE_A,
+      firmName: '北京审计律师事务所',
+      files: licenseFilesV1('a'),
+    });
+    const profileId = Number((await profileRow(userId))!.id);
+
+    // 未传 auditorId（既有服务级内部调用形态）→ NULL 兼容（历史行为不变）
+    await service.audit(profileId, { action: 'claim' });
+    expect((await profileRow(userId))!.auditor_id).toBeNull();
+
+    // admin 面透传（H1 ops 控制器恒传 claims userId）→ 每个动作都回填
+    await service.audit(profileId, { action: 'approve' }, 9001);
+    expect((await profileRow(userId))!.auditor_id).toBe('9001');
+    await service.audit(profileId, { action: 'suspend', reason: '投诉核查' }, 9002);
+    expect((await profileRow(userId))!.auditor_id).toBe('9002');
+    await service.audit(profileId, { action: 'resume' }, 9001);
+    expect((await profileRow(userId))!.auditor_id).toBe('9001');
+
+    // reject 链同样落值
+    await service.submitQualification(userId, {
+      licenseNo: LICENSE_A,
+      firmName: '北京审计律师事务所',
+      files: LICENSE_A_FILES_V2,
+    });
+    const profileId2 = Number((await profileRow(userId))!.id);
+    await service.audit(profileId2, { action: 'claim' }, 9003);
+    await service.audit(profileId2, { action: 'reject', rejectReason: '材料模糊' }, 9003);
+    expect((await profileRow(userId))!.auditor_id).toBe('9003');
+  });
+
+  it('H1 导出面：auditWithExecutor 外部事务变体——事务内可见、回滚即消失（H1 同事务落 ops.audit_logs 的缝合点）', async () => {
+    const userId = await seedUser('uow');
+    await service.submitQualification(userId, {
+      licenseNo: LICENSE_A,
+      firmName: '北京缝合律师事务所',
+      files: licenseFilesV1('a'),
+    });
+    const profileId = Number((await profileRow(userId))!.id);
+    const poolSvc = app.get(PgPoolService);
+
+    // 事务内迁移经同一连接可见（uow 读侧=H1 同事务缝合点）；回滚后状态还原
+    await expect(
+      poolSvc.withTransaction(async (uow) => {
+        const done = await service.auditWithExecutor(uow, profileId, { action: 'claim' }, 9001);
+        expect(done.status).toBe('IN_REVIEW');
+        const inTx = await uow.query<{ audit_status: string }>(
+          'SELECT audit_status FROM identity.lawyer_profiles WHERE user_id = $1',
+          [userId],
+        );
+        expect(inTx.rows[0]!.audit_status).toBe('IN_REVIEW');
+        throw new Error('rollback');
+      }),
+    ).rejects.toThrow('rollback');
+    expect((await profileRow(userId))!.audit_status).toBe('SUBMITTED');
+
+    // 正常提交路径：外部事务 + auditorId 落值
+    await poolSvc.withTransaction((uow) =>
+      service.auditWithExecutor(uow, profileId, { action: 'claim' }, 9001),
+    );
+    expect((await profileRow(userId))!.audit_status).toBe('IN_REVIEW');
+    expect((await profileRow(userId))!.auditor_id).toBe('9001');
+  });
+
+  it('H1 工作台导出面：listSubmissions 提交时间排序（ASC=最久在审在前）+status 过滤+分页（total/items）', async () => {
+    const u1 = await seedUser('q1');
+    const u2 = await seedUser('q2');
+    const u3 = await seedUser('q3');
+    await service.submitQualification(u1, { licenseNo: LICENSE_A, files: licenseFilesV1('a') });
+    await service.submitQualification(u2, { licenseNo: 'LICENSE-SPEC-0002', files: licenseFilesV1('b') });
+    await service.submitQualification(u3, { licenseNo: 'LICENSE-SPEC-0003', files: licenseFilesV1('c') });
+
+    // 默认=审核队列（SUBMITTED|IN_REVIEW），提交时间 ASC
+    const queue = await service.listSubmissions({});
+    expect(queue.total).toBe(3);
+    expect(queue.items.map((i) => i.lawyer_user_id)).toEqual([u1, u2, u3]);
+    expect(queue.items[0]).toMatchObject({
+      audit_status: 'SUBMITTED',
+      material_version: 1,
+    });
+    expect(typeof queue.items[0]!.id).toBe('number');
+
+    // u1 领取后：status=IN_REVIEW 单过滤仍含；PASSED 过滤不含
+    const p1 = Number((await profileRow(u1))!.id);
+    await service.audit(p1, { action: 'claim' }, 9001);
+    const inReview = await service.listSubmissions({ statuses: ['IN_REVIEW'] });
+    expect(inReview.items.map((i) => i.lawyer_user_id)).toEqual([u1]);
+    const passed = await service.listSubmissions({ statuses: ['PASSED'] });
+    expect(passed.total).toBe(0);
+
+    // 分页：page=2 pageSize=2 → 恰剩 1 条；越界页空
+    const page2 = await service.listSubmissions({ page: 2, pageSize: 2 });
+    expect(page2.items).toHaveLength(1);
+    expect(page2.total).toBe(3);
+    expect((await service.listSubmissions({ page: 9, pageSize: 2 })).items).toEqual([]);
+  });
+
+  it('H1 档案导出面：profileViewById 返回资质状态/用户/律所/材料版本/时刻/auditor_id（无 license 字段=PII 红线）；未知 id → undefined', async () => {
+    const userId = await seedUser('view');
+    await service.submitQualification(userId, {
+      licenseNo: LICENSE_A,
+      firmName: '北京档案律师事务所',
+      files: licenseFilesV1('a'),
+    });
+    const profileId = Number((await profileRow(userId))!.id);
+    await service.audit(profileId, { action: 'claim' }, 9001);
+
+    const view = await service.profileViewById(profileId);
+    expect(view).toMatchObject({
+      id: profileId,
+      lawyer_user_id: userId,
+      audit_status: 'IN_REVIEW',
+      firm_name: '北京档案律师事务所',
+      firm_id: null,
+      material_version: 1,
+      auditor_id: 9001,
+      submitted_at: expect.any(String),
+    });
+    expect(JSON.stringify(view)).not.toContain(LICENSE_A); // PII 红线：导出面无明文证号字段
+    expect(await service.profileViewById(999999)).toBeUndefined();
   });
 });
 
