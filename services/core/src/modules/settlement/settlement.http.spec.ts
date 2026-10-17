@@ -56,6 +56,8 @@ describe('F3 HTTP 契约（§5，需 PG）', () => {
   let pool: Pool;
   let app: INestApplication;
   let jwt: JwtService;
+  /** G-A 同批接线（TODO(H1-W3-T10) 收尾）：DB 预置 admin 形态 token（roles 持 admin 旗标） */
+  let adminToken: string;
   let settlements: SettlementService;
   let payment: PaymentGatewayService;
   let orderSeq = 0;
@@ -91,6 +93,7 @@ describe('F3 HTTP 契约（§5，需 PG）', () => {
     app = moduleRef.createNestApplication();
     await app.init();
     jwt = app.get(JwtService);
+    adminToken = await jwt.signAsync({ sub: '990004', role: 'user', roles: ['user', 'admin'] });
     settlements = app.get(SettlementService);
     payment = app.get(PaymentGatewayService);
   });
@@ -158,7 +161,7 @@ describe('F3 HTTP 契约（§5，需 PG）', () => {
     });
   });
 
-  it('GET /admin/settlements?status=HOLD：后台过滤视图（鉴权占位 TODO(H1-W3-T10)）；status 越域 400；缺省全量', async () => {
+  it('GET /admin/settlements?status=HOLD：后台过滤视图（W3 T10 G-A 接线：admin 夹具）；status 越域 400；缺省全量', async () => {
     await seedFirmMerchant(pool, FIRM, 'ACTIVE');
     await settlements.enterSettlement({
       ref_type: 'session',
@@ -177,16 +180,45 @@ describe('F3 HTTP 契约（§5，需 PG）', () => {
       payment_order_id: await createPaidOrder('60.00'),
     });
 
-    const holding = await request(app.getHttpServer()).get('/admin/settlements?status=HOLD');
+    const holding = await request(app.getHttpServer())
+      .get('/admin/settlements?status=HOLD')
+      .set('Authorization', `Bearer ${adminToken}`);
     expect(holding.status).toBe(200);
     expect(holding.body).toHaveLength(2);
 
-    const all = await request(app.getHttpServer()).get('/admin/settlements');
+    const all = await request(app.getHttpServer())
+      .get('/admin/settlements')
+      .set('Authorization', `Bearer ${adminToken}`);
     expect(all.status).toBe(200);
     expect(all.body).toHaveLength(2);
 
-    const bad = await request(app.getHttpServer()).get('/admin/settlements?status=WEIRD');
+    const bad = await request(app.getHttpServer())
+      .get('/admin/settlements?status=WEIRD')
+      .set('Authorization', `Bearer ${adminToken}`);
     expect(bad.status).toBe(400);
     expect(bad.body.code).toBe(ErrorCode.InvalidArgument);
+  });
+
+  it('G-A 同批接线收尾（TODO(H1-W3-T10)）：/admin/settlements 未认证 401 / 律师 token（未持 admin 旗标）403 / admin 200', async () => {
+    const anon = await request(app.getHttpServer()).get('/admin/settlements');
+    expect(anon.status).toBe(401);
+    expect(anon.body.code).toBe(ErrorCode.Unauthorized);
+
+    const lawyerToken = await jwt.signAsync({
+      sub: String(LAWYER),
+      role: 'lawyer',
+      roles: ['user', 'lawyer'],
+    });
+    const asLawyer = await request(app.getHttpServer())
+      .get('/admin/settlements')
+      .set('Authorization', `Bearer ${lawyerToken}`);
+    expect(asLawyer.status).toBe(403);
+    expect(asLawyer.body.code).toBe(ErrorCode.RoleForbidden);
+
+    const ok = await request(app.getHttpServer())
+      .get('/admin/settlements')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(ok.status).toBe(200);
+    expect(ok.body).toEqual([]);
   });
 });

@@ -8,9 +8,9 @@
  * 鉴权口径：/lawyer/* = JWT 本人语义面 + @RequireRole('lawyer')（refund/points mine 同款；
  * 双角色同 App 下结算属律师本人，settlements.lawyer_id=identity 侧用户 id 过滤）。
  *
- * TODO(H1-W3-T10): /admin/settlements 统一接线 @RequireRole('admin')——本任务鉴权占位
- *   （V29 角色枚举 T10 才落位；G-A 前置门同批接线），形态照 A3b /firms/* 先例（对 Core
- *   内部契约面，服务剥离后由服务间认证接管）。
+ * W3 T10 G-A 同批接线（TODO(H1-W3-T10) 收尾）：/admin/settlements 挂 @RequireRole('admin')——
+ * 后台结算视图是运营对账面（含 HOLD 原因/费率等运营数据），未认证 401 / 未持 admin 旗标 403；
+ * 服务剥离后由服务间认证接管。
  */
 import { Controller, Get, Query, UseFilters, UseGuards } from '@nestjs/common';
 import { AppError, ErrorCode } from '@ljr/shared';
@@ -46,8 +46,10 @@ export class SettlementController {
     return this.settlements.listForLawyer(identity.userId);
   }
 
-  /** GET /admin/settlements?status=HOLD：后台视图（§5；status 形状校验五态，越域 400） */
+  /** GET /admin/settlements?status=HOLD：后台视图（§5；W3 T10 G-A 接线 admin 守卫；status 形状校验五态，越域 400） */
   @Get('admin/settlements')
+  @UseGuards(IdentityAuthGuard, IdentityRoleGuard)
+  @RequireRole('admin')
   async adminList(@Query('status') status?: string): Promise<readonly SettlementView[]> {
     if (status !== undefined && !SETTLEMENT_STATUSES.has(status)) {
       throw new AppError(

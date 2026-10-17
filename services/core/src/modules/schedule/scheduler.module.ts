@@ -6,6 +6,7 @@
  */
 import { Module } from '@nestjs/common';
 import { InfrastructureModule } from '../../infrastructure/infrastructure.module';
+import { IdentityAuthModule } from '../identity/identity-auth.module';
 import { SchedulerAdminController } from './scheduler-admin.controller';
 import { ScheduleExecutorRegistry } from './scheduler-executor.registry';
 import { MockPhoneAlertSink, SchedulerAlertService } from './scheduler-alerts';
@@ -13,7 +14,8 @@ import { SchedulerService } from './scheduler.service';
 import { SchedulerWorker } from './scheduler.worker';
 
 @Module({
-  imports: [InfrastructureModule],
+  // IdentityAuthModule（叶子）：/admin/scheduler/jobs 运维视图的 JWT/角色守卫件（W3 T10 G-A 接线）
+  imports: [InfrastructureModule, IdentityAuthModule],
   controllers: [SchedulerAdminController],
   providers: [
     // 执行器注册表默认空表：真实执行器（SLOT_*、RULE_EFFECTIVE 等）由后续任务经 register() 注册

@@ -1,21 +1,30 @@
 import 'reflect-metadata';
+import { randomBytes } from 'node:crypto';
 import request from 'supertest';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { JwtService } from '@nestjs/jwt';
 import type { Pool } from 'pg';
 import { ensureTestDatabase, truncateAll } from '../../infrastructure/testing/db';
+import { IDENTITY_CONFIG, type IdentityConfig } from '../identity/identity.config';
 import { SchedulerService } from './scheduler.service';
 import { SchedulerModule } from './scheduler.module';
 
 /**
  * I2 REST 契约（§5）：GET /admin/scheduler/jobs?status=&type= 运维视图。
- * 后台鉴权 ⚠决策位：admin 角色鉴权随 H1/H2（W2+）接入后替换，本批次只验证接口形态与过滤语义。
+ * W3 T10 G-A 同批接线：⚠决策位占位兑现——运维视图属 admin 面，挂 @RequireRole('admin')
+ * （未认证 401 / 未持 admin 旗标 403）；过滤语义用例改持 admin 夹具发起。
  */
 describe('I2 REST 契约 GET /admin/scheduler/jobs（需 PG）', () => {
   let pool: Pool;
   let app: INestApplication;
   let svc: SchedulerService;
+  let adminToken: string;
+  let userToken: string;
+
+  const adminGet = (url: string) =>
+    request(app.getHttpServer()).get(url).set('Authorization', `Bearer ${adminToken}`);
 
   const register = (refId: number, jobType: 'REMIND_10MIN' | 'ROOM_OPEN', dueOffsetMs: number) =>
     svc.registerJob(pool, {
@@ -27,10 +36,22 @@ describe('I2 REST 契约 GET /admin/scheduler/jobs（需 PG）', () => {
 
   beforeAll(async () => {
     pool = await ensureTestDatabase();
-    const moduleRef = await Test.createTestingModule({ imports: [SchedulerModule] }).compile();
+    const jwtSecret = randomBytes(32).toString('hex');
+    const identityConfig: IdentityConfig = {
+      phoneDataKey: randomBytes(32),
+      phoneBlindPepper: randomBytes(32).toString('hex'),
+      jwtSecret,
+    };
+    const moduleRef = await Test.createTestingModule({ imports: [SchedulerModule] })
+      .overrideProvider(IDENTITY_CONFIG)
+      .useValue(identityConfig)
+      .compile();
     app = moduleRef.createNestApplication();
     await app.init();
     svc = app.get(SchedulerService);
+    const jwt = new JwtService({ secret: jwtSecret });
+    adminToken = await jwt.signAsync({ sub: '990005', role: 'user', roles: ['user', 'admin'] });
+    userToken = await jwt.signAsync({ sub: '990006', role: 'user', roles: ['user'] });
   });
 
   afterAll(async () => {
@@ -49,7 +70,7 @@ describe('I2 REST 契约 GET /admin/scheduler/jobs（需 PG）', () => {
     await register(701, 'REMIND_10MIN', -3_000);
     await register(702, 'ROOM_OPEN', -1_000);
 
-    const res = await request(app.getHttpServer()).get('/admin/scheduler/jobs');
+    const res = await adminGet('/admin/scheduler/jobs');
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(2);
     expect(res.body[0]).toMatchObject({
@@ -69,7 +90,7 @@ describe('I2 REST 契约 GET /admin/scheduler/jobs（需 PG）', () => {
     await register(712, 'REMIND_10MIN', -2_000);
     await svc.cancelJob(pool, { jobType: 'REMIND_10MIN', refType: 'session', refId: 711 });
 
-    const res = await request(app.getHttpServer()).get('/admin/scheduler/jobs?status=CANCELLED');
+    const res = await adminGet('/admin/scheduler/jobs?status=CANCELLED');
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
     expect(res.body[0]).toMatchObject({ id: a.jobId, status: 'CANCELLED' });
@@ -79,14 +100,12 @@ describe('I2 REST 契约 GET /admin/scheduler/jobs（需 PG）', () => {
     await register(721, 'ROOM_OPEN', -3_000);
     await register(722, 'REMIND_10MIN', -2_000);
 
-    const byType = await request(app.getHttpServer()).get('/admin/scheduler/jobs?type=ROOM_OPEN');
+    const byType = await adminGet('/admin/scheduler/jobs?type=ROOM_OPEN');
     expect(byType.status).toBe(200);
     expect(byType.body).toHaveLength(1);
     expect(byType.body[0]).toMatchObject({ jobType: 'ROOM_OPEN', refId: 721 });
 
-    const combo = await request(app.getHttpServer()).get(
-      '/admin/scheduler/jobs?status=PENDING&type=REMIND_10MIN',
-    );
+    const combo = await adminGet('/admin/scheduler/jobs?status=PENDING&type=REMIND_10MIN');
     expect(combo.status).toBe(200);
     expect(combo.body).toHaveLength(1);
     expect(combo.body[0]).toMatchObject({ jobType: 'REMIND_10MIN', refId: 722 });
@@ -96,20 +115,36 @@ describe('I2 REST 契约 GET /admin/scheduler/jobs（需 PG）', () => {
     await register(731, 'REMIND_10MIN', -3_000);
     await register(732, 'REMIND_10MIN', -2_000);
 
-    const limited = await request(app.getHttpServer()).get('/admin/scheduler/jobs?limit=1');
+    const limited = await adminGet('/admin/scheduler/jobs?limit=1');
     expect(limited.status).toBe(200);
     expect(limited.body).toHaveLength(1);
 
-    const badStatus = await request(app.getHttpServer()).get('/admin/scheduler/jobs?status=FOO');
+    const badStatus = await adminGet('/admin/scheduler/jobs?status=FOO');
     expect(badStatus.status).toBe(400);
     expect(badStatus.body.code).toBe('E_INVALID_ARGUMENT');
 
-    const badType = await request(app.getHttpServer()).get('/admin/scheduler/jobs?type=NOT_A_JOB');
+    const badType = await adminGet('/admin/scheduler/jobs?type=NOT_A_JOB');
     expect(badType.status).toBe(400);
     expect(badType.body.code).toBe('E_INVALID_ARGUMENT');
 
-    const badLimit = await request(app.getHttpServer()).get('/admin/scheduler/jobs?limit=abc');
+    const badLimit = await adminGet('/admin/scheduler/jobs?limit=abc');
     expect(badLimit.status).toBe(400);
     expect(badLimit.body.code).toBe('E_INVALID_ARGUMENT');
+  });
+
+  it('G-A 同批接线：未认证 401 / 未持 admin 旗标 403 / admin 200', async () => {
+    const anon = await request(app.getHttpServer()).get('/admin/scheduler/jobs');
+    expect(anon.status).toBe(401);
+    expect(anon.body.code).toBe('E_UNAUTHORIZED');
+
+    const asUser = await request(app.getHttpServer())
+      .get('/admin/scheduler/jobs')
+      .set('Authorization', `Bearer ${userToken}`);
+    expect(asUser.status).toBe(403);
+    expect(asUser.body.code).toBe('E_ROLE_FORBIDDEN');
+
+    const ok = await adminGet('/admin/scheduler/jobs');
+    expect(ok.status).toBe(200);
+    expect(ok.body).toEqual([]);
   });
 });

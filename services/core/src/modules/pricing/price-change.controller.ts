@@ -6,10 +6,10 @@
  *   GET  /pricing/histories?lawyer_id= → 改价记录列表（审计/比对取数面）
  *
  * 鉴权口径：/lawyer/* = JWT 本人语义面 + @RequireRole('lawyer')（B3 PUT 同款）；
- * GET 面公开（B3 GET 先例：最小实现不设角色限制，报告标注）。
- *
- * TODO(H1-W3-T10): /pricing/change/{id}/approve 统一接线 @RequireRole('admin')——本任务鉴权
- *   占位（admin 角色枚举 T10 才落位），形态照 A3b /firms/* 与 F3 /admin/settlements 先例。
+ * GET 面公开（B3 GET 先例：最小实现不设角色限制，报告标注）；
+ * approve=W3 T10 G-A 同批接线（TODO(H1-W3-T10) 收尾）@RequireRole('admin')——审批回调
+ * 是运营兜底动作（approval_source=MANUAL），未认证 401 / 未持 admin 旗标 403；
+ * 服务剥离后由服务间认证接管（H3 工单系统回调同口径）。
  *
  * 429 FREQ_EXCEEDED 契约位保留不用：PRD §8.2 无滥用 429 明确定义（简报 T9 裁决），超限
  * 走审批兜底档（200 PENDING_APPROVAL）——本面不产生 429。
@@ -44,8 +44,10 @@ export class PriceChangeController {
     return this.priceChange.requestChange(identity.userId, parseChangeBody(body));
   }
 
-  /** POST /pricing/change/{id}/approve：①人工兜底（TODO(H1-W3-T10) admin 接线） */
+  /** POST /pricing/change/{id}/approve：①人工兜底（W3 T10 G-A 接线 @RequireRole('admin')） */
   @Post('pricing/change/:id/approve')
+  @UseGuards(IdentityAuthGuard, IdentityRoleGuard)
+  @RequireRole('admin')
   approve(@Param('id') id: string, @Body() body: unknown): Promise<{ result: string }> {
     return this.priceChange.approve(parseHistoryId(id), parseApproveBody(body));
   }

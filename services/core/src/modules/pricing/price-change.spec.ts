@@ -102,6 +102,8 @@ describe('C6 改价与补偿（§4/§5/§7/§9/§10，需 PG）', () => {
   let b3: PricingConfigService;
   let points: PointsService;
   const lawyerTokens = new Map<number, string>();
+  /** G-A 同批接线（TODO(H1-W3-T10) 收尾）：DB 预置 admin 形态 token（roles 持 admin 旗标） */
+  let adminToken: string;
   let slotSeq = 0;
 
   const mintToken = async (userId: number, role: 'user' | 'lawyer'): Promise<string> =>
@@ -120,6 +122,7 @@ describe('C6 改价与补偿（§4/§5/§7/§9/§10，需 PG）', () => {
   const approve = (historyId: number, body: unknown) =>
     request(app.getHttpServer())
       .post(`/pricing/change/${historyId}/approve`)
+      .set('Authorization', `Bearer ${adminToken}`)
       .send(body as object);
 
   const revoke = (historyId: number, token?: string) =>
@@ -265,6 +268,11 @@ describe('C6 改价与补偿（§4/§5/§7/§9/§10，需 PG）', () => {
     ]) {
       lawyerTokens.set(id, await mintToken(id, 'lawyer'));
     }
+    adminToken = await jwt.signAsync({
+      sub: '990001',
+      role: 'user',
+      roles: ['user', 'admin'],
+    });
   });
 
   afterAll(async () => {
@@ -315,6 +323,35 @@ describe('C6 改价与补偿（§4/§5/§7/§9/§10，需 PG）', () => {
     });
     expect(moneyNumber.status).toBe(422);
     expect(moneyNumber.body.code).toBe(ErrorCode.MoneyInvalidFormat);
+  });
+
+  it('G-A 同批接线收尾（TODO(H1-W3-T10)）：approve 未认证 401 / 律师 token（未持 admin 旗标）403 / admin 可达', async () => {
+    await seedVersion(LAWYER_LE10, '100.00');
+    await seedSession(LAWYER_LE10, 'CREATED', USER_A); // 在团降价 → PENDING_APPROVAL
+    const res = await postChange(LAWYER_LE10, {
+      base_version: 1,
+      per_head: '90.00',
+      one_on_one_prices: VALID_1V1,
+    });
+    expect(res.body.result).toBe('PENDING_APPROVAL');
+    const historyId = res.body.history_id as number;
+
+    const anon = await request(app.getHttpServer())
+      .post(`/pricing/change/${historyId}/approve`)
+      .send({ approved: true, approval_id: 8951 });
+    expect(anon.status).toBe(401);
+    expect(anon.body.code).toBe(ErrorCode.Unauthorized);
+
+    const asLawyer = await request(app.getHttpServer())
+      .post(`/pricing/change/${historyId}/approve`)
+      .set('Authorization', `Bearer ${lawyerTokens.get(LAWYER_UP) ?? ''}`)
+      .send({ approved: true, approval_id: 8951 });
+    expect(asLawyer.status).toBe(403);
+    expect(asLawyer.body.code).toBe(ErrorCode.RoleForbidden);
+
+    const ok = await approve(historyId, { approved: true, approval_id: 8951 });
+    expect(ok.status).toBe(201);
+    expect(ok.body.result).toBe('EFFECTED');
   });
 
   it('R-01① 在团涨价：EFFECTED 直效（经 B3 落版）+ 信用事件 kind=PRICE_UP + 已锁定用户 PRICE_UP_LOCKED 话术（PRD 逐字）', async () => {
