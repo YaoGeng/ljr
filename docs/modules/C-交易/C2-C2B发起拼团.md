@@ -12,6 +12,7 @@
 - 结构化问题标签引导（消费 E3 GET /specialty/question-tree，内置引导 UI 多选+补充）
 - 截止时间（默认开始前 24h ⚠）；发布即锁价格快照
 - 一键重新发起（复制原任务参数为新任务；原任务不可修改）
+- **携带当前城市与垂直发布（specialty 原有；city 增列=发起人当前城市，V1 单城北京——2026-10-17 双维度框架，同城 × 同垂直=成团前提）**
 
 ## 3. 领域模型
 group_buys(
@@ -20,6 +21,7 @@ group_buys(
   sub_min smallint NOT NULL, sub_max smallint NOT NULL,
   share_price numeric(10,2) NOT NULL,          -- = session_total_default ÷ sub_min（发布时固化）
   question_tags jsonb NOT NULL, deadline timestamptz NOT NULL,
+  city varchar(32) NOT NULL DEFAULT '北京',      -- 城市维度（2026-10-17 双维度框架，V31；城市码口径 ⚠W3-10）
   status varchar(20) NOT NULL, lawyer_confirm_by timestamptz NULL,
   CHECK (sub_min <= sub_max)
 )
@@ -32,8 +34,8 @@ PUBLISHED/REACHED → CONVERTED（C4 认领转化）
 守卫：发起人取消仅 PUBLISHED 且 joined<sub_min（有他人加入后不可单方取消，走协商/客服 ⚠未定义——列待澄清）。
 
 ## 5. 接口契约
-| POST | /group-buys | {lawyer_id, specialty, slot_start, sub_min, sub_max, question_tags, deadline?} | {group_buy, share_price, payment_order} | 409 SLOT_TAKEN / 400 OUT_OF_RANGE / 403 RESTRICTED | 幂等键=user+slot_start
-| GET  | /group-buys?specialty= | - | 列表（已加入数/倒计时/分摊额） | - | 否
+| POST | /group-buys | {lawyer_id, specialty, city?, slot_start, sub_min, sub_max, question_tags, deadline?} | {group_buy, share_price, payment_order} | 409 SLOT_TAKEN / 400 OUT_OF_RANGE / 403 RESTRICTED | 幂等键=user+slot_start（city 缺省=当前城市，V1=北京）
+| GET  | /group-buys?specialty=&city= | - | 列表（已加入数/倒计时/分摊额；city=同城筛选） | - | 否
 | POST | /group-buys/{id}/cancel | - | {status} | 409 HAS_JOINED | 否
 | POST | /group-buys/{id}/recreate | - | 新任务 ID | - | 幂等键=source_id
 
@@ -47,6 +49,7 @@ PUBLISHED/REACHED → CONVERTED（C4 认领转化）
 - R-03 快照锁定：加入用户按发布时 share_price 支付 ｜PRD §8.2
 - R-04 子范围人数不可修改，只能取消后重新发起 ｜PRD §6.3/§9.2
 - R-05 达 sub_min 即锁人；成团后不补不退 ｜PRD §8.1
+- R-06 发布携带 specialty/city 双维度（同城 × 同垂直=成团前提；V1 单城单垂直，字段先行）｜PRD §7.1.3/§1.2（2026-10-17）
 
 ## 8. 非功能要求
 - 发布事务（B2 PENDING_PAYMENT 锁+插入+支付单创建）P95 ≤150ms；列表含倒计时（客户端计算+服务端 deadline）。
@@ -61,6 +64,7 @@ PUBLISHED/REACHED → CONVERTED（C4 认领转化）
 - [ ] 未支付 10min 锁释放后他人可发布同段（B2 联调）
 - [ ] 一键重新发起复制参数且原任务状态不变
 - [ ] 达 sub_min 后新加入被拒（守卫）
+- [ ] 发布物化 city/specialty 且 ?city= 筛选生效（2026-10-17 双维度增量，随 V31）
 
 ## 11. 待澄清点
 - ⚠04§8-14 截止延长；发起人在他人加入后的取消路径未定义（新增待澄清，建议走客服工单）。

@@ -10,7 +10,7 @@
 ## 2. 功能点
 - 开团配置页：自动填入默认价格与人数，律师可修改本次价格与人数（仅本次有效）
 - enroll_deadline 设置（默认开始前 24h ⚠，律师可改）
-- 用户端列表：律师、时间、计价方式、单价、已报名/还差几人、沟通形式（仅审核通过律师）；**卡片附律师实力摘要（执业年限/专长/信用分/成团率——批量调 H1 GET /lawyers/{id}/profile/summary，禁直查 identity/ops schema，2026-10-16 PRD §7.1.2 增量）**
+- 用户端列表：律师、时间、计价方式、单价、已报名/还差几人、沟通形式（仅审核通过律师）；**按当前城市 × 垂直过滤（?city= 同城筛选——同城=成团地理前提；2026-10-17 双维度框架）**；**卡片附律师实力摘要（执业年限/专长/信用分/成团率——批量调 H1 GET /lawyers/{id}/profile/summary，禁直查 identity/ops schema，2026-10-16 PRD §7.1.2 增量）**
 - 律师场次看板：GET /lawyer/sessions/stats（报名率/成团率/到场率/1对1转化率；统计面同步供 H1 实力档案公开面聚合，口径=H4，2026-10-16 增量）
 
 ## 3. 领域模型
@@ -23,6 +23,8 @@ sessions(
   session_total numeric(12,2) NOT NULL,        -- 场次总价基数（违约金计算用）
   capacity smallint NOT NULL, joined smallint NOT NULL DEFAULT 0,
   enroll_deadline timestamptz NOT NULL, room_mode varchar(32) NOT NULL,
+  specialty varchar(32) NOT NULL DEFAULT 'labor_arbitration',  -- 垂直维度（2026-10-17 双维度框架，V31）
+  city varchar(32) NOT NULL DEFAULT '北京',                     -- 城市维度（默认=律师执业城市；城市码口径 ⚠W3-10）
   status varchar(20) NOT NULL,                 -- 见状态机
   created_at timestamptz, CHECK (joined <= capacity), CHECK (capacity BETWEEN 2 AND 50)
 )
@@ -36,7 +38,7 @@ CREATED → FAILED(截止未满) → REFUNDED
 
 ## 5. 接口契约
 | POST | /sessions | {slot_start, price_mode, unit_price?, capacity, enroll_deadline?, room_mode} | {session} | 409 SLOT_TAKEN / 403 RESTRICTED(停接) | 幂等键=lawyer+slot_start
-| GET  | /sessions?specialty=&lawyer=&from=&to= | 筛选 | 列表（仅 lawyer 审核 PASSED） | - | 否
+| GET  | /sessions?specialty=&city=&lawyer=&from=&to= | 筛选（city=同城筛选） | 列表（仅 lawyer 审核 PASSED） | - | 否
 | GET  | /sessions/{id} | - | 详情+剩余席位 | - | 否
 | GET  | /lawyer/sessions/stats?from=&to= | - | {enroll_rate, group_rate, attendance_rate, ooo_rate} | - | 否（读 H4 聚合/读副本）
 
@@ -50,6 +52,7 @@ CREATED → FAILED(截止未满) → REFUNDED
 - R-03 截止未满 → 流标 → 全额退款（F2）｜PRD §8.1
 - R-04 session_total 基数：per_head 模式 = 单价×选定人数；total 模式 = 开团时总价 ｜PRD §8.6
 - R-05 开团入口校验 G1 限制令（停接/连续违规）｜PRD §8.8
+- R-06 场次物化 specialty/city 双维度：specialty=当前垂直（默认 labor_arbitration）；city 默认=律师执业城市（A3a 登记），V1 单城（2026-10-17 双维度框架）｜PRD §7.1.2/§1.2
 
 ## 8. 非功能要求
 - 列表 P95 ≤300ms（缓存 30s）；开团事务（B2 加锁+插入）P95 ≤100ms。
@@ -65,6 +68,7 @@ CREATED → FAILED(截止未满) → REFUNDED
 - [ ] 停接律师开团被 403
 - [ ] stats 四率出数（H4 数据源联调）
 - [ ] takedown 后列表卡片摘要同步隐藏（LawyerProfileTakedown 消费，H1 联调=W3）
+- [ ] 双维度字段物化与 ?city= 筛选（默认值/过滤命中/空集，2026-10-17 增量，随 V31）
 
 ## 11. 待澄清点
 - ⚠04§8-3 B2C 截止时间默认规则。
