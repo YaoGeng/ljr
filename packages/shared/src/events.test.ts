@@ -508,7 +508,10 @@ describe('F3 分账结算事件契约（M1-W3 T8）：3 生产契约（H4/F4/I1 
       session_id: null,
       net: '95.00',
       fee: '5.00',
-      splits: [{ payee_type: 'lawyer_firm', payee_id: 31, amount: '95.00' }],
+      splits: [
+        { payee_type: 'lawyer_firm', payee_id: 31, amount: '90.00' },
+        { payee_type: 'platform', payee_id: 0, amount: '5.00' },
+      ],
     };
     expect(ooo.session_id).toBeNull();
   });

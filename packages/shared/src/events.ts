@@ -554,7 +554,7 @@ export interface SplitSettledPayload {
   readonly ref_id: number;
   /** F3 §6 逐字兼容位：ref_type='session' 时=ref_id；one_on_one 时=null（订单号即 ref_id） */
   readonly session_id: number | null;
-  /** 可分配净额 = gross − penalty − platform_fee（恒等式：Σsplits === net，构成校验锚点） */
+  /** 分账净额 = gross − penalty（恒等式：Σsplits === net，构成校验锚点；fee 为 splits 中平台服务费构成项） */
   readonly net: Money;
   /** 平台服务费（fee_versions 版本化；R-06 0% 起步，D20 ⚠W3 默认 0.0000） */
   readonly fee: Money;

@@ -73,7 +73,8 @@ CREATE TABLE IF NOT EXISTS settlement.settlements (
     fee_version_id   bigint         NOT NULL,
                                     -- 计费版本（settlement-fee_versions 行 id 裸引用；费率口径审计锚）
     net              numeric(12,2)  NOT NULL,
-                                    -- 可分配净额 = gross − penalty − platform_fee（=Σsplits）
+                                    -- 分账净额 = gross − penalty（恒等式 Σsplits=net，构成校验锚点；
+                                    -- 平台服务费为 splits 构成项——R-05 平台不抽违约金）
     share_mode       varchar(16)    NOT NULL DEFAULT 'FULL_TO_LAWYER',
                                     -- ④分账构成模式：FULL_TO_LAWYER（正常全额）|
                                     -- ABSENCE_7030（R-03 缺席 70/30：70% 律师、30% 平台备付）
