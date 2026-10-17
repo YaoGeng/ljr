@@ -61,6 +61,7 @@
     "schedule.slot_locks": "V6__schedule.sql",
     "schedule.time_slot_templates": "V16__schedule.sql",
     "settlement.fee_versions": "V27__settlement.sql",
+    "settlement.settlement_penalty_receipts": "V28__settlement.sql",
     "settlement.settlements": "V27__settlement.sql",
     "trade.enrollments": "V26__trade.sql",
     "trade.group_buys": "V24__trade.sql",
