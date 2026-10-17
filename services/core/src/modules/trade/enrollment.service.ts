@@ -30,7 +30,7 @@
  * F4 unfreeze 幂等（同 order 已解冻即短路）正是「流标清场已解冻 + 晚到回调再解冻不双计」的锚。
  * F2 受理先行于终态化（幂等键稳定 refund/po-{id}/enroll-guard；崩溃窗口=重投重放受理后补终态化）。
  */
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import {
   AppError,
   ErrorCode,
@@ -47,19 +47,13 @@ import { PointsService } from '../benefits/points.service';
 import { CreditService } from '../credit/credit.service';
 import { RealnameService } from '../identity/realname.service';
 import { PaymentGatewayService } from '../payment/payment.gateway.service';
-import type { PayParamsView } from '../payment/payment.types';
 import { RefundService } from '../payment/refund.service';
 import { PricingConfigService } from '../pricing/pricing.service';
 import { GroupBuyService } from './group-buy.service';
 import { ENROLLMENT_MACHINE, type EnrollmentPayStatus } from './enrollment.machine';
 import { EnrollmentQueryService } from './enrollment.query';
 import { SessionService } from './session.service';
-import {
-  moneyToCents,
-  centsToMoney,
-  seatPriceFor,
-  assertPositiveInt,
-} from './session.types';
+import { moneyToCents, centsToMoney, seatPriceFor, assertPositiveInt } from './session.types';
 import {
   ENROLL_CUTOFF_LEAD_MS,
   autoRefundKey,
@@ -195,7 +189,10 @@ export class EnrollmentService {
 
     // ---- 闸口①（事务外预检，fail-fast：无效请求不耗外部写路径）——R-06 实名闸口（A2 导出面）
     if (!(await this.realname.isRealnameVerified(userId))) {
-      throw new AppError(ErrorCode.RealnameRequired, `用户 ${userId} 未完成实名认证（R-06），不可报名`);
+      throw new AppError(
+        ErrorCode.RealnameRequired,
+        `用户 ${userId} 未完成实名认证（R-06），不可报名`,
+      );
     }
     // ---- 闸口② G1 限制令（BAN_JOIN=拼单侧限制；SUSPEND_TAKE_*=接单侧锚定律师确认=M2 不拦截）
     const restrictions = await this.credit.listActiveRestrictions('user', userId);
@@ -210,7 +207,12 @@ export class EnrollmentService {
     if (refType === 'session') {
       const session = await this.readSession(refId);
       if (!session) throw new AppError(ErrorCode.NotFound, `场次不存在：${refId}`);
-      this.assertEnrollWindow(session.status, session.joined, session.capacity, session.enroll_deadline);
+      this.assertEnrollWindow(
+        session.status,
+        session.joined,
+        session.capacity,
+        session.enroll_deadline,
+      );
     } else {
       await this.groupBuys.assertJoinable(refId); // 非 PUBLISHED → 409 E_REACHED_LOCKED（C2 导出守卫）
       const gb = await this.readGroupBuy(refId);
@@ -467,11 +469,7 @@ export class EnrollmentService {
           await this.sessions.markFull(current.ref_id, uow); // CREATED→FULL + STL + SessionFull 出箱
         }
       } else if (subMin !== null) {
-        const paidCount = await this.queries.countPaid(
-          uow,
-          'groupbuy',
-          current.ref_id,
-        ); // **uow 内计数**（独立连接读不到本事务未提交的 PAID 行）
+        const paidCount = await this.queries.countPaid(uow, 'groupbuy', current.ref_id); // **uow 内计数**（独立连接读不到本事务未提交的 PAID 行）
         if (paidCount >= subMin) {
           // REACHED+12h job 预写+GroupBuyReached 出箱（C2 守卫；成团链内=幂等短路）
           await this.groupBuys.groupBuyReachedGuard(current.ref_id, paidCount, uow);
@@ -790,10 +788,7 @@ export class EnrollmentService {
     return res.rows[0] ?? null;
   }
 
-  private async lockEnrollment(
-    uow: SqlExecutor,
-    id: number,
-  ): Promise<EnrollmentRowView | null> {
+  private async lockEnrollment(uow: SqlExecutor, id: number): Promise<EnrollmentRowView | null> {
     const res = await uow.query<EnrollmentRow>(
       `SELECT ${ENROLLMENT_COLS} FROM trade.enrollments WHERE id = $1 FOR UPDATE`,
       [assertPositiveInt(id, 'enrollment_id')],

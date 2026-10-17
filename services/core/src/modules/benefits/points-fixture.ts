@@ -1,7 +1,8 @@
 /**
- * 跨域集成测试夹具：benefits 积分账户/还原流水直读直写（本 schema owner 侧唯一合法直触点，
+ * 跨域集成测试夹具：benefits 积分账户/流水直读直写（本 schema owner 侧唯一合法直触点，
  * order-fixture/lawyer-fixture 同款纪律）。仅供其他域的集成 spec 复用（生产代码禁 import）——
- * F4 自身覆盖在 points.*spec；此处只造「F2 退款还原（R-03）断言所需的余额种子与流水读数」。
+ * F4 自身覆盖在 points.*spec；此处只造「F2 退款还原（R-03）与 C3 冻结/核销/解冻编排断言所需的
+ * 余额种子与账户/流水读数」。
  *
  * check-schema-refs：本文件 owner=benefits，直触 benefits 表合法；引用方（其他域 spec）只
  * import 本函数、不内联 benefits 表名，红线不破。
@@ -28,6 +29,31 @@ export async function getPointsBalance(pool: Pool, userId: number): Promise<numb
     [userId],
   );
   return res.rows[0]?.balance ?? 0;
+}
+
+/** 账户余额+冻结双读数（C3 冻结/核销/解冻编排断言用；无行=全 0） */
+export async function getPointsAccount(
+  pool: Pool,
+  userId: number,
+): Promise<{ balance: number; frozen: number }> {
+  const res = await pool.query<{ balance: number; frozen: number }>(
+    `SELECT balance, frozen FROM benefits.points_accounts WHERE user_id = $1`,
+    [userId],
+  );
+  return res.rows[0] ?? { balance: 0, frozen: 0 };
+}
+
+/** 指定 kind 流水计数（C3「冻结回滚零残留」「REDEEM 恰一次」断言用） */
+export async function countPointsTxnsByKind(
+  pool: Pool,
+  userId: number,
+  kind: string,
+): Promise<number> {
+  const res = await pool.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM benefits.points_txns WHERE user_id = $1 AND kind = $2`,
+    [userId, kind],
+  );
+  return res.rows[0]!.n;
 }
 
 /** REFUND_RESTORE 流水行（delta+source_ref；断言「还原额=积分部分/恰一次/ref=refund:{id}」用） */

@@ -647,7 +647,7 @@ describe('F4 ①切片积分服务（授予/冻结核销解冻/退款还原/过�
   // ---------- in-tx 变体（M1-W3 T7 C3 同事务编排地基：调用方事务参与，任一失败全回滚含冻结） ----------
 
   it('freezeInTx/settleInTx/unfreezeInTx：外层事务回滚 → 冻结零残留（self-tx freeze 做不到的同事务原子性）', async () => {
-    await rawGrant(USER, 1_000, 'interval \'180 days\'');
+    await rawGrant(USER, 1_000, "interval '180 days'");
     const poolSvc = app.get(PgPoolService);
 
     // 外层事务内冻结后回滚：FREEZE 留痕/账户列移动必须一并消失
@@ -696,7 +696,7 @@ describe('F4 ①切片积分服务（授予/冻结核销解冻/退款还原/过�
   });
 
   it('freezeInTx 同一外层事务内重放短路 + R-01 50% 上限同样生效（与 self-tx freeze 同口径）', async () => {
-    await rawGrant(USER, 1_000, 'interval \'180 days\'');
+    await rawGrant(USER, 1_000, "interval '180 days'");
     const poolSvc = app.get(PgPoolService);
     await poolSvc.withTransaction(async (uow) => {
       const first = await points.freezeInTx(uow, {

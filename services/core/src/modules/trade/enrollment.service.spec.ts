@@ -17,18 +17,29 @@ import {
 import { ensureTestDatabase, truncateAll } from '../../infrastructure/testing/db';
 import { OutboxRelayService } from '../../infrastructure/outbox/outbox-relay.service';
 import { PgPoolService } from '../../infrastructure/sql';
-import { getPointsBalance } from '../benefits/points-fixture';
+import {
+  countPointsTxnsByKind,
+  getPointsAccount,
+  getPointsBalance,
+} from '../benefits/points-fixture';
 import { PointsService } from '../benefits/points.service';
 import { seedRestriction } from '../credit/credit-fixture';
 import { IdentityTokenService } from '../identity/identity.token.service';
 import { IDENTITY_CONFIG, type IdentityConfig } from '../identity/identity.config';
 import { RealnameService } from '../identity/realname.service';
-import { countPaymentOrders } from '../payment/order-fixture';
+import {
+  countPaymentOrders,
+  getPaymentOrderById,
+  getPaymentOrderByKey,
+  listInboxStatusesByTxnNoPrefix,
+  listRefundsByOrderId,
+} from '../payment/order-fixture';
 import { PAYMENT_CONFIG } from '../payment/payment.config';
 import { PaymentGatewayService } from '../payment/payment.gateway.service';
 import { RefundService } from '../payment/refund.service';
 import { PricingConfigService } from '../pricing/pricing.service';
 import { EnrollmentService } from './enrollment.service';
+import { enrollmentOrderKey } from './enrollment.types';
 import { GroupBuyService } from './group-buy.service';
 import { SessionService } from './session.service';
 import { TradeModule } from './trade.module';
@@ -170,7 +181,8 @@ describe('C3 报名与支付成团（成团原子守卫/闸口/快照/终态协�
 
   const tick = (): Promise<unknown> => relay.tick();
 
-  // ---- 断言夹具 ----
+  // ---- 断言夹具（跨域读一律经 owner 夹具：benefits/payment 表名禁内联，schema-refs 纪律；
+  //      本模块表 trade.* 与平台横切表 platform.* 直读合法） ----
 
   const enrollmentOf = async (id: number) => {
     const res = await pool.query<Record<string, unknown>>(
@@ -213,29 +225,12 @@ describe('C3 报名与支付成团（成团原子守卫/闸口/快照/终态协�
     return res.rows;
   };
 
-  const refundsOfOrder = async (orderId: number) => {
-    const res = await pool.query<Record<string, unknown>>(
-      `SELECT id::text AS id, user_id::int AS user_id, payment_order_id::text AS payment_order_id, cash_amount::text AS cash_amount, points_amount, reason, status, idempotency_key FROM payment.refunds WHERE payment_order_id = $1 ORDER BY id`,
-      [orderId],
-    );
-    return res.rows;
-  };
+  const refundsOfOrder = (orderId: number) => listRefundsByOrderId(pool, orderId);
 
-  const orderOf = async (orderId: number) => {
-    const res = await pool.query<Record<string, unknown>>(
-      `SELECT * FROM payment.payment_orders WHERE id = $1`,
-      [orderId],
-    );
-    return res.rows[0]!;
-  };
+  const orderOf = (orderId: number) => getPaymentOrderById(pool, orderId);
 
-  const enrollOrderOf = async (enrollmentId: number) => {
-    const res = await pool.query<Record<string, unknown>>(
-      `SELECT * FROM payment.payment_orders WHERE idempotency_key = $1`,
-      [`enroll/e${enrollmentId}/pay`],
-    );
-    return res.rows[0]!;
-  };
+  const enrollOrderOf = (enrollmentId: number) =>
+    getPaymentOrderByKey(pool, enrollmentOrderKey(enrollmentId));
 
   beforeAll(async () => {
     pool = await ensureTestDatabase();
@@ -452,11 +447,7 @@ describe('C3 报名与支付成团（成团原子守卫/闸口/快照/终态协�
     expect(ok.cash_amount).toBe('5.01'); // cash+points=应付：501 分现金 + 500 积分 = 1001 分
     expect(ok.payment_order.cash_amount).toBe('5.01');
     expect(ok.payment_order.points_amount).toBe(500);
-    const account = await pool.query<{ balance: number; frozen: number }>(
-      `SELECT balance, frozen FROM benefits.points_accounts WHERE user_id = $1`,
-      [user],
-    );
-    expect(account.rows[0]).toMatchObject({ balance: 9_500, frozen: 500 });
+    expect(await getPointsAccount(pool, user)).toMatchObject({ balance: 9_500, frozen: 500 });
   });
 
   it('R-04 INSUFFICIENT 409 透传 + 同事务零残留（enrollment/支付单/冻结全回滚）', async () => {
@@ -475,11 +466,7 @@ describe('C3 报名与支付成团（成团原子守卫/闸口/快照/终态协�
     expect(rows).toHaveLength(0); // 零残留：报名行回滚
     expect(await countPaymentOrders(pool)).toBe(before); // 支付单回滚（不烧幂等键）
     expect(await getPointsBalance(pool, user)).toBe(100); // 余额原封
-    const frozen = await pool.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM benefits.points_txns WHERE user_id = $1 AND kind = 'FREEZE'`,
-      [user],
-    );
-    expect(frozen.rows[0]!.n).toBe(0); // 冻结回滚（「含冻结」逐字）
+    expect(await countPointsTxnsByKind(pool, user, 'FREEZE')).toBe(0); // 冻结回滚（「含冻结」逐字）
   });
 
   // ===========================================================================
@@ -503,16 +490,8 @@ describe('C3 报名与支付成团（成团原子守卫/闸口/快照/终态协�
     expect(sessionRow['joined']).toBe(1); // 席位计数唯一写点=守卫 SQL
     const order = await orderOf(e.payment_order.id);
     expect(order['status']).toBe('FROZEN'); // R-01 支付即冻结（CREATED→FROZEN）
-    const account = await pool.query<{ balance: number; frozen: number }>(
-      `SELECT balance, frozen FROM benefits.points_accounts WHERE user_id = $1`,
-      [user],
-    );
-    expect(account.rows[0]).toMatchObject({ balance: 900, frozen: 0 }); // settle：冻结→核销
-    const redeem = await pool.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM benefits.points_txns WHERE user_id = $1 AND kind = 'REDEEM'`,
-      [user],
-    );
-    expect(redeem.rows[0]!.n).toBe(1);
+    expect(await getPointsAccount(pool, user)).toMatchObject({ balance: 900, frozen: 0 }); // settle：冻结→核销
+    expect(await countPointsTxnsByKind(pool, user, 'REDEEM')).toBe(1);
 
     const paid = outboxOf(ENROLLMENT_PAID_TOPIC);
     expect((await paid).length).toBe(1);
@@ -522,10 +501,8 @@ describe('C3 报名与支付成团（成团原子守卫/闸口/快照/终态协�
       user_id: user,
       amounts: { paid: '50.00', cash: '49.00', points: 100 },
     });
-    const inbox = await pool.query<{ status: string }>(
-      `SELECT status FROM payment.inbox WHERE channel_txn_no LIKE 'MOCK-WECHAT-T7-%'`,
-    );
-    expect(inbox.rows[0]!.status).toBe('CONSUMED');
+    // inbox 消费标记（读数经 payment owner 夹具，schema-refs 纪律）
+    expect(await listInboxStatusesByTxnNoPrefix(pool, 'MOCK-WECHAT-T7-')).toEqual(['CONSUMED']);
     // STL：enrollment PENDING→PAID 全迁移可查（§10）
     const stl = await stlOf('enrollment', e.enrollment_id);
     expect(stl).toContainEqual(
@@ -555,7 +532,7 @@ describe('C3 报名与支付成团（成团原子守卫/闸口/快照/终态协�
     const sessionRow = await sessionOf(session.id);
     expect(sessionRow['joined']).toBe(2);
     expect(sessionRow['status']).toBe('FULL'); // joined==capacity → markFull
-    expect((await outboxOf(SESSION_FULL_TOPIC))).toHaveLength(1); // SessionFull 恰一次
+    expect(await outboxOf(SESSION_FULL_TOPIC)).toHaveLength(1); // SessionFull 恰一次
 
     // 自动退款分支：每笔退款单在册（现金原路退受理；积分 UNFREEZE 原额回摆——本例 0 分）
     for (const r of refunded) {
@@ -574,7 +551,7 @@ describe('C3 报名与支付成团（成团原子守卫/闸口/快照/终态协�
       );
     }
     // EnrollmentPaid 恰 capacity 条（退款不出箱）
-    expect((await outboxOf(ENROLLMENT_PAID_TOPIC))).toHaveLength(2);
+    expect(await outboxOf(ENROLLMENT_PAID_TOPIC)).toHaveLength(2);
   });
 
   it('幂等：同一回调重复投递恰一次（outbox 重投→守卫短路：joined 不变/无新退款/无新事件）', async () => {
@@ -602,7 +579,7 @@ describe('C3 报名与支付成团（成团原子守卫/闸口/快照/终态协�
     await tick();
     expect((await sessionOf(session.id))['joined']).toBe(joined1); // 席位不双计
     expect((await stlOf('enrollment', e.enrollment_id)).length).toBe(stlCount1); // 无新迁移
-    expect((await outboxOf(ENROLLMENT_PAID_TOPIC))).toHaveLength(1); // 无新事件
+    expect(await outboxOf(ENROLLMENT_PAID_TOPIC)).toHaveLength(1); // 无新事件
   });
 
   it('§10 满员后回调自动退款分支 100% 触发（资损不变量）；终态后重报=新行且历史行保留（部分唯一索引）', async () => {
@@ -657,7 +634,7 @@ describe('C3 报名与支付成团（成团原子守卫/闸口/快照/终态协�
     const reEnroll = await enroll('session', reopen.id, u4); // 历史行保留 + 新行可建
     expect(reEnroll.enrollment_id).toBeGreaterThan(0);
     const all = await enrollmentsOfRef('session', reopen.id);
-    expect(all.filter((r) => Number(r["user_id"]) === u4)).toHaveLength(2); // 历史 REFUNDED 行 + 新 PENDING 行并存
+    expect(all.filter((r) => Number(r['user_id']) === u4)).toHaveLength(2); // 历史 REFUNDED 行 + 新 PENDING 行并存
   });
 
   it('流标后到达：SessionFailed 终态后回调 → 自动退款分支（R-05 下半句）', async () => {
@@ -705,7 +682,7 @@ describe('C3 报名与支付成团（成团原子守卫/闸口/快照/终态协�
 
     await paySuccess(j1.payment_order.id);
     await tick();
-    expect((await outboxOf(GROUP_BUY_REACHED_TOPIC))).toHaveLength(0); // 1<sub_min 不达线
+    expect(await outboxOf(GROUP_BUY_REACHED_TOPIC)).toHaveLength(0); // 1<sub_min 不达线
 
     await paySuccess(j2.payment_order.id);
     await tick();
@@ -716,7 +693,7 @@ describe('C3 报名与支付成团（成团原子守卫/闸口/快照/终态协�
     );
     expect(gbRow.rows[0]!['status']).toBe('PENDING_LAWYER');
     expect(gbRow.rows[0]!['lawyer_confirm_by']).not.toBeNull();
-    expect((await outboxOf(GROUP_BUY_REACHED_TOPIC))).toHaveLength(1);
+    expect(await outboxOf(GROUP_BUY_REACHED_TOPIC)).toHaveLength(1);
     const stlGb = await stlOf('group_buy', gbId);
     expect(stlGb).toContainEqual(
       expect.objectContaining({ from_status: 'PUBLISHED', to_status: 'REACHED', allowed: true }),
@@ -742,7 +719,7 @@ describe('C3 报名与支付成团（成团原子守卫/闸口/快照/终态协�
     await tick();
     const row3 = await enrollmentOf(j3.enrollment_id);
     expect(row3['pay_status']).toBe('PAID');
-    expect((await outboxOf(GROUP_BUY_REACHED_TOPIC))).toHaveLength(1); // 不重复
+    expect(await outboxOf(GROUP_BUY_REACHED_TOPIC)).toHaveLength(1); // 不重复
     const j1Row = await enrollmentOf(j1.enrollment_id);
     expect(j1Row['pay_status']).toBe('PAID');
   });
@@ -758,7 +735,12 @@ describe('C3 报名与支付成团（成团原子守卫/闸口/快照/终态协�
     await seedUser(paidUser);
     await seedUser(pendingUser);
     await points.grant({ user_id: paidUser, points: 1_000, kind: 'COMPENSATION', ref: 't7:wm1' });
-    await points.grant({ user_id: pendingUser, points: 1_000, kind: 'COMPENSATION', ref: 't7:wm2' });
+    await points.grant({
+      user_id: pendingUser,
+      points: 1_000,
+      kind: 'COMPENSATION',
+      ref: 't7:wm2',
+    });
     const session = await createSession(lawyer, { capacity: 4, unit_price: '30.00' });
     const ePaid = await enroll('session', session.id, paidUser, 500); // PAID：cash 25.00 + points 500
     const ePending = await enroll('session', session.id, pendingUser, 300); // PENDING：冻结 300
@@ -791,11 +773,9 @@ describe('C3 报名与支付成团（成团原子守卫/闸口/快照/终态协�
     txnSeq += 1;
     await ingest(ePaid.payment_order.id, 'REFUND_SUCCESS', `MOCK-WECHAT-T7R-${txnSeq}`);
     await tick(); // F2 收敛 DONE
-    expect(
-      (await refundsOfOrder(ePaid.payment_order.id))[0]!['status'],
-    ).toBe('DONE');
+    expect((await refundsOfOrder(ePaid.payment_order.id))[0]!['status']).toBe('DONE');
     await tick(); // RefundCompleted 出箱 → 收敛消费
-    expect((await outboxOf(REFUND_COMPLETED_TOPIC))).toHaveLength(1);
+    expect(await outboxOf(REFUND_COMPLETED_TOPIC)).toHaveLength(1);
     const paidRow = await enrollmentOf(ePaid.enrollment_id);
     expect(paidRow['pay_status']).toBe('REFUNDED'); // PAID→REFUNDED（STL）
     const stl = await stlOf('enrollment', ePaid.enrollment_id);
@@ -806,8 +786,8 @@ describe('C3 报名与支付成团（成团原子守卫/闸口/快照/终态协�
     // 重投清场事件：解冻幂等不双计（pendingUser 仍 1000）
     await pool.query(
       `INSERT INTO platform.outbox (event_id, topic, payload, status)
-       VALUES (gen_random_uuid(), 'trade.session.failed', $1::jsonb, 'PENDING')`,
-      [JSON.stringify({ id: session.id, reason: 'ENROLL_DEADLINE_PASSED' })],
+       VALUES (gen_random_uuid(), $1, $2::jsonb, 'PENDING')`,
+      [SESSION_FAILED_TOPIC, JSON.stringify({ id: session.id, reason: 'ENROLL_DEADLINE_PASSED' })],
     );
     await tick();
     expect(await getPointsBalance(pool, pendingUser)).toBe(1_000);
@@ -915,7 +895,6 @@ describe('C3 报名与支付成团（成团原子守卫/闸口/快照/终态协�
   // ===========================================================================
 
   it('REST /enrollments/mine：user token 200；lawyer token 403；无 token 401（A1 守卫双向）', async () => {
-    
     const user = nextUser();
     await seedUser(user);
     const userTok = await tokens.signAccessToken({ userId: user, role: 'user', roles: ['user'] });
@@ -942,7 +921,6 @@ describe('C3 报名与支付成团（成团原子守卫/闸口/快照/终态协�
   });
 
   it('REST POST /sessions/{id}/enroll：{enrollment, payment_order, pay_params} 出参 + 未实名 402 错误体', async () => {
-    
     const lawyer = nextLawyer();
     const user = nextUser();
     await seedUser(user);

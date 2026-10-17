@@ -34,9 +34,6 @@ import { parseEnrollmentOrderKey } from './enrollment.types';
 
 const PAY_SUCCESS_SUFFIX = ':PAY_SUCCESS';
 
-/** relay 认领事务的 client（OutboxHandler 第二参同形别名；handler 内仅作 inbox 定位读） */
-type RelayUow = Parameters<OutboxHandler>[1];
-
 function isPositiveInt(v: unknown): v is number {
   return typeof v === 'number' && Number.isInteger(v) && v > 0;
 }
@@ -46,7 +43,7 @@ function isPositiveInt(v: unknown): v is number {
  *   1) 键形态过滤：非报名键跳过（C2 发布单/未来域单——消费者各归其位）；
  *   2) F1 冻结推进（R-01）：CREATED→FROZEN（先决于退款分支的 REFUNDING 合法源态）；
  *   3) 成团原子守卫（§4）；席位被拒 → 自动退款分支（F2 受理+终态化+解冻）；
- *   4) inbox 消费标记（RECEIVED 才动；重复投递跳过）。
+ *   4) inbox 消费标记（读-判-标经 F1 导出读缝；RECEIVED 才动，重复投递跳过）。
  * 订单不可读/载荷漂移 → 抛错进 relay 重试轨道（不静默丢弃）。
  */
 export function createEnrollPayCallbackHandler(
@@ -54,7 +51,7 @@ export function createEnrollPayCallbackHandler(
   payment: PaymentGatewayService,
 ): OutboxHandler {
   const logger = new Logger('EnrollPayGuard');
-  return async (event: RelayEvent, uow: RelayUow): Promise<void> => {
+  return async (event: RelayEvent): Promise<void> => {
     if (event.topic !== PAYMENT_CALLBACK_INBOXED_TOPIC) {
       throw new AppError(
         ErrorCode.InvalidArgument,
@@ -92,9 +89,7 @@ export function createEnrollPayCallbackHandler(
       try {
         await payment.markFrozen(order.id, null);
       } catch (e) {
-        if (
-          !(e instanceof AppError && e.code === ErrorCode.StateStaleEntity)
-        ) {
+        if (!(e instanceof AppError && e.code === ErrorCode.StateStaleEntity)) {
           throw e; // 并发同单败者=竞态良性（重投短路），其余上抛重试
         }
       }
@@ -111,14 +106,11 @@ export function createEnrollPayCallbackHandler(
       logger.log(`报名 ${enrollmentId} 支付守卫通过（PAID，order=${order.id}）`);
     }
 
-    // inbox 消费标记（先读 status——重复标记会被 inbox 守卫拒成永久重试环）
-    const inbox = await uow.query<{ id: string; status: string }>(
-      `SELECT id, status FROM payment.inbox WHERE biz_idempotency_key = $1`,
-      [bizKey],
-    );
-    const row = inbox.rows[0];
-    if (row && row.status === 'RECEIVED') {
-      await payment.markInboxConsumed(Number(row.id));
+    // inbox 消费标记（读-判-标经 F1 导出面 findInboxRowByKey+markInboxConsumed——跨域禁直查
+    // payment-inbox 表，架构 §3.2；先读 status——重复标记会被 inbox 守卫拒成永久重试环）
+    const inbox = await payment.findInboxRowByKey(bizKey);
+    if (inbox && inbox.status === 'RECEIVED') {
+      await payment.markInboxConsumed(inbox.id);
     }
   };
 }
@@ -209,14 +201,8 @@ export class EnrollmentConsumer implements OnModuleInit {
       PAYMENT_CALLBACK_INBOXED_TOPIC,
       createEnrollPayCallbackHandler(this.enrollments, this.payment),
     );
-    this.relay.registerHandler(
-      SESSION_FAILED_TOPIC,
-      createEnrollSweepHandler(this.enrollments),
-    );
-    this.relay.registerHandler(
-      GROUP_BUY_EXPIRED_TOPIC,
-      createEnrollSweepHandler(this.enrollments),
-    );
+    this.relay.registerHandler(SESSION_FAILED_TOPIC, createEnrollSweepHandler(this.enrollments));
+    this.relay.registerHandler(GROUP_BUY_EXPIRED_TOPIC, createEnrollSweepHandler(this.enrollments));
     this.relay.registerHandler(
       REFUND_COMPLETED_TOPIC,
       createRefundCompletedHandler(this.enrollments, this.payment),
