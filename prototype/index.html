@@ -115,6 +115,11 @@ button{font-family:inherit}
 .icon-btn{width:34px;height:34px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.5);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;color:var(--primary);transition:.15s}
 .icon-btn:hover{background:#fff;border-color:var(--primary-3)}
 
+/* ---------- 悬浮发起按钮（FAB · 双端对称主入口） ---------- */
+.fab{position:absolute;right:14px;bottom:80px;z-index:30;display:inline-flex;align-items:center;gap:7px;padding:12px 19px;border-radius:999px;background:var(--accent);color:#fff;border:0;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;box-shadow:0 10px 26px rgba(194,94,94,.42);transition:.18s}
+.fab:hover{background:var(--accent-dk);transform:translateY(-1px)}
+.fab:active{transform:scale(.96)}
+
 /* ---------- 标签 / 徽标 ---------- */
 .tag{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:7px;font-size:11.5px;background:rgba(107,142,90,.13);color:#3E5C3A;font-weight:500}
 .tag.acc{background:rgba(194,94,94,.13);color:var(--accent-dk)}
@@ -430,6 +435,7 @@ input[type=range].rg::-webkit-slider-thumb{-webkit-appearance:none;width:18px;he
 /* ================= 图标库（细线 stroke 1.5，禁外链） ================= */
 const IC={
 home:'<path d="M4 11.3 12 5l8 6.3"/><path d="M6.2 10.2V19h11.6v-8.8"/><path d="M10 19v-4.6h4V19"/>',
+pin:'<path d="M12 21s-6.3-5.4-6.3-10a6.3 6.3 0 1 1 12.6 0C18.3 15.6 12 21 12 21z"/><circle cx="12" cy="10.7" r="2.3"/>',
 search:'<circle cx="11" cy="11" r="6.2"/><path d="m15.6 15.6 4.4 4.4"/>',
 doc:'<rect x="6" y="4" width="12" height="16" rx="2.2"/><path d="M9.2 9h5.6M9.2 12.5h5.6M9.2 16h3.4"/>',
 chat:'<path d="M20 5.5H4v10.6h4.2v3.4l4.2-3.4H20z"/><path d="M8 9.5h8M8 12.5h5"/>',
@@ -533,7 +539,7 @@ function funnel(rows){
 }
 
 /* ================= 全局状态 & 模拟数据（全部虚构） ================= */
-const state={view:'hub',end:null,user:{name:'周女士',phone:'138****6688',credit:96,points:1200,coupon:'¥20 无门槛券 · 10-31 到期',realname:false,consents:{training:false,recording:true}},lawyer:{onboard:'approved',name:'张明远'},admin:false,timer:null};
+const state={view:'hub',end:null,user:{name:'周女士',phone:'138****6688',city:'北京',credit:96,points:1200,coupon:'¥20 无门槛券 · 10-31 到期',realname:false,consents:{training:false,recording:true}},lawyer:{onboard:'approved',name:'张明远'},admin:false,timer:null};
 
 const DB={};
 /* 律师（虚构样例，跨端共享） */
@@ -819,6 +825,22 @@ function doLogin(){
 }
 function quickLogin(role){toast(role==='lawyer'?'已切换至律师身份（演示）':'登录成功，欢迎回来','ok');go(role==='lawyer'?'l-work':'u-home');}
 
+/* ---- 城市选择器（双维度框架 · D-BP8：V1 建框架单城运营） ---- */
+const CITIES=[['北京',1],['上海',0],['深圳',0],['广州',0],['杭州',0],['成都',0]];
+function cityPicker(){
+  overlay(`<div class="mask bottom abs"><div class="sheet"><div class="grab"></div>
+    <div class="spread"><span class="m-title">切换城市</span><button class="m-x" onclick="closeModal(this.closest('.mask'))">${ic('x',14)}</button></div>
+    <div class="tiny muted mb12">同城是拼团成立的地理前提（同类问题 × 同城 × 同时段）。V1 首发北京，更多城市随律师供给开通——城市维度框架已就绪（字段 / 筛选 / 选择器），开通即运营。</div>
+    <div class="grid2">${CITIES.map(c=>`
+      <div class="rc ${state.user.city===c[0]?'on':''} ${c[1]?'':'dis'}" onclick="cityPick('${c[0]}',${c[1]},this)"><span class="rk"></span>
+        <b class="small">${c[0]}</b><div class="tiny muted">${c[1]?(state.user.city===c[0]?'当前城市 · 已开通':'已开通'):'即将开放 · 供给筹备中'}</div></div>`).join('')}</div>
+  </div></div>`);
+}
+function cityPick(c,open,el){
+  if(!open){toast(c+'即将开放（城市框架已就绪，随律师供给开通）','info');return;}
+  state.user.city=c;closeModal(el.closest('.mask'));toast('已切换至 '+c+'，列表与发起拼团将按同城筛选','ok');render();
+}
+
 /* ---- 首页 ---- */
 VIEWS['u-home']={end:'user',tab:'u-home',render(){
   const live=DB.sessions.find(s=>s.status==='live'),ens=DB.myEnrolls.filter(e=>['live','open'].includes(e.status));
@@ -827,7 +849,7 @@ VIEWS['u-home']={end:'user',tab:'u-home',render(){
   return `
   <div class="spread">
     <div class="row">${av(state.user.name)}<div><div class="h2">你好，${state.user.name}</div><div class="tiny muted">10-13 周二 · 报名时段</div></div></div>
-    <div class="row" style="gap:8px"><span class="pill pill-g">${ic('shield',12)}信用 ${state.user.credit}</span><span class="icon-btn" style="width:32px;height:32px" onclick="go('u-msg')">${ic('bell',16)}</span></div>
+    <div class="row" style="gap:8px"><span class="pill pill-g" style="cursor:pointer" onclick="cityPicker()">${ic('pin',12)}${state.user.city} ▾</span><span class="pill pill-g">${ic('shield',12)}信用 ${state.user.credit}</span><span class="icon-btn" style="width:32px;height:32px" onclick="go('u-msg')">${ic('bell',16)}</span></div>
   </div>
   <div class="card pad mt12" style="cursor:pointer" onclick="aiEntry()">
     <div class="row"><span style="width:38px;height:38px;border-radius:12px;background:rgba(107,142,90,.16);display:inline-flex;align-items:center;justify-content:center;color:var(--primary);flex-shrink:0">${ic('spark',20)}</span>
@@ -843,7 +865,7 @@ VIEWS['u-home']={end:'user',tab:'u-home',render(){
   </div>`:''}
   <div class="mt16 mb8 row spread"><span class="h3">律师开团 · B2C</span><button class="btn btn-xs btn-ghost" onclick="go('u-find')">更多 ›</button></div>
   ${opening.map(s=>sessCard(s)).join('<div class="mt8"></div>')}
-  <div class="mt16 mb8 row spread"><span class="h3">用户发起拼团 · C2B</span><button class="btn btn-xs btn-ghost" onclick="go('u-find')">更多 ›</button></div>
+  <div class="mt16 mb8 row spread"><span class="h3">用户发起拼团 · C2B</span><span class="row" style="gap:8px"><button class="btn btn-xs btn-p" onclick="go('u-create')">${ic('plus',11)} 发起拼团</button><button class="btn btn-xs btn-ghost" onclick="go('u-find')">更多 ›</button></span></div>
   ${gs.slice(0,2).map(g=>groupCard(g)).join('<div class="mt8"></div>')}
   <button class="btn btn-o mt16" style="width:100%" onclick="go('u-create')">${ic('plus',15)} 没有合适的场次？发起拼团，让律师来接</button>
   <div class="tiny muted tc mt12" style="padding-bottom:6px">价格均为示例虚构数据 · 支付前需完成实名认证</div>`;
@@ -861,7 +883,18 @@ VIEWS['u-find']={end:'user',render(){
     <span style="flex:1"></span>
     ${['今天','本周','本月'].map(t=>`<span class="chip ${findTime===t?'on acc':''}" onclick="findTime='${t}';render()">${t}</span>`).join('')}
   </div>
-  <div class="row mt8" style="gap:8px"><span class="tag gray">${ic('scale',11.5)}首发垂直：劳动仲裁（V1 · 垂直×城市复制双轮）</span><span class="tag gray">仅展示审核通过律师</span></div>
+  <div class="row mt8 wrap" style="gap:8px">
+    <span class="chip on" style="cursor:pointer" onclick="cityPicker()">${ic('pin',11.5)} ${state.user.city} ▾</span>
+    <span class="chip on">劳动仲裁</span>
+    <span class="chip dis" onclick="toast('民间借贷垂直随 V2 配置包上线开放','info')">民间借贷 · V2</span>
+    <span class="chip dis" onclick="toast('婚姻家事垂直规划中，垂直复制按成团率达线逐个开放','info')">婚姻家事 · 规划</span>
+    <span class="tag gray">仅展示审核通过律师</span>
+  </div>
+  <div class="card pad hov mt12" style="border-style:dashed;border-width:1.5px;border-color:rgba(62,92,58,.4)" onclick="go('u-create')">
+    <div class="row"><span style="width:38px;height:38px;border-radius:12px;background:rgba(194,94,94,.12);display:inline-flex;align-items:center;justify-content:center;color:var(--accent-dk);flex-shrink:0">${ic('plus',18)}</span>
+      <div class="grow" style="min-width:0"><b class="small">发起拼团，让律师来接</b><div class="tiny muted">选律师 → 锁时段 → 定人数与分摊 · 同城同垂直（${state.user.city} · 劳动仲裁）</div></div>
+      <button class="btn btn-p btn-sm" style="flex-shrink:0">去发起</button></div>
+  </div>
   <div id="findList" class="mt12">${renderFindList()}</div>`;
 }};
 function renderFindList(){
@@ -1107,6 +1140,7 @@ VIEWS['u-create']={end:'user',render(){
   return `
   <div class="navbar"><span class="back" onclick="cgBack()">${ic('left',16)}</span><span class="nt">发起拼团</span><span style="width:34px"></span></div>
   <div class="steps">${[1,2,3].map(i=>`<i class="${i<cg.step?'on':i===cg.step?'cur':''}"></i>`).join('')}</div>
+  <div class="notice plain mb12"><span>${ic('pin',14)}</span><span>当前 <b>${state.user.city}</b> · 垂直 <b>劳动仲裁</b>——同城 × 同垂直是成团前提，发布后将携带城市与垂直信息（双维度框架）。</span></div>
   ${cg.step===1?`
     <div class="h3 mb8">① 选择律师</div>
     <div class="fcol" style="gap:8px">${DB.lawyers.map(l=>`
@@ -1154,6 +1188,7 @@ function cgPublish(){
   const lw=L(cg.lawyer);const sl=CG_SLOTS[cg.slot];
   DB.groups.unshift({id:'G-'+(110+DB.groups.length),by:state.user.name,lawyer:lw.id,topic:[...cg.tags].slice(0,2).join(' · ')+' 咨询',tags:[...cg.tags],
     start:sl[0].replace(/^(\d+-\d+) [周一二三四五六日]+ /,'$1 '),full:sl[1],dur:cg.dur,range:lw.range,pick:cg.pick,min:cg.pick[0],
+    city:state.user.city,specialty:'劳动仲裁',
     share:+(lw.total/cg.pick[0]).toFixed(2),joined:1,deadline:'开始前 24h',status:'pending',mine:true,qnote:cg.note});
   toast('拼团已发布 · 时间段已锁定，快照价已生成','ok');
   cg={step:1,lawyer:'L1',slot:null,dur:90,pick:null,tags:new Set(),note:''};
@@ -1431,6 +1466,7 @@ VIEWS['l-work']={end:'lawyer',tab:'l-work',render(){
     <div class="row">${av('张明远','','')}<div><div class="h2">张明远 律师</div><div class="tiny muted">10-13 周二 · 第 42 个接单周</div></div></div>
     <div class="row" style="gap:8px"><span class="pill pill-g">${ic('shield',12)}信用 98</span><button class="icon-btn" style="width:32px;height:32px" onclick="switchEnd('user')">${ic('user',15)}</button></div>
   </div>
+  <button class="btn btn-p btn-lg mt12" onclick="go('l-sched');toast('点选空闲时段即可发起开团（提交即锁定时间段）','info')">${ic('plus',15)} 发起开团 · 从时间表选时段</button>
   <div class="card pad mt12" onclick="go('l-sessd',{id:'S-2041'})" style="cursor:pointer">
     <div class="spread"><span class="tag line">本周场次</span><span class="pill pill-r"><span class="dt"></span>周五 20:00 开播</span></div>
     <div class="h3 mt8">工资拖欠 · 劳动仲裁全流程拆解</div>
@@ -2194,9 +2230,10 @@ VIEWS['a-kb']={end:'admin',render(){
   const kb=DB.kb;
   return `
   ${ahead('专项配置与知识库','配置包：知识库 / 问题树 / 提示词模板 · 供 C2 拼团引导与 E1 草稿管线消费',`<button class="btn btn-p btn-sm" onclick="toast('新建专项（V2：民间借贷）','info')">${ic('plus',13)} 新专项</button>`)}
-  <div class="grid2">${kb.specs.map(s=>`<div class="card pad ${s[1]==='上线中'?'':'flat'}" style="${s[1]==='上线中'?'':'opacity:.6'}">
-    <div class="spread"><div class="row">${ic('scale',17)}<b>${s[0]}</b></div><span class="tag ${s[1]==='上线中'?'':'gray'}">${s[1]}</span></div>
-    <div class="tiny muted mt8">${s[2]}</div></div>`).join('')}</div>
+      <div class="grid2">${kb.specs.map(s=>`<div class="card pad ${s[1]==='上线中'?'':'flat'}" style="${s[1]==='上线中'?'':'opacity:.6'}">
+        <div class="spread"><div class="row">${ic('scale',17)}<b>${s[0]}</b></div><span class="tag ${s[1]==='上线中'?'':'gray'}">${s[1]}</span></div>
+        <div class="tiny muted mt8">${s[2]}</div></div>`).join('')}</div>
+      <div class="tiny muted mt8">用户端垂直选择器数据源=已上线配置包（未上线垂直灰置「即将开放」展示——2026-10-17 双维度框架，D-BP8）。</div>
   <div class="grid2 mt16" style="grid-template-columns:1.1fr 1fr;gap:16px">
     <div class="card pad"><div class="spread mb8"><span class="h3">知识库文档（42）</span><button class="btn btn-xs btn-o" onclick="toast('已选择文件（演示 · 加密 OSS 归档）','ok')">${ic('plus',12)} 上传</button></div>
       ${kb.files.map(f=>`<div class="lrow">${ic('file',16)}<div class="grow"><b class="small">${f[0]}</b><div class="tiny muted">${f[1]}</div></div><button class="icon-btn" style="width:30px;height:30px" onclick="toast('已更新索引（KnowledgeUpdated · E1 缓存失效）','ok')">${ic('refresh',13)}</button></div>`).join('')}
@@ -2338,6 +2375,7 @@ function render(opt={}){
         <div class="p-notch"></div>
         <div class="p-status"><span>${clockOf()}</span><span class="sticons">${sigIc()}</span></div>
         <div class="p-screen">${v.render(opt)}</div>
+        ${fabOf()?`<button class="fab" onclick="${fabOf().fn}">${ic('plus',15)}${fabOf().label}</button>`:''}
         ${v.bar===false?'':`<div class="p-tabbar">${tabbarHtml()}</div>`}
       </div></div>`;
     if(state.view==='u-room')scrollChat();
@@ -2346,6 +2384,12 @@ function render(opt={}){
 }
 function startHallTimer(){
   state.timer=setInterval(()=>{hallLeft=Math.max(0,hallLeft-1);const el=$('#cd12');if(el)el.textContent=fmtHms(hallLeft);},1000);
+}
+/* 双端对称主入口 FAB：用户端=发起拼团，律师端=发起开团（2026-10-17 入口强化） */
+function fabOf(){
+  if(state.end==='user'&&!['u-login','u-room','u-create'].includes(state.view))return{label:'发起拼团',fn:"go('u-create')"};
+  if(state.end==='lawyer'&&!['l-onboard','l-room','l-create','l-hall'].includes(state.view))return{label:'发起开团',fn:"go('l-sched');toast('点选空闲时段即可发起开团','info')"};
+  return null;
 }
 function renderSeg(){
   const cur=state.end||'hub';
