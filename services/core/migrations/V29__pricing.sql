@@ -19,9 +19,11 @@
 --        R-03 版本不可变（禁改历史行）下无 second chance
 --     ⑤ credit_penalty CHECK (credit_penalty <= 0)：惩罚快照非正（0=无惩罚；-5/-15/-30=
 --        PRD §8.2 在团档位快照；实际扣分执行在 G1 按 credit.rules，本列=审计快照非事实源）
---   UNIQUE(lawyer_id, new_version)（自定，报告注明）：§5「幂等键=lawyer+new_version」的物理
---   兜底——new_version=请求时点分配（当前最大 version+1），同律师并发双请求恰一占号；
---   approve 时点经同款 advisory lock 复核版本链（号被 B3 直改抢占 → 409 审批作废重发起）。
+--   版本号新语义（自定，报告注明）：new_version=请求时点目标版本号（head+1 快照）。PENDING/
+--   REJECTED 行的号=意图快照非占用（审批时点经版本链复核 head==new_version-1，漂移即 409
+--   审批作废重发起）——故唯一性只钉 EFFECTED 行（部分唯一索引）：一个版本号在该律师名下
+--   至多生效一次（与 price_versions UNIQUE(lawyer_id,version) 双保险；「幂等键=lawyer+
+--   new_version」以 EFFECTED 行为幂等面，PENDING/REJECTED 意图行不阻塞后续请求分配同号）。
 --   索引 ix_pricing_histories_lawyer_created：R-03 频率滑窗（⚠W3-7 裁决=DB 滑窗——按
 --   lawyer+created_at 30 天窗口计数；Redis 滑窗为换装适配位头注，开发期无 Redis 基建）
 --   与 GET /pricing/histories?lawyer_id= 列表共用。
@@ -67,9 +69,12 @@ CREATE TABLE IF NOT EXISTS pricing.pricing_histories (
     CONSTRAINT ck_pricing_histories_result
         CHECK (result IN ('EFFECTED', 'PENDING_APPROVAL', 'REJECTED')),
     CONSTRAINT ck_pricing_histories_approval_source CHECK (approval_source IN ('MANUAL')),
-    CONSTRAINT ck_pricing_histories_credit_penalty CHECK (credit_penalty <= 0),
-    CONSTRAINT ux_pricing_histories_lawyer_newver UNIQUE (lawyer_id, new_version)
+    CONSTRAINT ck_pricing_histories_credit_penalty CHECK (credit_penalty <= 0)
 );
+
+-- 「幂等键=lawyer+new_version」的物理兜底（EFFECTED 面）：一个版本号在该律师名下至多生效一次
+CREATE UNIQUE INDEX IF NOT EXISTS ux_pricing_histories_lawyer_newver_effected
+    ON pricing.pricing_histories (lawyer_id, new_version) WHERE result = 'EFFECTED';
 
 COMMENT ON TABLE pricing.pricing_histories IS 'C6 改价历史（PricingHistory）：三档判定/审批/撤销/补偿的请求事实源；版本行经 B3 版本服务落版（本表不持价格内容，草案列仅审批续燃用）';
 COMMENT ON COLUMN pricing.pricing_histories.change_pct IS '|新-旧|/旧 三位小数（审计展示）；档位判定在应用侧整数精确比较（delta×10<=old），不读本列';
