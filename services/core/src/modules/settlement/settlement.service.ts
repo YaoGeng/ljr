@@ -331,6 +331,25 @@ export class SettlementService {
     return outcome;
   }
 
+  /** ref 定位变体（TicketResolved 消费链按结算实体 ref 释放；语义同 releaseDueHold，带行 id 供重驱动链） */
+  async releaseDueHoldByRef(
+    refType: SettlementRefType,
+    refId: number,
+    reason: 'HOLD_EXPIRED' | 'TICKET_RESOLVED',
+  ): Promise<{
+    settlement_id: number | null;
+    released: boolean;
+    blocked?: 'HOLD_24H' | 'OPEN_TICKETS';
+    missing?: boolean;
+  }> {
+    assertRefType(refType);
+    assertPositiveInt(refId, 'ref_id');
+    const row = await this.getByRef(refType, refId);
+    if (!row) return { settlement_id: null, released: false, missing: true };
+    const out = await this.releaseDueHold(Number(row.id), reason);
+    return { settlement_id: Number(row.id), ...out };
+  }
+
   // ===========================================================================
   // RUN_SETTLEMENT（§5 内部指令：job 释放/H3 释放/进件恢复重驱动；幂等键=ref_type+ref_id）
   // ===========================================================================
