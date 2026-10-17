@@ -539,7 +539,7 @@ function funnel(rows){
 }
 
 /* ================= 全局状态 & 模拟数据（全部虚构） ================= */
-const state={view:'hub',end:null,user:{name:'周女士',phone:'138****6688',city:'北京',credit:96,points:1200,coupon:'¥20 无门槛券 · 10-31 到期',realname:false,consents:{training:false,recording:true}},lawyer:{onboard:'approved',name:'张明远'},admin:false,timer:null};
+const state={view:'hub',end:null,user:{name:'周女士',phone:'138****6688',city:'北京',spec:'劳动仲裁',credit:96,points:1200,coupon:'¥20 无门槛券 · 10-31 到期',realname:false,consents:{training:false,recording:true}},lawyer:{onboard:'approved',name:'张明远'},admin:false,timer:null};
 
 const DB={};
 /* 律师（虚构样例，跨端共享） */
@@ -562,6 +562,9 @@ DB.lawyers=[
   served:118,grp:'88%',pun:'96%',resp:'0.5h',edu:'西南政法大学法学硕士，执业 11 年',cases:['某互联网公司违法解除系列咨询'],o2o:{ask:{text:130,voice:220,video:280},doc:{text:220,voice:300,video:360},strat:{text:280,voice:380,video:440}},priceVer:'v2'},
 ];
 const L=id=>DB.lawyers.find(x=>x.id===id);
+/* 双维度字段归一（历史 mock 与新建发布统一：city 默认北京、specialty 取律师专长） */
+DB.sessions.forEach(s=>{if(!s.city)s.city='北京';});
+DB.groups.forEach(g=>{if(!g.city)g.city='北京';if(!g.specialty)g.specialty=L(g.lawyer).spec;});
 /* B2C 律师开团场次 */
 DB.sessions=[
  {id:'S-2041',lawyer:'L1',title:'工资拖欠 · 劳动仲裁全流程拆解',start:'10-16 周五 20:00',full:'2026-10-16 20:00',dur:90,mode:['text','voice'],pmode:'head',price:99,cap:5,enrolled:5,deadline:'10-15 20:00',status:'live',anchor:'live',
@@ -825,27 +828,32 @@ function doLogin(){
 }
 function quickLogin(role){toast(role==='lawyer'?'已切换至律师身份（演示）':'登录成功，欢迎回来','ok');go(role==='lawyer'?'l-work':'u-home');}
 
-/* ---- 城市选择器（双维度框架 · D-BP8：V1 建框架单城运营） ---- */
-const CITIES=[['北京',1],['上海',0],['深圳',0],['广州',0],['杭州',0],['成都',0]];
+/* ---- 双维度选择器（D-BP8：V1 建框架；「应用做全套」口径——全集可选，供给 readiness=运营的事，空态引导） ---- */
+const CITIES=['北京','上海','深圳','广州','杭州','成都','武汉','南京','重庆','西安','苏州','长沙'];
+const SPECS=['劳动仲裁','民间借贷','婚姻家事','合同纠纷'];
 function cityPicker(){
   overlay(`<div class="mask bottom abs"><div class="sheet"><div class="grab"></div>
     <div class="spread"><span class="m-title">切换城市</span><button class="m-x" onclick="closeModal(this.closest('.mask'))">${ic('x',14)}</button></div>
-    <div class="tiny muted mb12">同城是拼团成立的地理前提（同类问题 × 同城 × 同时段）。V1 首发北京，更多城市随律师供给开通——城市维度框架已就绪（字段 / 筛选 / 选择器），开通即运营。</div>
+    <div class="tiny muted mb12">同城是拼团成立的地理前提（同类问题 × 同城 × 同时段）。<b>应用全集开放</b>——各城供给开通与密度由运营推进，无供给城市将展示空态与引导，不做客户端拦截。</div>
     <div class="grid2">${CITIES.map(c=>`
-      <div class="rc ${state.user.city===c[0]?'on':''} ${c[1]?'':'dis'}" onclick="cityPick('${c[0]}',${c[1]},this)"><span class="rk"></span>
-        <b class="small">${c[0]}</b><div class="tiny muted">${c[1]?(state.user.city===c[0]?'当前城市 · 已开通':'已开通'):'即将开放 · 供给筹备中'}</div></div>`).join('')}</div>
+      <div class="rc ${state.user.city===c?'on':''}" onclick="cityPick('${c}',this)"><span class="rk"></span>
+        <b class="small">${c}</b><div class="tiny muted">${c==='北京'?'当前城市 · 供给已就绪':'可选 · 供给开通中（运营推进）'}</div></div>`).join('')}</div>
   </div></div>`);
 }
-function cityPick(c,open,el){
-  if(!open){toast(c+'即将开放（城市框架已就绪，随律师供给开通）','info');return;}
-  state.user.city=c;closeModal(el.closest('.mask'));toast('已切换至 '+c+'，列表与发起拼团将按同城筛选','ok');render();
+function cityPick(c,el){
+  state.user.city=c;closeModal(el.closest('.mask'));
+  toast(c==='北京'?'已切换至北京 · 供给已就绪':'已切换至 '+c+' · 按同城筛选（供给开通中，暂为空态）',c==='北京'?'ok':'info');render();
+}
+function specPick(s){
+  state.user.spec=s;
+  toast(s==='劳动仲裁'?'劳动仲裁 · 供给已就绪':s+' · 配置包与供给由运营上线中（当前空态）',s==='劳动仲裁'?'ok':'info');render();
 }
 
 /* ---- 首页 ---- */
 VIEWS['u-home']={end:'user',tab:'u-home',render(){
   const live=DB.sessions.find(s=>s.status==='live'),ens=DB.myEnrolls.filter(e=>['live','open'].includes(e.status));
-  const opening=DB.sessions.filter(s=>['open','full'].includes(s.status)).slice(0,2);
-  const gs=DB.groups.filter(g=>['pending','wait'].includes(g.status));
+  const opening=DB.sessions.filter(s=>['open','full'].includes(s.status)&&s.city===state.user.city).slice(0,2);
+  const gs=DB.groups.filter(g=>['pending','wait'].includes(g.status)&&g.city===state.user.city);
   return `
   <div class="spread">
     <div class="row">${av(state.user.name)}<div><div class="h2">你好，${state.user.name}</div><div class="tiny muted">10-13 周二 · 报名时段</div></div></div>
@@ -864,9 +872,9 @@ VIEWS['u-home']={end:'user',tab:'u-home',render(){
     <button class="btn btn-p btn-sm mt12" style="width:100%">${ic('play',13)}查看场次详情 · 开播前分档提醒</button>
   </div>`:''}
   <div class="mt16 mb8 row spread"><span class="h3">律师开团 · B2C</span><button class="btn btn-xs btn-ghost" onclick="go('u-find')">更多 ›</button></div>
-  ${opening.map(s=>sessCard(s)).join('<div class="mt8"></div>')}
+  ${opening.length?opening.map(s=>sessCard(s)).join('<div class="mt8"></div>'):`<div class="notice plain mt8">${esc(state.user.city)} 暂无同城开团场次（供给开通中）· <u style="cursor:pointer" onclick="go('u-find')">查看全部维度</u></div>`}
   <div class="mt16 mb8 row spread"><span class="h3">用户发起拼团 · C2B</span><span class="row" style="gap:8px"><button class="btn btn-xs btn-p" onclick="go('u-create')">${ic('plus',11)} 发起拼团</button><button class="btn btn-xs btn-ghost" onclick="go('u-find')">更多 ›</button></span></div>
-  ${gs.slice(0,2).map(g=>groupCard(g)).join('<div class="mt8"></div>')}
+  ${gs.length?gs.slice(0,2).map(g=>groupCard(g)).join('<div class="mt8"></div>'):`<div class="notice plain mt8">${esc(state.user.city)} 暂无同城拼团（可先发起）</div>`}
   <button class="btn btn-o mt16" style="width:100%" onclick="go('u-create')">${ic('plus',15)} 没有合适的场次？发起拼团，让律师来接</button>
   <div class="tiny muted tc mt12" style="padding-bottom:6px">价格均为示例虚构数据 · 支付前需完成实名认证</div>`;
 }};
@@ -885,22 +893,24 @@ VIEWS['u-find']={end:'user',render(){
   </div>
   <div class="row mt8 wrap" style="gap:8px">
     <span class="chip on" style="cursor:pointer" onclick="cityPicker()">${ic('pin',11.5)} ${state.user.city} ▾</span>
-    <span class="chip on">劳动仲裁</span>
-    <span class="chip dis" onclick="toast('民间借贷垂直随 V2 配置包上线开放','info')">民间借贷 · V2</span>
-    <span class="chip dis" onclick="toast('婚姻家事垂直规划中，垂直复制按成团率达线逐个开放','info')">婚姻家事 · 规划</span>
+    ${SPECS.map(s=>`<span class="chip ${state.user.spec===s?'on':''}" onclick="specPick('${s}')">${s}</span>`).join('')}
     <span class="tag gray">仅展示审核通过律师</span>
   </div>
   <div class="card pad hov mt12" style="border-style:dashed;border-width:1.5px;border-color:rgba(62,92,58,.4)" onclick="go('u-create')">
     <div class="row"><span style="width:38px;height:38px;border-radius:12px;background:rgba(194,94,94,.12);display:inline-flex;align-items:center;justify-content:center;color:var(--accent-dk);flex-shrink:0">${ic('plus',18)}</span>
-      <div class="grow" style="min-width:0"><b class="small">发起拼团，让律师来接</b><div class="tiny muted">选律师 → 锁时段 → 定人数与分摊 · 同城同垂直（${state.user.city} · 劳动仲裁）</div></div>
+      <div class="grow" style="min-width:0"><b class="small">发起拼团，让律师来接</b><div class="tiny muted">选律师 → 锁时段 → 定人数与分摊 · 同城同垂直（${state.user.city} · ${state.user.spec}）</div></div>
       <button class="btn btn-p btn-sm" style="flex-shrink:0">去发起</button></div>
   </div>
   <div id="findList" class="mt12">${renderFindList()}</div>`;
 }};
 function renderFindList(){
-  const ss=findTab==='c2b'?[]:DB.sessions.filter(s=>['open','full','live'].includes(s.status));
-  const gs=findTab==='b2c'?[]:DB.groups.filter(g=>['pending','wait'].includes(g.status));
-  if(!ss.length&&!gs.length)return '<div class="notice plain mt16">该筛选条件下暂无场次</div>';
+  const ss=(findTab==='c2b'?[]:DB.sessions.filter(s=>['open','full','live'].includes(s.status)))
+    .filter(s=>s.city===state.user.city&&L(s.lawyer).spec===state.user.spec);
+  const gs=(findTab==='b2c'?[]:DB.groups.filter(g=>['pending','wait'].includes(g.status)))
+    .filter(g=>g.city===state.user.city&&g.specialty===state.user.spec);
+  if(!ss.length&&!gs.length)return `<div class="notice plain mt16">${esc(state.user.city)} · ${esc(state.user.spec)} 暂无同城同垂直场次——同城是成团前提；城市供给与配置包由运营开通中（应用全集开放，不做拦截）。</div>
+    ${state.user.city!=='北京'||state.user.spec!=='劳动仲裁'?`<button class="btn btn-o mt8" style="width:100%" onclick="state.user.city='北京';state.user.spec='劳动仲裁';render()">切回 北京 · 劳动仲裁（供给已就绪）</button>`:''}
+    <button class="btn btn-p mt8" style="width:100%" onclick="go('u-create')">${ic('plus',14)} 仍要发起拼团（携带当前城市与垂直）</button>`;
   return ss.map(s=>sessCard(s)).join('<div class="mt8"></div>')+(ss.length&&gs.length?'<div class="mt12 mb8 h3">用户发起拼团</div>':'')+gs.map(g=>groupCard(g)).join('<div class="mt8"></div>');
 }
 
@@ -1140,7 +1150,7 @@ VIEWS['u-create']={end:'user',render(){
   return `
   <div class="navbar"><span class="back" onclick="cgBack()">${ic('left',16)}</span><span class="nt">发起拼团</span><span style="width:34px"></span></div>
   <div class="steps">${[1,2,3].map(i=>`<i class="${i<cg.step?'on':i===cg.step?'cur':''}"></i>`).join('')}</div>
-  <div class="notice plain mb12"><span>${ic('pin',14)}</span><span>当前 <b>${state.user.city}</b> · 垂直 <b>劳动仲裁</b>——同城 × 同垂直是成团前提，发布后将携带城市与垂直信息（双维度框架）。</span></div>
+  <div class="notice plain mb12"><span>${ic('pin',14)}</span><span>当前 <b>${state.user.city}</b> · 垂直 <b>${state.user.spec}</b>——同城 × 同垂直是成团前提，发布后将携带城市与垂直信息（双维度框架 · 应用全集开放，供给由运营开通）。</span></div>
   ${cg.step===1?`
     <div class="h3 mb8">① 选择律师</div>
     <div class="fcol" style="gap:8px">${DB.lawyers.map(l=>`
@@ -1188,7 +1198,7 @@ function cgPublish(){
   const lw=L(cg.lawyer);const sl=CG_SLOTS[cg.slot];
   DB.groups.unshift({id:'G-'+(110+DB.groups.length),by:state.user.name,lawyer:lw.id,topic:[...cg.tags].slice(0,2).join(' · ')+' 咨询',tags:[...cg.tags],
     start:sl[0].replace(/^(\d+-\d+) [周一二三四五六日]+ /,'$1 '),full:sl[1],dur:cg.dur,range:lw.range,pick:cg.pick,min:cg.pick[0],
-    city:state.user.city,specialty:'劳动仲裁',
+    city:state.user.city,specialty:state.user.spec,
     share:+(lw.total/cg.pick[0]).toFixed(2),joined:1,deadline:'开始前 24h',status:'pending',mine:true,qnote:cg.note});
   toast('拼团已发布 · 时间段已锁定，快照价已生成','ok');
   cg={step:1,lawyer:'L1',slot:null,dur:90,pick:null,tags:new Set(),note:''};
@@ -2233,7 +2243,7 @@ VIEWS['a-kb']={end:'admin',render(){
       <div class="grid2">${kb.specs.map(s=>`<div class="card pad ${s[1]==='上线中'?'':'flat'}" style="${s[1]==='上线中'?'':'opacity:.6'}">
         <div class="spread"><div class="row">${ic('scale',17)}<b>${s[0]}</b></div><span class="tag ${s[1]==='上线中'?'':'gray'}">${s[1]}</span></div>
         <div class="tiny muted mt8">${s[2]}</div></div>`).join('')}</div>
-      <div class="tiny muted mt8">用户端垂直选择器数据源=已上线配置包（未上线垂直灰置「即将开放」展示——2026-10-17 双维度框架，D-BP8）。</div>
+      <div class="tiny muted mt8">用户端垂直选择器数据源=配置包全集——「应用做全套」：城市/垂直全集可选不设门槛，内容有无由配置包 active 与城市供给驱动（空态引导）；供给开通与上下线=运营侧操作（04 §8-25，2026-10-17）。</div>
   <div class="grid2 mt16" style="grid-template-columns:1.1fr 1fr;gap:16px">
     <div class="card pad"><div class="spread mb8"><span class="h3">知识库文档（42）</span><button class="btn btn-xs btn-o" onclick="toast('已选择文件（演示 · 加密 OSS 归档）','ok')">${ic('plus',12)} 上传</button></div>
       ${kb.files.map(f=>`<div class="lrow">${ic('file',16)}<div class="grow"><b class="small">${f[0]}</b><div class="tiny muted">${f[1]}</div></div><button class="icon-btn" style="width:30px;height:30px" onclick="toast('已更新索引（KnowledgeUpdated · E1 缓存失效）','ok')">${ic('refresh',13)}</button></div>`).join('')}
