@@ -3,7 +3,7 @@
  * M1-W3 T10 压轴 + W2 终审 G-A 前置门关闭承载面）。
  *
  * 边界（§1/架构 §2.1）：ops 域编排面——只写 ops.audit_logs（本 schema）；状态本体在 A3a
- * （identity.lawyer_profiles 经 LawyerQualificationService 导出面，禁 join identity 表），
+ * （identity 域 lawyer_profiles 经 LawyerQualificationService 导出面，禁跨域 join），
  * 进件状态在 A3b（FirmMerchantService 导出面）、信用快照在 G1（CreditService 导出面）、
  * 场次统计在 C1（SessionService 导出面）——跨模块取数全走服务接口，禁跨 schema join
  * （H1 §9 明文禁止 + check-schema-refs 红线）。
@@ -102,8 +102,7 @@ export class LawyerAdminService {
     status?: WorkbenchStatus;
     page: number;
   }): Promise<WorkbenchListResult> {
-    const statuses =
-      query.status === undefined ? undefined : ([query.status] as const);
+    const statuses = query.status === undefined ? undefined : ([query.status] as const);
     const queue = await this.qualification.listSubmissions({ statuses, page: query.page });
     const now = new Date();
     const items: WorkbenchItem[] = queue.items.map((item) => {
@@ -141,7 +140,11 @@ export class LawyerAdminService {
   }
 
   /** POST /admin/lawyers/{id}/suspend {reason}（§5；幂等键=id；转调 A3a suspend，事件出箱=A3a） */
-  async suspend(profileId: number, reason: string, adminUserId: number): Promise<{ status: string }> {
+  async suspend(
+    profileId: number,
+    reason: string,
+    adminUserId: number,
+  ): Promise<{ status: string }> {
     return this.audit(profileId, { action: 'suspend', reason }, adminUserId);
   }
 
@@ -167,9 +170,7 @@ export class LawyerAdminService {
 
     // A3b 进件状态（经 payment 域导出面；firm_id=null=未绑定律所，进件位空）
     const merchants =
-      qualification.firm_id === null
-        ? []
-        : await this.merchants.listByFirm(qualification.firm_id);
+      qualification.firm_id === null ? [] : await this.merchants.listByFirm(qualification.firm_id);
 
     // G1 信用快照（lawyer 侧账户；无账户行时 getMine 回显初始 100 口径）
     const credit = await this.credit.getMine('lawyer', lawyerUserId);
@@ -178,8 +179,7 @@ export class LawyerAdminService {
     const now = new Date();
     const to = window?.to ?? shanghaiDateOf(now);
     const from =
-      window?.from ??
-      shanghaiDateOf(new Date(now.getTime() - STATS_WINDOW_DAYS * 86_400_000));
+      window?.from ?? shanghaiDateOf(new Date(now.getTime() - STATS_WINDOW_DAYS * 86_400_000));
     const sessionStats = await this.sessions.stats(lawyerUserId, from, to);
 
     return {

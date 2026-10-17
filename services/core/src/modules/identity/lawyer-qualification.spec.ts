@@ -715,7 +715,7 @@ describe('A3a 领域层（状态机/盲索引唯一/重提版本/事件生产/A1
     expect((await profileRow(userId))!.auditor_id).toBe('9003');
   });
 
-  it('H1 导出面：auditWithExecutor 外部事务变体——事务内可见、回滚即消失（H1 同事务落 ops.audit_logs 的缝合点）', async () => {
+  it('H1 导出面：auditWithExecutor 外部事务变体——事务内可见、回滚即消失（H1 同事务落 ops 域审计表的缝合点）', async () => {
     const userId = await seedUser('uow');
     await service.submitQualification(userId, {
       licenseNo: LICENSE_A,
@@ -753,8 +753,14 @@ describe('A3a 领域层（状态机/盲索引唯一/重提版本/事件生产/A1
     const u2 = await seedUser('q2');
     const u3 = await seedUser('q3');
     await service.submitQualification(u1, { licenseNo: LICENSE_A, files: licenseFilesV1('a') });
-    await service.submitQualification(u2, { licenseNo: 'LICENSE-SPEC-0002', files: licenseFilesV1('b') });
-    await service.submitQualification(u3, { licenseNo: 'LICENSE-SPEC-0003', files: licenseFilesV1('c') });
+    await service.submitQualification(u2, {
+      licenseNo: 'LICENSE-SPEC-0002',
+      files: licenseFilesV1('b'),
+    });
+    await service.submitQualification(u3, {
+      licenseNo: 'LICENSE-SPEC-0003',
+      files: licenseFilesV1('c'),
+    });
 
     // 默认=审核队列（SUBMITTED|IN_REVIEW），提交时间 ASC
     const queue = await service.listSubmissions({});

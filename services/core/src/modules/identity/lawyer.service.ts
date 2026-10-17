@@ -303,7 +303,7 @@ export class LawyerQualificationService {
   /**
    * 审核动作（自管事务形态，既有调用兼容）：auditorId 传 admin claims userId 时回填
    * auditor_id（⚠W3-8/G-A R-W2-G 绑定项）；服务级内部调用不传保持 NULL（历史行为）。
-   * H1 ops 控制器（同一 HTTP 面）走 auditWithExecutor 与 ops.audit_logs 同事务缝合。
+   * H1 ops 控制器（同一 HTTP 面）走 auditWithExecutor 与 ops 域审计表同事务缝合。
    */
   async audit(
     profileId: number,

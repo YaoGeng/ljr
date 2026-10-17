@@ -10,6 +10,7 @@ import { ensureTestDatabase, truncateAll } from '../../infrastructure/testing/db
 import { PgPoolService } from '../../infrastructure/sql';
 import { IDENTITY_CONFIG, type IdentityConfig } from '../identity/identity.config';
 import { IdentityTokenService } from '../identity/identity.token.service';
+import { grantUserRoles, seedUserShell } from '../identity/lawyer-fixture';
 import { LawyerQualificationService } from '../identity/lawyer.service';
 import { LawyerAdminModule } from './lawyer-admin.module';
 
@@ -25,8 +26,9 @@ import { LawyerAdminModule } from './lawyer-admin.module';
  * R-03 转调验证：reject 带 reason → 律师重提回 SUBMITTED（A3a 既有行为经 H1 面可达）。
  * 鉴权三态（G-A）：未认证 401 / 未持 admin 旗标 403 E_ROLE_FORBIDDEN / admin 200。
  *
- * owner 纪律：本 spec 直查面=ops.audit_logs（owner 表）+ platform.outbox（白名单）；
- * identity.lawyer_profiles 断言走 A3a 服务导出面（profileViewById/isAuditPassed）——禁直查。
+ * owner 纪律：本 spec 直查面=ops 域审计表（owner 表）+ platform.outbox（白名单）；
+ * 账号夹具经 identity 域 fixture 函数（lawyer-fixture：跨域只 import、不内联他域表名）；
+ * 档案断言走 A3a 服务导出面（profileViewById/isAuditPassed）——禁直查。
  */
 
 const LICENSE = 'LICENSE-H1-SPEC-0001';
@@ -75,32 +77,17 @@ describe('H1 律师与资质管理（工作台/审核/停用/档案，需 PG）'
     poolSvc = app.get(PgPoolService);
     qualification = app.get(LawyerQualificationService);
 
-    // 夹具账号：admin=DB 级预置（users 直插+user_roles('user','admin')），claims 与真实签发一致
-    const admin = await pool.query<{ id: string }>(
-      `INSERT INTO identity.users (phone_enc, phone_blind_idx, status, age_declared)
-       VALUES ($1, $2, 'ACTIVE', true) RETURNING id`,
-      [Buffer.from('fixture-admin'), randomBytes(32).toString('hex')],
-    );
-    adminUserId = Number(admin.rows[0]!.id);
-    await pool.query(
-      "INSERT INTO identity.user_roles (user_id, role) VALUES ($1, 'user'), ($1, 'admin') ON CONFLICT DO NOTHING",
-      [adminUserId],
-    );
+    // 夹具账号：admin=DB 级预置（identity 域 fixture 直插 users+角色行，跨域只 import 不内联
+    // 表名），claims 与真实签发一致（⚠W3-8：admin=权限旗标，激活角色仍 user）
+    adminUserId = await seedUserShell(pool, 'h1-admin');
+    await grantUserRoles(pool, adminUserId, ['user', 'admin']);
     adminToken = await tokens.signAccessToken({
       userId: adminUserId,
       role: 'user',
       roles: ['user', 'admin'],
     });
-    const lawyer = await pool.query<{ id: string }>(
-      `INSERT INTO identity.users (phone_enc, phone_blind_idx, status, age_declared)
-       VALUES ($1, $2, 'ACTIVE', true) RETURNING id`,
-      [Buffer.from('fixture-lawyer'), randomBytes(32).toString('hex')],
-    );
-    lawyerUserId = Number(lawyer.rows[0]!.id);
-    await pool.query(
-      "INSERT INTO identity.user_roles (user_id, role) VALUES ($1, 'user') ON CONFLICT DO NOTHING",
-      [lawyerUserId],
-    );
+    lawyerUserId = await seedUserShell(pool, 'h1-lawyer');
+    await grantUserRoles(pool, lawyerUserId, ['user']);
     userToken = await tokens.signAccessToken({
       userId: lawyerUserId,
       role: 'user',
@@ -131,17 +118,12 @@ describe('H1 律师与资质管理（工作台/审核/停用/档案，需 PG）'
     expect(forbidden.status).toBe(403);
     expect(forbidden.body.code).toBe(ErrorCode.RoleForbidden);
 
-    // 三个提交（提交时间随 id 单调）+ 第一个领取（仍在队列：IN_REVIEW）
-    const u2 = lawyerUserId + 1; // 独立账号：直插最小壳（A1 链路已由 identity.spec 覆盖）
-    const u3 = lawyerUserId + 2;
-    for (const uid of [lawyerUserId, u2, u3]) {
-      if (uid === lawyerUserId) continue;
-      await pool.query(
-        `INSERT INTO identity.users (id, phone_enc, phone_blind_idx, status, age_declared)
-         VALUES ($1, $2, $3, 'ACTIVE', true)`,
-        [uid, Buffer.from(`fixture-${uid}`), randomBytes(32).toString('hex')],
-      );
-    }
+    // 三个提交（提交时间随插入序单调）+ 第一个领取（仍在队列：IN_REVIEW）
+    // 独立账号：identity 域 fixture 直插最小壳（A1 链路已由 identity.spec 覆盖）；
+    // 显式 id=lawyerUserId+n 错开——truncate 后 sequence 重置，自动 id 会与 beforeAll
+    // 预置的 admin/lawyer 撞号（同批提交队列条目须三个不同 user）
+    const u2 = await seedUserShell(pool, 'h1-extra-2', lawyerUserId + 1);
+    const u3 = await seedUserShell(pool, 'h1-extra-3', lawyerUserId + 2);
     const p1 = await submitProfile(lawyerUserId);
     await submitProfile(u2, 'LICENSE-H1-SPEC-0002');
     await submitProfile(u3, 'LICENSE-H1-SPEC-0003');
@@ -369,7 +351,10 @@ describe('H1 律师与资质管理（工作台/审核/停用/档案，需 PG）'
       files: [{ kind: 'LICENSE_PHOTO', ref: 'spec/oss/h1-license-v2.jpg' }],
     });
     const queue = await qualification.listSubmissions({});
-    expect(queue.items[0]).toMatchObject({ lawyer_user_id: lawyerUserId, audit_status: 'SUBMITTED' });
+    expect(queue.items[0]).toMatchObject({
+      lawyer_user_id: lawyerUserId,
+      audit_status: 'SUBMITTED',
+    });
     const detail = await pool.query<{ detail: Record<string, unknown> }>(
       `SELECT detail FROM ops.audit_logs WHERE target_id = $1 AND action = 'lawyer_audit.reject'`,
       [profileId],

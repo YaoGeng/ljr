@@ -5,7 +5,7 @@
  *
  * W3 T10：admin 审核操作面 POST /admin/lawyers/{id}/audit 的 HTTP 面随 H1 落位迁至 ops
  * （ops/lawyer-admin.controller，G-A 前置门接线 @RequireRole('admin') + auditor_id 回填 +
- * ops.audit_logs 同事务审计——编排方须持 ops schema 写权，schema 纪律决定路由归位）；
+ * ops 域审计表同事务审计——编排方须持 ops schema 写权，schema 纪律决定路由归位）；
  * 契约仍归 A3a §5（action 词汇=A3a 实现词汇，审核逻辑=auditWithExecutor 服务面不变）。
  */
 import { Body, Controller, Get, Post, UseFilters, UseGuards } from '@nestjs/common';

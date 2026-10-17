@@ -10,9 +10,9 @@
  *
  * 鉴权（G-A 前置门，终审不可降级）：类级 IdentityAuthGuard+IdentityRoleGuard + 每端点
  * @RequireRole('admin')——未认证 401 / 未持 admin 旗标 403 E_ROLE_FORBIDDEN。admin 账号=
- * DB 级预置（identity.user_roles 直插 role='admin'，无自助 API；运营台=M3/M4）。
+ * DB 级预置（identity 域 user_roles 直插 role='admin'，无自助 API；运营台=M3/M4）。
  * 本控制器是 /admin/lawyers 路由唯一主人（A3a 的 admin 占位控制器随本批退役——契约归 A3a、
- * HTTP 面归 ops：同事务审计要求编排方持有 ops.audit_logs 写权，schema 纪律决定归属）。
+ * HTTP 面归 ops：同事务审计要求编排方持有 ops 域审计表写权，schema 纪律决定归属）。
  */
 import { Body, Controller, Get, Param, Post, Query, UseFilters, UseGuards } from '@nestjs/common';
 import { AppHttpExceptionFilter } from '../../infrastructure/app-error.filter';
@@ -56,11 +56,7 @@ export class LawyerAdminController {
     @CurrentIdentity() identity: IdentityClaims,
     @Body() body: unknown,
   ): Promise<{ status: string }> {
-    return this.lawyerAdmin.audit(
-      parseProfileId(id),
-      parseAuditActionBody(body),
-      identity.userId,
-    );
+    return this.lawyerAdmin.audit(parseProfileId(id), parseAuditActionBody(body), identity.userId);
   }
 
   /** POST /admin/lawyers/{id}/suspend {reason}：停用（转调 A3a suspend；事件出箱=A3a） */
