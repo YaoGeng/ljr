@@ -42,6 +42,7 @@ import {
 import type { SqlExecutor } from '../../infrastructure/sql';
 import { PgPoolService } from '../../infrastructure/sql';
 import { OutboxService } from '../../infrastructure/outbox/outbox.service';
+import { StateTransitionGuardService } from '../../infrastructure/state-machine/state-transition-guard.service';
 import { NotifyDispatcherService } from '../notify/notify-dispatcher.service';
 import { NotifyTemplateService } from '../notify/notify-template.service';
 import { PointsService } from '../benefits/points.service';
@@ -49,6 +50,7 @@ import { EnrollmentService } from '../trade/enrollment.service';
 import { GroupBuyService } from '../trade/group-buy.service';
 import { SessionService } from '../trade/session.service';
 import { PricingConfigService } from './pricing.service';
+import { PRICE_HISTORY_MACHINE } from './price-change.machine';
 import { moneyToCents, normalizePricingWrite } from './pricing.validate';
 import { classifyChange, computeCompensations } from './price-change.engine';
 import type {
@@ -99,6 +101,19 @@ interface ApproveEffectContext {
   readonly recipients: readonly PaidActiveEnrollment[];
 }
 
+/** F-3 载荷比对用稳定序列化：键序归一（jsonb 读回键序与写入侧不保证一致，语义全等判定用） */
+function stableJson(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(stableJson).join(',')}]`;
+  if (v !== null && typeof v === 'object') {
+    const obj = v as Record<string, unknown>;
+    return `{${Object.keys(obj)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${stableJson(obj[k])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(v);
+}
+
 @Injectable()
 export class PriceChangeService {
   private readonly logger = new Logger(PriceChangeService.name);
@@ -106,6 +121,7 @@ export class PriceChangeService {
   constructor(
     private readonly pool: PgPoolService,
     private readonly outbox: OutboxService,
+    private readonly guard: StateTransitionGuardService,
     // R-W3-P 单写者：版本落版/恢复唯一经 B3 导出服务
     private readonly b3: PricingConfigService,
     // 跨模块消费全部走导出服务（C1/C2/C3/F4/I1）——禁跨 schema join（架构 §3.2 红线）
@@ -118,10 +134,10 @@ export class PriceChangeService {
   ) {}
 
   // ===========================================================================
-  // §4 引擎判定主入口（§5 POST /lawyer/pricing/change；幂等键=lawyer+new_version 以 EFFECTED
-  // 行为幂等面——ux_pricing_histories_lawyer_newver_effected 部分唯一索引物理兜底：一个版本号
-  // 在该律师名下至多生效一次。new_version=请求时点 head+1 快照；PENDING/REJECTED 行为意图
-  // 快照不阻塞后续分配，approve 时点版本链复核兜漂移）
+  // §4 引擎判定主入口（§5 POST /lawyer/pricing/change；幂等键=lawyer+new_version（F-3/R-W3-Q②
+  // 对齐 §5）——PENDING 面=同键同草案重放原行/异草案 409（V30 部分唯一索引兜底，REJECTED 释放
+  // 槽位）；EFFECTED 面=一个版本号至多生效一次（V29 部分唯一索引）。new_version=请求时点
+  // head+1 快照；approve 时点版本链复核兜漂移）
   // ===========================================================================
 
   async requestChange(lawyerId: number, draft: PutPricingInput): Promise<ChangeRequestResult> {
@@ -175,11 +191,36 @@ export class PriceChangeService {
           (await this.sessions.hasActiveSessions(lawyerId)) ||
           (await this.groupBuys.hasActiveGroupBuys(lawyerId));
 
-        // ⑤ R-01 三档判定（纯函数；同价/非正价显性 400）+ ⑥ R-03 频率 DB 滑窗（⚠W3-7）
+        // ⑤ R-01 三档判定（纯函数；同价/非正价/幅度溢出显性 400）+ ⑥ R-03 频率 DB 滑窗（⚠W3-7）
         const classification = classifyChange(oldCents, newCents, hasActiveGroup);
+        const newVersion = base.version + 1;
+
+        // ⑥' F-3/R-W3-Q② 幂等键=lawyer+new_version（PENDING 面，V30 部分唯一索引兜底）：
+        //    同键同草案（归一 JSON 语义全等）=幂等重放原行；同键异草案=409 显性（§5 异载荷先例）。
+        //    置于频率计数前——重放不是新请求，不消耗频率窗口。
+        const pendingSlot = await uow.query<HistoryInsertOut & { new_version_draft: unknown }>(
+          `SELECT id, new_version_draft FROM pricing.pricing_histories
+           WHERE lawyer_id = $1 AND new_version = $2 AND result = 'PENDING_APPROVAL'
+           FOR UPDATE`,
+          [lawyerId, newVersion],
+        );
+        const prevPending = pendingSlot.rows[0];
+        if (prevPending) {
+          if (stableJson(prevPending.new_version_draft) === stableJson(normalized as unknown)) {
+            return {
+              result: 'PENDING_APPROVAL',
+              history_id: Number(prevPending.id),
+              new_version: newVersion,
+            };
+          }
+          throw new AppError(
+            ErrorCode.Conflict,
+            `改价幂等键冲突：lawyer=${lawyerId} v${newVersion} 已有待审请求且草案不一致（同键同草案重放返回原行；异草案请待审批终结后重发起）`,
+          );
+        }
+
         const freqExceeded = (await this.countRecentChanges(uow, lawyerId)) >= FREQ_LIMIT;
         const requiresApproval = freqExceeded || classification.tierRequiresApproval;
-        const newVersion = base.version + 1;
 
         if (requiresApproval) {
           // 审批档：草案随历史行持久化（§5 approve 入参无草案；R-03 版本不可变下生效只有一次机会）
@@ -273,7 +314,15 @@ export class PriceChangeService {
         const kind = classifyChange(oldCents, newCents, true).kind;
 
         if (!input.approved) {
-          // 否决：版本不生效；PriceChangeRejected 出箱（审计/通知扇出位）；无信用事件无补偿
+          // 否决：版本不生效；PriceChangeRejected 出箱（审计/通知扇出位）；无信用事件无补偿。
+          // F-2/R-W3-Q①：result 迁移经状态机守卫（PENDING_APPROVAL→REJECTED，STL 留痕）。
+          await this.guard.assertTransition(PRICE_HISTORY_MACHINE, {
+            entityId: historyId,
+            from: 'PENDING_APPROVAL',
+            to: 'REJECTED',
+            reason: 'approve_manual_rejected',
+            uow,
+          });
           await this.outbox.recordOutbox(uow, {
             type: PRICE_CHANGE_REJECTED_TOPIC,
             payload: {
@@ -294,6 +343,14 @@ export class PriceChangeService {
             `审批作废：目标版本 v${row.new_version} 的前置链已漂移（当前 v${head}），须重新发起改价`,
           );
         }
+        // F-2/R-W3-Q①：PENDING_APPROVAL→EFFECTED 经状态机守卫（STL 同事务留痕）
+        await this.guard.assertTransition(PRICE_HISTORY_MACHINE, {
+          entityId: historyId,
+          from: 'PENDING_APPROVAL',
+          to: 'EFFECTED',
+          reason: 'approve_manual_effected',
+          uow,
+        });
         // R-W3-P：生效经 B3 版本服务（分配号=锁内 max+1，与 new_version 一致由复核保证）
         await this.b3.createVersionFromDraftInTx(uow, lawyerId, row.new_version_draft);
         await this.decideHistory(uow, historyId, 'EFFECTED', input.approval_id);
@@ -307,7 +364,8 @@ export class PriceChangeService {
         const recipients = await this.enrollments.listActivePaidForLawyer(lawyerId);
         await this.registerTierNotifications(uow, historyId, kind, recipients);
         if (kind === 'PRICE_DOWN_GT10') {
-          // 券发放指令（F4 ②全量=M2 消费；券面额/有效期 PRD 未定义，F4 ②按 H7 配置落值）
+          // 券发放指令（F4 ②全量=M2 消费；券面额/有效期 PRD 未定义，F4 ②按 H7 配置落值）。
+          // recipients 已按 user 聚合（F-1/R-W3-Q，trade 侧 GROUP BY）——一人恰一张。
           for (const r of recipients) {
             await this.outbox.recordOutbox(uow, {
               type: PRICE_COUPON_INSTRUCTED_TOPIC,
@@ -393,6 +451,24 @@ export class PriceChangeService {
           `改价 ${historyId} 已超 ${REVOKE_WINDOW_HOURS}h 撤销窗口（R-04）`,
         );
       }
+      // F-4/R-W3-Q③ head 复核：撤销仅对当前最新生效档开放——其生效版本已是 head；
+      // 其后有新改价（head 漂移至更大号）→ 409（⚠待澄清：非最新档的撤销/补偿回滚语义 M2 澄清）
+      const head = await this.readHeadVersion(uow, lawyerId);
+      if (head !== row.new_version) {
+        throw new AppError(
+          ErrorCode.Conflict,
+          `改价 ${historyId} 非当前最新生效档（本行目标 v${row.new_version}，当前 head v${head}）——撤销仅对最新生效档开放（⚠待澄清：历史档撤销语义 M2 澄清）`,
+        );
+      }
+      // F-2/R-W3-Q①：EFFECTED→REVOKED 经状态机守卫（STL 同事务留痕；revoked_at 物化标记，
+      // result 列词汇受 V29 CHECK 限不变——对照关系见 price-change.machine 头注）
+      await this.guard.assertTransition(PRICE_HISTORY_MACHINE, {
+        entityId: historyId,
+        from: 'EFFECTED',
+        to: 'REVOKED',
+        reason: 'revoke_within_24h',
+        uow,
+      });
       // 恢复上一版本（R-W3-P：经 B3；版本不可变 → 恢复=新版本承载 old_version 内容快照）
       const r = await this.b3.restoreVersionInTx(uow, lawyerId, row.old_version);
       await uow.query(

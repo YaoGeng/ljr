@@ -64,6 +64,9 @@ const LAWYER_REVOKE = 9405; // 撤销链路（approve 后 24h 内/超窗/幂等�
 const LAWYER_FREQ = 9406; // 频率滑窗
 const LAWYER_STALE = 9407; // 审批时版本链漂移
 const LAWYER_ISOLATED = 9408; // 在团判定负例（仅终态场次）
+const LAWYER_AGGR = 9409; // F-1 同用户多笔 PAID 聚合
+const LAWYER_DUP = 9410; // F-3 幂等键=lawyer+new_version（PENDING 面）
+const LAWYER_REV2 = 9411; // F-4 撤销 head 复核
 const USER_A = 701;
 const USER_B = 702;
 const USER_C = 703;
@@ -203,6 +206,19 @@ describe('C6 改价与补偿（§4/§5/§7/§9/§10，需 PG）', () => {
   const notificationsOf = (userId: number, templateCode?: string) =>
     listNotificationsRaw(pool, userId, templateCode);
 
+  const stlRows = async (historyId: number) => {
+    const res = await pool.query<{
+      from_status: string | null;
+      to_status: string;
+      allowed: boolean;
+    }>(
+      `SELECT from_status, to_status, allowed FROM platform.state_transition_log
+        WHERE entity_type = 'pricing_history' AND entity_id = $1 ORDER BY id`,
+      [historyId],
+    );
+    return res.rows;
+  };
+
   const balanceOf = (userId: number): Promise<number> =>
     points.getMine(userId).then((m) => m.balance);
 
@@ -243,6 +259,9 @@ describe('C6 改价与补偿（§4/§5/§7/§9/§10，需 PG）', () => {
       LAWYER_FREQ,
       LAWYER_STALE,
       LAWYER_ISOLATED,
+      LAWYER_AGGR,
+      LAWYER_DUP,
+      LAWYER_REV2,
     ]) {
       lawyerTokens.set(id, await mintToken(id, 'lawyer'));
     }
@@ -628,15 +647,25 @@ describe('C6 改价与补偿（§4/§5/§7/§9/§10，需 PG）', () => {
     expect(rest).toHaveLength(3);
     expect(fourthRow).toMatchObject({ direction: 'UP', has_active_group: false });
 
-    // 滑窗：三个历史移出 30 天 → 第 5 次（窗内第 1 次）恢复直效
+    // F-3 语义：同草案再提交=重放原待审行（待审请求是活请求，窗口滑出不使其变成新请求）
     await timeTravel(LAWYER_FREQ, '31 days');
-    const fifth = await postChange(LAWYER_FREQ, {
+    const replay = await postChange(LAWYER_FREQ, {
       base_version: 4,
       per_head: '104.00',
       one_on_one_prices: VALID_1V1,
     });
-    expect(fifth.body.result).toBe('EFFECTED');
-    expect(await versionsOf(LAWYER_FREQ)).toEqual([1, 2, 3, 4, 5]);
+    expect(replay.body.result).toBe('PENDING_APPROVAL');
+    expect(replay.body.history_id).toBe(fourth.body.history_id);
+    // 审批终结待审行（窗口已滑出，人工兜底按当下口径放行）→ head 前移释放槽位
+    await approve(fourth.body.history_id as number, { approved: true, approval_id: 8810 });
+    // 新草案请求：窗内计数 0 → 恢复直效（滑窗验证面）
+    const sixth = await postChange(LAWYER_FREQ, {
+      base_version: 5,
+      per_head: '105.00',
+      one_on_one_prices: VALID_1V1,
+    });
+    expect(sixth.body.result).toBe('EFFECTED');
+    expect(await versionsOf(LAWYER_FREQ)).toEqual([1, 2, 3, 4, 5, 6]);
   });
 
   // ===========================================================================
@@ -785,6 +814,158 @@ describe('C6 改价与补偿（§4/§5/§7/§9/§10，需 PG）', () => {
     expect(await histories(LAWYER_GT10).then((r) => r.body)).toEqual([]);
     const missing = await request(app.getHttpServer()).get('/pricing/histories');
     expect(missing.status).toBe(400);
+  });
+
+  // ===========================================================================
+  // 评审修复轮（R-W3-Q）：F-1 聚合 / F-2 STL / F-3 幂等键 / F-4 撤销 head 复核
+  // ===========================================================================
+
+  it('F-1 同用户多笔活跃 PAID 报名聚合：补偿恰一笔（两场 paid 合计占比）+ GT10 券恰一张；approve 不因 grant 幂等键冲突失败', async () => {
+    await seedVersion(LAWYER_AGGR, '100.00');
+    // USER_A 同律师两场各 1 笔 PAID（cash 30.00 ×2 = 6000 分合计），USER_B 一场 2000 分
+    await seedSession(LAWYER_AGGR, 'CREATED', USER_A, {
+      cash: '30.00',
+      points: 0,
+      unitPrice: '100.00',
+    });
+    await seedSession(LAWYER_AGGR, 'IN_SERVICE', USER_A, {
+      cash: '30.00',
+      points: 0,
+      unitPrice: '100.00',
+    });
+    await seedSession(LAWYER_AGGR, 'CREATED', USER_B, {
+      cash: '20.00',
+      points: 0,
+      unitPrice: '100.00',
+    });
+
+    const res = await postChange(LAWYER_AGGR, {
+      base_version: 1,
+      per_head: '70.00', // GT10：补偿 + 券
+      one_on_one_prices: VALID_1V1,
+    });
+    expect(res.body.result).toBe('PENDING_APPROVAL');
+    const historyId = res.body.history_id as number;
+    const ok = await approve(historyId, { approved: true, approval_id: 8901 });
+    expect(ok.status).toBe(201); // 未聚合实现此处 grant 幂等键冲突 500
+
+    // 占比：USER_A 6000/8000 → floor(3000×6000/8000)=2250；USER_B 2000/8000 → 750
+    expect(await balanceOf(USER_A)).toBe(2250);
+    expect(await balanceOf(USER_B)).toBe(750);
+    const granted = await outboxOf(POINTS_GRANTED_TOPIC);
+    expect(granted.filter((g) => g.payload['user_id'] === USER_A)).toHaveLength(1); // 恰一笔
+    expect(granted.filter((g) => g.payload['user_id'] === USER_B)).toHaveLength(1);
+    // 券指令按聚合后 recipients 去重：恰两张，一人一张
+    const coupons = await outboxOf(PRICE_COUPON_INSTRUCTED_TOPIC);
+    expect(coupons).toHaveLength(2);
+    expect(coupons.map((c) => c.payload['user_id']).sort()).toEqual([USER_A, USER_B]);
+  });
+
+  it('F-2 result 迁移经 STL：PENDING_APPROVAL→EFFECTED/REJECTED 与 EFFECTED→REVOKED 留痕可查；幂等重放零新痕', async () => {
+    await seedVersion(LAWYER_LE10, '100.00');
+    await seedSession(LAWYER_LE10, 'CREATED', USER_A);
+    const res = await postChange(LAWYER_LE10, {
+      base_version: 1,
+      per_head: '90.00',
+      one_on_one_prices: VALID_1V1,
+    });
+    const historyId = res.body.history_id as number;
+    expect((await stlRows(historyId)).filter((r) => r.allowed)).toHaveLength(0); // 出生态无迁移痕
+
+    await approve(historyId, { approved: true, approval_id: 8902 });
+    expect(await stlRows(historyId)).toEqual([
+      { from_status: 'PENDING_APPROVAL', to_status: 'EFFECTED', allowed: true },
+    ]);
+
+    // 撤销：EFFECTED→REVOKED 痕（revoked_at 物化标记，result 列词汇不变——machine 头注对照）
+    await seedRevokeTemplate();
+    const rv = await revoke(historyId, lawyerTokens.get(LAWYER_LE10));
+    expect(rv.status).toBe(201);
+    expect(await stlRows(historyId)).toEqual([
+      { from_status: 'PENDING_APPROVAL', to_status: 'EFFECTED', allowed: true },
+      { from_status: 'EFFECTED', to_status: 'REVOKED', allowed: true },
+    ]);
+
+    // 否决路径：PENDING_APPROVAL→REJECTED 痕
+    const res2 = await postChange(LAWYER_LE10, {
+      base_version: 3,
+      per_head: '91.00',
+      one_on_one_prices: VALID_1V1,
+    });
+    const historyId2 = res2.body.history_id as number;
+    await approve(historyId2, { approved: false, approval_id: 8903 });
+    expect(await stlRows(historyId2)).toEqual([
+      { from_status: 'PENDING_APPROVAL', to_status: 'REJECTED', allowed: true },
+    ]);
+
+    // 幂等重放（终态再 approve）不产生新痕
+    const replay = await approve(historyId, { approved: true, approval_id: 8902 });
+    expect(replay.body.result).toBe('EFFECTED');
+    expect(await stlRows(historyId)).toHaveLength(2);
+  });
+
+  it('F-3 幂等键=lawyer+new_version（PENDING 面）：同键同草案重放原行；异草案 409；REJECTED 释放槽位后可再发起', async () => {
+    await seedVersion(LAWYER_DUP, '100.00');
+    await seedSession(LAWYER_DUP, 'CREATED', USER_A); // 在团 → 降价进审批档
+    const draft = { base_version: 1, per_head: '90.00', one_on_one_prices: VALID_1V1 };
+    const first = await postChange(LAWYER_DUP, draft);
+    expect(first.body.result).toBe('PENDING_APPROVAL');
+    const historyId = first.body.history_id as number;
+
+    // 同键同草案 → 幂等重放原行（不落新行）
+    const replay = await postChange(LAWYER_DUP, { ...draft });
+    expect(replay.body.history_id).toBe(historyId);
+    expect(replay.body.result).toBe('PENDING_APPROVAL');
+    expect(await histRows(LAWYER_DUP)).toHaveLength(1);
+
+    // 同键异草案 → 409（V30 PENDING 面唯一索引 + 应用侧载荷比对）
+    const conflict = await postChange(LAWYER_DUP, {
+      base_version: 1,
+      per_head: '85.00',
+      one_on_one_prices: VALID_1V1,
+    });
+    expect(conflict.status).toBe(409);
+    expect(conflict.body.code).toBe(ErrorCode.Conflict);
+    expect(await histRows(LAWYER_DUP)).toHaveLength(1);
+
+    // 否决释放槽位 → 同号（head 未动，仍 v2 槽）可再发起为新行
+    await approve(historyId, { approved: false, approval_id: 8904 });
+    const resubmit = await postChange(LAWYER_DUP, draft);
+    expect(resubmit.status).toBe(201);
+    expect(resubmit.body.result).toBe('PENDING_APPROVAL');
+    expect(resubmit.body.history_id).not.toBe(historyId);
+    expect(resubmit.body.new_version).toBe(first.body.new_version); // 同槽复用
+    expect(await histRows(LAWYER_DUP)).toHaveLength(2);
+  });
+
+  it('F-4 撤销 head 复核：非当前最新生效版本 → 409（历史档撤销语义 ⚠待澄清 M2）；最新档可撤', async () => {
+    await seedVersion(LAWYER_REV2, '100.00');
+    await seedSession(LAWYER_REV2, 'CREATED', USER_A);
+    const r1 = await postChange(LAWYER_REV2, {
+      base_version: 1,
+      per_head: '90.00',
+      one_on_one_prices: VALID_1V1,
+    });
+    const h1 = r1.body.history_id as number;
+    await approve(h1, { approved: true, approval_id: 8905 }); // v2=90
+    const r2 = await postChange(LAWYER_REV2, {
+      base_version: 2,
+      per_head: '85.00',
+      one_on_one_prices: VALID_1V1,
+    });
+    const h2 = r2.body.history_id as number;
+    await approve(h2, { approved: true, approval_id: 8906 }); // v3=85（h1 已非最新）
+
+    const stale = await revoke(h1, lawyerTokens.get(LAWYER_REV2));
+    expect(stale.status).toBe(409);
+    expect(stale.body.code).toBe(ErrorCode.Conflict);
+    expect((await histRows(LAWYER_REV2))[0]!['revoked_at']).toBeNull(); // 历史档未被误撤
+
+    const latest = await revoke(h2, lawyerTokens.get(LAWYER_REV2));
+    expect(latest.status).toBe(201);
+    expect(latest.body.status).toBe('REVOKED');
+    // 恢复上一版本=该行 old_version 内容（v2=90.00，change2 的基线）为新 head；非逐级回滚到最初价
+    expect(await headPerHead(LAWYER_REV2)).toBe('90.00');
   });
 
   it('DB 层 CHECK 兜底：direction 越域 / change_pct<0 / credit_penalty>0 / result 越域 → 23514', async () => {
