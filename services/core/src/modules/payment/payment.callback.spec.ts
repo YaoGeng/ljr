@@ -301,6 +301,26 @@ describe('F1 回调验签与 Inbox（需 PG）', () => {
     expect(stl.rows.map((r) => r.allowed)).toEqual([true, true]);
   });
 
+  it('findInboxRowByKey（T7 导出读缝，findOrderById 加法先例）：按键定位 {id,status}；CONSUMED 读回 CONSUMED；未知键 null', async () => {
+    const order = await createOrder();
+    const { raw, signature } = signedBody(payCallbackBody(order, 'MOCK-WECHAT-900011'));
+    await svc.ingestCallback('wechat_ecom', raw, signature);
+
+    const row = await svc.findInboxRowByKey(`${order.key}:PAY_SUCCESS`);
+    expect(row).not.toBeNull();
+    expect(Number.isInteger(row!.id)).toBe(true);
+    expect(row!.status).toBe('RECEIVED');
+
+    // 读-判-标闭环（C3 消费器口径）：RECEIVED 才 markInboxConsumed → 读回 CONSUMED
+    await svc.markInboxConsumed(row!.id);
+    const consumed = await svc.findInboxRowByKey(`${order.key}:PAY_SUCCESS`);
+    expect(consumed).toMatchObject({ status: 'CONSUMED' });
+
+    // 同单另一事件键不串位；未知键=null
+    expect(await svc.findInboxRowByKey(`${order.key}:REFUND_SUCCESS`)).toBeNull();
+    expect(await svc.findInboxRowByKey('payment/ghost-1/pay:PAY_SUCCESS')).toBeNull();
+  });
+
   it('形态防御：未知通道 404 / 签名对但体非 JSON、缺字段 → 400 / 未知支付单 → 404 / CONSUMED 再 DEAD 被拒', async () => {
     const order = await createOrder();
     await expect(svc.ingestCallback('union_pay', Buffer.from('{}'), null)).rejects.toMatchObject({

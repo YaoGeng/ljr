@@ -824,6 +824,23 @@ export class PaymentGatewayService {
   }
 
   /**
+   * biz_idempotency_key 定位 Inbox 行（导出只读面，M1-W3 T7 扩展——findOrderById 加法先例，
+   * 不改既有契约）：C3 报名回调消费器（trade 域）标记 CONSUMED 前的 status 预读缝——跨域禁
+   * 直查 payment.inbox（架构 §3.2），「读-判-标」（RECEIVED 才 markInboxConsumed，重复标记
+   * 会被 inbox 守卫拒成永久重试环）经本面+markInboxConsumed 完成。不存在=null。
+   */
+  async findInboxRowByKey(
+    bizIdempotencyKey: string,
+  ): Promise<{ id: number; status: string } | null> {
+    const res = await this.pool.query<{ id: string; status: string }>(
+      `SELECT id, status FROM payment.inbox WHERE biz_idempotency_key = $1`,
+      [bizIdempotencyKey],
+    );
+    const row = res.rows[0];
+    return row ? { id: Number(row.id), status: row.status } : null;
+  }
+
+  /**
    * Inbox 死信标记（RECEIVED→DEAD，死信语义）+ 告警位：乱序/毒消息——业务推进被守卫拒后由
    * 消费侧调用；告警经 mock sink（M2+ 换装真实通道，工单位=H3）。
    */
