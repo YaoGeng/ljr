@@ -18,10 +18,7 @@ export interface WorkbenchQuery {
 }
 
 /** GET /admin/lawyers?status=&page= 查询解析 */
-export function parseWorkbenchQuery(query: {
-  status?: string;
-  page?: string;
-}): WorkbenchQuery {
+export function parseWorkbenchQuery(query: { status?: string; page?: string }): WorkbenchQuery {
   const rawStatus = query.status;
   let status: WorkbenchStatus | undefined;
   if (rawStatus !== undefined && rawStatus !== '') {
@@ -34,8 +31,7 @@ export function parseWorkbenchQuery(query: {
     status = rawStatus as WorkbenchStatus;
   }
   const rawPage = query.page;
-  const page =
-    rawPage === undefined || rawPage === '' ? 1 : parsePositiveInt(rawPage, 'page');
+  const page = rawPage === undefined || rawPage === '' ? 1 : parsePositiveInt(rawPage, 'page');
   return { status, page };
 }
 
@@ -60,10 +56,7 @@ export interface ProfileWindowQuery {
 }
 
 /** GET /admin/lawyers/{id}/profile?from=&to= 查询解析（absent=服务层缺省近 30 天，⚠§11） */
-export function parseProfileWindowQuery(query: {
-  from?: string;
-  to?: string;
-}): ProfileWindowQuery {
+export function parseProfileWindowQuery(query: { from?: string; to?: string }): ProfileWindowQuery {
   const out: { from?: string; to?: string } = {};
   for (const key of ['from', 'to'] as const) {
     const raw = query[key];

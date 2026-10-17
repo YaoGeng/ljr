@@ -776,7 +776,8 @@ describe('G1 信用体系（REST 契约 + R-01~R-03 + §8.8 矩阵 + 窗口/限�
   it('缓存适配位：GET 命中窗口内绕过发行的外部直插不可见 → invalidateOwner 后可见；emit 发行后主动失效立即可见（G-A 接线后 GET 面挂 admin 鉴权）', async () => {
     const owner = LAWYER_CACHE;
     const url = `/credit/restrictions?owner_type=lawyer&owner_id=${owner}`;
-    const adminGet = () => request(app.getHttpServer()).get(url).set('Authorization', `Bearer ${adminToken}`);
+    const adminGet = () =>
+      request(app.getHttpServer()).get(url).set('Authorization', `Bearer ${adminToken}`);
     expect((await adminGet()).body).toEqual([]); // 空数组入缓存（防穿透）
 
     // 外部写方（绕过 emit，无失效钩子）：TTL 窗口内不可见（缓存位存在性证明）

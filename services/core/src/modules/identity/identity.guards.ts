@@ -55,7 +55,8 @@ export class IdentityAuthGuard implements CanActivate {
       throw new AppError(ErrorCode.Unauthorized, '凭证无效或已过期');
     }
     const claims = (payload ?? {}) as { sub?: unknown; role?: unknown; roles?: unknown };
-    const isKnownRole = (r: unknown): r is UserRole => r === 'user' || r === 'lawyer' || r === 'admin';
+    const isKnownRole = (r: unknown): r is UserRole =>
+      r === 'user' || r === 'lawyer' || r === 'admin';
     const userId = Number(claims.sub);
     if (
       !Number.isInteger(userId) ||
@@ -95,7 +96,7 @@ export class IdentityRoleGuard implements CanActivate {
     // user/lawyer 维持激活角色相等语义（R-03 原口径）。
     const holds =
       required === 'admin'
-        ? req.identity?.roles.includes('admin') ?? false
+        ? (req.identity?.roles.includes('admin') ?? false)
         : req.identity?.role === required;
     if (!holds) {
       throw new AppError(

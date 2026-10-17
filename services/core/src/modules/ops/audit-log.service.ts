@@ -77,19 +77,18 @@ export class AuditLogService {
     await uow.query(
       `INSERT INTO ops.audit_logs (actor_user_id, action, target_type, target_id, detail)
        VALUES ($1, $2, $3, $4, $5::jsonb)`,
-      [actorUserId, action, targetType, targetId, input.detail === undefined
-        ? null
-        : JSON.stringify(input.detail),
+      [
+        actorUserId,
+        action,
+        targetType,
+        targetId,
+        input.detail === undefined ? null : JSON.stringify(input.detail),
       ],
     );
   }
 
   /** 按 target 查询（新在前）：§10「全部操作在 H9 审计可查」的最小读侧 */
-  async listByTarget(
-    targetType: string,
-    targetId: number,
-    limit = 100,
-  ): Promise<AuditLogView[]> {
+  async listByTarget(targetType: string, targetId: number, limit = 100): Promise<AuditLogView[]> {
     const found = await this.pool.query<AuditLogRow>(
       `SELECT id, actor_user_id, action, target_type, target_id, detail, created_at
          FROM ops.audit_logs

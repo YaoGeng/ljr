@@ -23,7 +23,7 @@ export function addWorkingDaysShanghai(from: Date, days: number): Date {
     throw new AppError(ErrorCode.InvalidArgument, `工作日天数必须为正整数：${String(days)}`);
   }
   const sh = new Date(from.getTime() + SHANGHAI_OFFSET_MS);
-  let y = sh.getUTCFullYear();
+  const y = sh.getUTCFullYear();
   const m = sh.getUTCMonth();
   let d = sh.getUTCDate();
   let added = 0;

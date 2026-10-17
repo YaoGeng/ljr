@@ -5,9 +5,10 @@
  *   - GET /credit/restrictions?owner_type=&owner_id= → 活跃限制令（内部/入口校验面，C1/C3/A3a
  *                                 W3 消费查询面；30s 进程内缓存适配位 R-W2-8）
  *   - EMIT_CREDIT_EVENT 为内部接口（CreditService.emit），无 HTTP（§5「内部」行）
- * 鉴权口径（B1/B3 先例）：/credit/mine 要求 JWT（本人语义，claims 注入 owner，不收路径参数）；
- *   /credit/restrictions 为内部校验面暂不设角色限制（⚠与 B1/B3 GET 面同口径，H1 接线后统一收紧，
- *   报告标注；拦截本体不做——入口拦截=C1/C3/A3a 消费本查询面，W3 落位）。
+ * 鉴权口径：/credit/mine 要求 JWT（本人语义，claims 注入 owner，不收路径参数）；
+ *   /credit/restrictions=W3 T10 G-A 接线（R-W2-H park 关闭）@RequireRole('admin')——
+ *   HTTP 面仅运营台可达；C1/C3/A3a 模块消费走 CreditService.listActiveRestrictions 服务面
+ *   （不受影响），入口拦截本体=各消费模块职责，本面只做查询。
  */
 import { Controller, Get, Query, UseFilters, UseGuards } from '@nestjs/common';
 import {
