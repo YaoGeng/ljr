@@ -63,11 +63,11 @@ split_ledgers(id PK, period date, channel, direction, amount numeric(12,2), stat
 - 禁止：生产证书/密钥入代码或 skill；金额 float；绕过 Inbox 直推业务。
 
 ## 10. 验收清单
-- [ ] 同幂等键重复下单/重复回调恰一次生效
-- [ ] 乱序回调被守卫拒绝并死信工单（H3 桩）
-- [ ] 拆分不变量在所有接口成立
-- [ ] 对账差异生成 24h SLA 工单
-- [ ] 通道切换演练（模拟主通道 5xx）
+- [x] 同幂等键重复下单/重复回调恰一次生效（证据：commits 5c48660..fe33cae，task-1-report §4/§9——gateway.spec R-02 重放同单/异载荷 409+I-1 并发 claim 分支载荷比对用例、callback.spec 重复回调 deduped 仍 200；w3-smoke ⑩-1 重放 inboxed:false/joined 不双计/事件不增）
+- [x] 乱序回调被守卫拒绝并死信工单（H3 桩）（证据：commits 5c48660..fe33cae，task-1-report §4——callback.spec 乱序容忍：REFUND_SUCCESS 先到入箱→markRefunded 守卫拒（STL 拒绝留痕）→markInboxDead+告警 mock sink；工单落点=H3(M2) 换装位，本批 DEAD+告警为止=桩级验收）
+- [x] 拆分不变量在所有接口成立（证据：commits 5c48660..fe33cae，task-1-report §4——生成列逐字 3 组（0.01+1→0.02 等）+assertAmountInvariant 下单/重放路径断言；四接口金额全 Money 字符串整化在分、零 float；修复轮后 payment 目录 6 spec 102 例）
+- [ ] 对账差异生成 24h SLA 工单（M2 联调项——W3 以「事件出箱即止」桩验证：reconcile.spec 三态差异（CHANNEL_ONLY/LOCAL_ONLY/AMOUNT_MISMATCH）→DIFF 行（recon:* 确定性键）+ReconciliationDiffFound 出箱、重跑不重复；工单面=H3(M2)、T+1 定时=I2(M2) 均未落位，task-1-report §1/§4）
+- [x] 通道切换演练（模拟主通道 5xx）（证据：commits 5c48660..fe33cae，task-1-report §4——gateway.spec wechat 注入 CHANNEL_ERROR（模拟 5xx）→alipay 接管落单+ChannelDegraded 恰 1 条（channel=故障方）；channels.spec 降级窗口内恒备用/窗口后探测恢复/双通道全故障 503/INSUFFICIENT 不切换；I-3 修复上海日切跨日用例）
 
 ## 11. 待澄清点
 - ⚠04§8-1 备付金定性影响积分退款口径（R-03 已按"还原积分"设计，若产品选 30% 现金退款需回改）。

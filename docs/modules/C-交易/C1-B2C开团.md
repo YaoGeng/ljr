@@ -62,13 +62,13 @@ CREATED → FAILED(截止未满) → REFUNDED
 - 禁止：joined 字段裸 UPDATE（仅 C3 守卫 SQL 路径）；状态绕过守卫直写。
 
 ## 10. 验收清单
-- [ ] 并发开团同段仅一胜（B2 联调）
-- [ ] 本次价格修改不影响 B3 默认值
-- [ ] 截止 job 流标 + 全员退款指令（F2 桩）
-- [ ] 停接律师开团被 403
-- [ ] stats 四率出数（H4 数据源联调）
-- [ ] takedown 后列表卡片摘要同步隐藏（LawyerProfileTakedown 消费，H1 联调=W3）
-- [ ] 双维度字段物化与 ?city= 筛选（默认值/过滤命中/空集，2026-10-17 增量，随 V31）
+- [x] 并发开团同段仅一胜（B2 联调）（证据：commits 1b7d2ab..f598393，task-4-report §6——session.service.spec 真并发 Promise.allSettled 两笔异载荷恰一成功一拒绝、sessions 恰 1 行、SessionCreated 恰 1 条；B2=同进程导出服务真调用（M1 形态），w3-smoke ④ 段 B2 真加锁行为证明（C2B 发布撞已锁段 409 E_SLOT_TAKEN 零残留））
+- [x] 本次价格修改不影响 B3 默认值（证据：commits 1b7d2ab..f598393，task-4-report §6——R-01 用例：B3 行版本/字段 getCurrentPricing 前后全等（复用默认价不写））
+- [x] 截止 job 流标 + 全员退款指令（F2 桩）（证据：commits 1b7d2ab..f598393，task-4-report §6——ENROLL_DEADLINE 执行器流标 FAILED+SessionFailed 出箱+锁同事务释放（ALREADY_RELEASED 探针）；F2=T6 真消费承接+T7 RefundSource 'session' 真源注册（progress.md T6/T7 节），w3-smoke ⑧ 段实证（时间注入→tick done:1→FAILED→F2 批量退款→/refunds/mine DONE）——桩位已换真链）
+- [x] 停接律师开团被 403（证据：commits 1b7d2ab..f598393，task-4-report §6——G1 BAN_PUBLISH 经 CreditService.listActiveRestrictions 既有导出面（credit 零改动），领域+HTTP 双用例 403 E_RESTRICTED）
+- [ ] stats 四率出数（H4 数据源联调）（M2 联调项——W3 两率真出数：enroll_rate=Σjoined/Σcapacity（用例 4/10=0.4）、group_rate=成团链场次/总场次（1/2=0.5），上海日界区间公式在册；attendance/ooo 两率=D3/D6 桩恒 null（JSDoc 标注），H4 联调=M2-W2，task-4-report §5/§6）
+- [ ] takedown 后列表卡片摘要同步隐藏（LawyerProfileTakedown 消费，H1 联调=W3）（顺延后续批（终审交接）——H1 实力档案 2026-10-16 增量（R-04~R-07/lawyer_public_profiles/takedown）W3 未施工（task-10-report §偏差-7），LawyerProfileTakedown 事件与消费端均不存在，未施工不勾）
+- [ ] 双维度字段物化与 ?city= 筛选（默认值/过滤命中/空集，2026-10-17 增量，随 V31）（顺延双维度增量批（T11.5）——T4 交付 specialty 参数形态收口但恒真未过滤（task-4-report §7-7）；city 物化与双维过滤=序 11.5 施工（迁移号以实际为准已更正 V33），勾账时点无交付报告未验证）
 
 ## 11. 待澄清点
 - ⚠04§8-3 B2C 截止时间默认规则。

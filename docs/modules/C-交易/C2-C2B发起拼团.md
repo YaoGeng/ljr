@@ -59,12 +59,12 @@ PUBLISHED/REACHED → CONVERTED（C4 认领转化）
 - 禁止：share_price 用 float；发布后 UPDATE 子范围字段。
 
 ## 10. 验收清单
-- [ ] 子范围越界被拒（含边界 min/max）
-- [ ] 发布后律师改价不影响 share_price（B3 联调）
-- [ ] 未支付 10min 锁释放后他人可发布同段（B2 联调）
-- [ ] 一键重新发起复制参数且原任务状态不变
-- [ ] 达 sub_min 后新加入被拒（守卫）
-- [ ] 发布物化 city/specialty 且 ?city= 筛选生效（2026-10-17 双维度增量，随 V31）
+- [x] 子范围越界被拒（含边界 min/max）（证据：commits b66e511..79e485b，task-5-report §2——R-01 越界矩阵：B3 未配置 400 E_ACCEPT_RANGE_UNSET/min-1、max+1 400 E_OUT_OF_RANGE/边界 3..8 恰等放行/min>max 形状层 400）
+- [x] 发布后律师改价不影响 share_price（B3 联调）（证据：commits b66e511..79e485b，task-5-report §2——R-02 分摊固化：发布后 B3 putPricing 新版本（100→200）行值 50.00 不变；B3 联调=同进程导出服务真调用（M1 开发期形态，外部对接后置））
+- [x] 未支付 10min 锁释放后他人可发布同段（B2 联调）（证据：commits b66e511..79e485b，task-5-report §2——§10③ B2 SLOT_TTL 真路径（owner 夹具回拨 ttl_at+job due_at→scheduler.tick 释放）→他人同段发布成功；先证他人同段 409 SLOT_TAKEN）
+- [x] 一键重新发起复制参数且原任务状态不变（证据：commits b66e511..79e485b，task-5-report §2——recreate 用例：复制 lawyer/slot/sub 范围/标签+source_id 落列+share_price 按 B3 现值重解算、原任务恒 EXPIRED、同 source 重放幂等（评审 F2② 修复用例：B3 配置事后变化原样重发=原任务））
+- [x] 达 sub_min 后新加入被拒（守卫）（证据：commits b66e511..79e485b，task-5-report §2——R-05 达 sub_min 守卫用例：REACHED→PENDING_LAWYER+assertJoinable 409 E_REACHED_LOCKED（合成驱动=简报口径）；T7 成团守卫落位后 w3-smoke ⑦ 段真链实证（第三人加入 409 E_REACHED_LOCKED））
+- [ ] 发布物化 city/specialty 且 ?city= 筛选生效（2026-10-17 双维度增量，随 V31）（顺延双维度增量批（T11.5）——specialty 已随 V24 物化并真实过滤（task-5-report §6-11）；city 增列与 ?city= 筛选=序 11.5 施工（迁移号以实际为准已更正 V33），勾账时点无交付报告未验证）
 
 ## 11. 待澄清点
 - ⚠04§8-14 截止延长；发起人在他人加入后的取消路径未定义（新增待澄清，建议走客服工单）。

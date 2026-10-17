@@ -52,10 +52,10 @@ SUBMITTING→IN_REVIEW→ACTIVE→(CHANGING→ACTIVE | SUSPENDED | STOPPED)；SU
 - 禁止：materials 中明文账户密钥落日志；绕过状态机直改 status。
 
 ## 10. 验收清单
-- [ ] 非 ACTIVE 状态分账指令被 F3 拒绝（联调）
-- [ ] 账户变更触发 SUSPENDED 事件且 F3 收到（联调桩）
-- [ ] 复验到期 job 触发事件（I2 联调）
-- [ ] 保证金冻结指令幂等
+- [x] 非 ACTIVE 状态分账指令被 F3 拒绝（联调）（证据：commits 502c9b8..19930a9，task-3-report §4——assertSplittable(firmId,channel) 模块导出面四态全拒（CHANGING/SUSPENDED 与 SUSPENDED 同拒=R-W3-C2、STOPPED pin、未进件同拒）统一 409 E_MERCHANT_NOT_ACTIVE；F3=T8 真消费该查询面（task-8-report §4 C3/D1/D2 用例+w3-smoke ⑨ 段实证挂起/恢复））
+- [x] 账户变更触发 SUSPENDED 事件且 F3 收到（联调桩）（证据：commits 502c9b8..19930a9，task-3-report §4——change→ACTIVE→CHANGING+FirmMerchantSuspended(reason=ACCOUNT_CHANGING) 同事务出箱（R-W3-C2 逐字）+守卫拒绝留痕 allowed=false 断言；F3 消费=T8 handler A3b 真事件直投（consumer ⑥）+w3-smoke ⑨ 段实证（change→tick 级联→settlement SUSPENDED））
+- [x] 复验到期 job 触发事件（I2 联调）（证据：commits 502c9b8..19930a9，task-3-report §4——FIRM_REVERIFY 全链 e2e：→ACTIVE 注册（due=reverify_due）→I2 真 scheduler.tick 抢占（done=1、未到期商户不开工）→SUSPENDED+Suspended(REVERIFY_OVERDUE)+ReverifiedDue 成对出箱→job DONE→reverify 端点恢复+新一年期 job；F-1 修复到期判定 DB 钟双锚同钟（应用钟落后 RED→GREEN 用例））
+- [x] 保证金冻结指令幂等（证据：commits 502c9b8..19930a9，task-3-report §4——确定性复合键 deposit:firm:{firm}:batch:{batch} UNIQUE 兜底：同键同载荷重放同单/异载荷 409 E_DUP_KEY/INSUFFICIENT 失败随事务回滚不烧键（deposit 5 例+HTTP 例）；R-04 台账经守卫+STL entity_type=lawyer_deposit）
 
 ## 11. 待澄清点
 - ⚠04§8-4 保证金金额与缴纳时点。
