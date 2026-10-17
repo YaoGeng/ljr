@@ -67,3 +67,34 @@ export async function listInboxStatusesByTxnNoPrefix(
   );
   return res.rows.map((r) => r.status);
 }
+
+// ---- F3=R8/T8 消费域断言扩展（M1-W3 T8；同头注纪律：owner=payment 唯一合法直读点） ----
+
+/** 指令流水行列表（F1 split_ledgers 按 direction；分账/扣减指令落地与金额核对断言用） */
+export async function listLedgersByDirection(
+  pool: Pool,
+  direction: 'SPLIT' | 'DEDUCT' | 'REFUND',
+): Promise<readonly { status: string; amount: string; detail: Record<string, unknown> | null }[]> {
+  const res = await pool.query<{
+    status: string;
+    amount: string;
+    detail: Record<string, unknown> | null;
+  }>(
+    `SELECT status, amount::text AS amount, detail
+       FROM payment.split_ledgers WHERE direction = $1 ORDER BY id`,
+    [direction],
+  );
+  return res.rows;
+}
+
+/** 指令流水计数（「重复触发幂等无操作」类断言用） */
+export async function countLedgersByDirection(
+  pool: Pool,
+  direction: 'SPLIT' | 'DEDUCT' | 'REFUND',
+): Promise<number> {
+  const res = await pool.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM payment.split_ledgers WHERE direction = $1`,
+    [direction],
+  );
+  return res.rows[0]!.n;
+}

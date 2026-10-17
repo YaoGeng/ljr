@@ -286,7 +286,8 @@ export function composeSplits(input: ComposeSplitsInput): ComposeSplitsResult {
     );
   }
   // 律师/备付份额在扣费后的可分配额上切分（fee 亦为 splits 构成项——平台服务费实走分账指令）
-  const firmShare = share_mode === 'ABSENCE_7030' ? splitAbsence7030(net - fee).firm_cents : net - fee;
+  const firmShare =
+    share_mode === 'ABSENCE_7030' ? splitAbsence7030(net - fee).firm_cents : net - fee;
   const reserveShare = net - fee - firmShare;
 
   const splits: SettlementSplitItem[] = [];

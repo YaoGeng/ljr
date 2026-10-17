@@ -58,3 +58,28 @@ export async function countActiveLocks(pool: Pool, refType: string): Promise<num
   );
   return res.rows[0]!.n;
 }
+
+// ---- F3=R8/T8 消费域断言扩展（M1-W3 T8；同头注纪律：owner=schedule 唯一合法直读点） ----
+
+/** job 行列表（按类型；在册/重注册/终态断言用——读写经 I2 API，本夹具只读） */
+export async function listJobsByType(
+  pool: Pool,
+  jobType: string,
+): Promise<readonly { id: number; ref_id: number | null; status: string; due_at: Date }[]> {
+  const res = await pool.query<{
+    id: string;
+    ref_id: string | null;
+    status: string;
+    due_at: Date;
+  }>(
+    `SELECT id, ref_id, status, due_at FROM schedule.schedule_jobs
+      WHERE job_type = $1 ORDER BY id`,
+    [jobType],
+  );
+  return res.rows.map((r) => ({
+    id: Number(r.id),
+    ref_id: r.ref_id === null ? null : Number(r.ref_id),
+    status: r.status,
+    due_at: r.due_at,
+  }));
+}

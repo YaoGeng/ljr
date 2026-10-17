@@ -21,6 +21,7 @@ import {
 import { FIRM_MERCHANT_CONFIG, type FirmMerchantConfig } from '../payment/firm-merchant.config';
 import { IDENTITY_CONFIG, type IdentityConfig } from '../identity/identity.config';
 import { PaymentGatewayService } from '../payment/payment.gateway.service';
+import { seedFirmMerchant } from '../payment/firm-merchant.fixture';
 import { SettlementModule } from './settlement.module';
 import { SettlementService } from './settlement.service';
 
@@ -117,11 +118,7 @@ describe('F3 HTTP 契约（§5，需 PG）', () => {
     expect(asUser.status).toBe(403);
     expect(asUser.body.code).toBe(ErrorCode.RoleForbidden);
 
-    await pool.query(
-      `INSERT INTO payment.firm_merchants (firm_id, channel, status, materials, verified_at, reverify_due)
-       VALUES ($1, 'wechat_ecom', 'ACTIVE', '{}'::jsonb, now(), now() + interval '365 days')`,
-      [FIRM],
-    );
+    await seedFirmMerchant(pool, FIRM, 'ACTIVE');
     await settlements.enterSettlement({
       ref_type: 'session',
       ref_id: 901,
@@ -162,11 +159,7 @@ describe('F3 HTTP 契约（§5，需 PG）', () => {
   });
 
   it('GET /admin/settlements?status=HOLD：后台过滤视图（鉴权占位 TODO(H1-W3-T10)）；status 越域 400；缺省全量', async () => {
-    await pool.query(
-      `INSERT INTO payment.firm_merchants (firm_id, channel, status, materials, verified_at, reverify_due)
-       VALUES ($1, 'wechat_ecom', 'ACTIVE', '{}'::jsonb, now(), now() + interval '365 days')`,
-      [FIRM],
-    );
+    await seedFirmMerchant(pool, FIRM, 'ACTIVE');
     await settlements.enterSettlement({
       ref_type: 'session',
       ref_id: 903,

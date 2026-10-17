@@ -369,7 +369,11 @@ export class SettlementService {
       return { settlement_id: settlementId, settled: false, already_settled: true }; // §10-7 幂等无操作
     }
     if (row0.status !== 'READY') {
-      return { settlement_id: settlementId, settled: false, status: row0.status as SettlementStatus };
+      return {
+        settlement_id: settlementId,
+        settled: false,
+        status: row0.status as SettlementStatus,
+      };
     }
 
     // R-07 进件前置 + F1 通道定位（经 F1 导出读面；跨 schema 禁直查 payment_orders）
@@ -534,7 +538,8 @@ export class SettlementService {
           `SELECT (created_at + ${HOLD_INTERVAL}) <= now() AS ok FROM settlement.settlements WHERE id = $1`,
           [row.id],
         );
-        const eligible = due.rows[0]!.ok === true && !(await this.gate.hasOpenTicket(refType, refId));
+        const eligible =
+          due.rows[0]!.ok === true && !(await this.gate.hasOpenTicket(refType, refId));
         if (eligible) {
           await this.guard.assertTransition(SETTLEMENT_MACHINE, {
             entityId: Number(row.id),
@@ -619,7 +624,11 @@ export class SettlementService {
     ) {
       throw new AppError(ErrorCode.InvalidArgument, `base_version 须为非负整数`);
     }
-    if (typeof input.reason !== 'string' || input.reason.length === 0 || input.reason.length > 200) {
+    if (
+      typeof input.reason !== 'string' ||
+      input.reason.length === 0 ||
+      input.reason.length > 200
+    ) {
       throw new AppError(ErrorCode.InvalidArgument, `reason 须为 1-200 字符`);
     }
     const key = assertPenaltyKey(input.idempotency_key);
@@ -751,7 +760,8 @@ export class SettlementService {
         const take = Math.min(rowNet, remaining);
         if (take <= 0) continue;
         const newPenalty = dbNumericToCents(row.penalty) + take;
-        const newNet = dbNumericToCents(row.gross) - dbNumericToCents(row.platform_fee) - newPenalty;
+        const newNet =
+          dbNumericToCents(row.gross) - dbNumericToCents(row.platform_fee) - newPenalty;
         if (newNet < 0) {
           throw new AppError(ErrorCode.InternalError, `扣减摊布守恒失守：行 ${row.id} 净额为负`);
         }
@@ -779,7 +789,8 @@ export class SettlementService {
       };
       let anchorFirm: number | null = null;
       if (touched.length > 0) {
-        anchorFirm = rows.rows.filter((r) => touched.includes(Number(r.id))).at(-1)!.firm_id as number;
+        anchorFirm = rows.rows.filter((r) => touched.includes(Number(r.id))).at(-1)!
+          .firm_id as number;
         await uow.query(
           `UPDATE settlement.settlements SET deduction_detail = $2::jsonb WHERE id = $1`,
           [touched[touched.length - 1]!, JSON.stringify(detail)],
@@ -829,9 +840,9 @@ export class SettlementService {
     return res.rows.map(toView);
   }
 
-  async listForAdmin(filter: { readonly status?: SettlementStatus } = {}): Promise<
-    readonly SettlementView[]
-  > {
+  async listForAdmin(
+    filter: { readonly status?: SettlementStatus } = {},
+  ): Promise<readonly SettlementView[]> {
     const params: unknown[] = [];
     let where = '';
     if (filter.status !== undefined) {
@@ -858,15 +869,15 @@ export class SettlementService {
     );
     const row = res.rows[0];
     if (!row) {
-      throw new AppError(ErrorCode.InternalError, 'fee_versions 无生效版本（R-06 种子 0% 缺失，硬错误）');
+      throw new AppError(
+        ErrorCode.InternalError,
+        'fee_versions 无生效版本（R-06 种子 0% 缺失，硬错误）',
+      );
     }
     return { id: Number(row.id), rate: row.rate };
   }
 
-  private async getByRef(
-    refType: SettlementRefType,
-    refId: number,
-  ): Promise<SettlementRow | null> {
+  private async getByRef(refType: SettlementRefType, refId: number): Promise<SettlementRow | null> {
     const res = await this.pool.query<SettlementRow>(
       `SELECT ${ROW_COLS} FROM settlement.settlements WHERE ref_type = $1 AND ref_id = $2`,
       [refType, refId],

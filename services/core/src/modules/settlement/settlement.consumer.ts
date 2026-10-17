@@ -41,10 +41,7 @@ import {
 import type { OutboxHandler, RelayEvent } from '../../infrastructure/outbox/outbox-relay.service';
 import { OutboxRelayService } from '../../infrastructure/outbox/outbox-relay.service';
 import { SettlementService } from './settlement.service';
-import {
-  moneyToCents,
-  type SettlementRefType,
-} from './settlement.types';
+import { moneyToCents, type SettlementRefType } from './settlement.types';
 
 function isPositiveInt(v: unknown): v is number {
   return typeof v === 'number' && Number.isInteger(v) && v > 0;
@@ -121,7 +118,10 @@ export function createOneOnOneSettledHandler(settlements: SettlementService): Ou
   const logger = new Logger('SettlementOneOnOne');
   return async (event: RelayEvent): Promise<void> => {
     if (event.topic !== ONE_ON_ONE_SETTLED_TOPIC) {
-      throw new AppError(ErrorCode.InvalidArgument, `1对1 结算消费器收到未注册 topic：${event.topic}`);
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `1对1 结算消费器收到未注册 topic：${event.topic}`,
+      );
     }
     const raw = (event.payload ?? {}) as Partial<OneOnOneSettledPayload>;
     const payload = assertEnterFields({
@@ -151,7 +151,10 @@ export function createAttendanceHandler(settlements: SettlementService): OutboxH
   const logger = new Logger('SettlementAttendance');
   return async (event: RelayEvent): Promise<void> => {
     if (event.topic !== ATTENDANCE_ADJUDICATED_TOPIC) {
-      throw new AppError(ErrorCode.InvalidArgument, `缺席分成消费器收到未注册 topic：${event.topic}`);
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `缺席分成消费器收到未注册 topic：${event.topic}`,
+      );
     }
     const payload = (event.payload ?? {}) as Partial<AttendanceAdjudicatedPayload>;
     if (
@@ -189,7 +192,10 @@ export function createFirmMerchantSuspendedHandler(settlements: SettlementServic
   const logger = new Logger('SettlementMerchantSuspended');
   return async (event: RelayEvent): Promise<void> => {
     if (event.topic !== FIRM_MERCHANT_SUSPENDED_TOPIC) {
-      throw new AppError(ErrorCode.InvalidArgument, `进件挂起消费器收到未注册 topic：${event.topic}`);
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `进件挂起消费器收到未注册 topic：${event.topic}`,
+      );
     }
     const payload = (event.payload ?? {}) as Partial<FirmMerchantSuspendedPayload>;
     if (!isPositiveInt(payload.firm_id) || typeof payload.reason !== 'string') {
@@ -210,7 +216,10 @@ export function createFirmMerchantActivatedHandler(settlements: SettlementServic
   const logger = new Logger('SettlementMerchantActivated');
   return async (event: RelayEvent): Promise<void> => {
     if (event.topic !== FIRM_MERCHANT_ACTIVATED_TOPIC) {
-      throw new AppError(ErrorCode.InvalidArgument, `进件恢复消费器收到未注册 topic：${event.topic}`);
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `进件恢复消费器收到未注册 topic：${event.topic}`,
+      );
     }
     const payload = (event.payload ?? {}) as Partial<FirmMerchantActivatedPayload>;
     if (!isPositiveInt(payload.firm_id)) {
@@ -224,7 +233,9 @@ export function createFirmMerchantActivatedHandler(settlements: SettlementServic
     for (const id of res.readied) {
       try {
         const run = await settlements.runSettlementById(id); // R-01 唯一解冻节点重驱动
-        logger.log(`进件恢复重驱动：settlement=${id} settled=${run.settled} suspended=${run.suspended ?? false}`);
+        logger.log(
+          `进件恢复重驱动：settlement=${id} settled=${run.settled} suspended=${run.suspended ?? false}`,
+        );
       } catch (e) {
         failures.push(`settlement-${id}: ${e instanceof Error ? e.message : String(e)}`);
       }
@@ -247,7 +258,10 @@ export function createTicketResolvedHandler(settlements: SettlementService): Out
   const logger = new Logger('SettlementTicketResolved');
   return async (event: RelayEvent): Promise<void> => {
     if (event.topic !== TICKET_RESOLVED_TOPIC) {
-      throw new AppError(ErrorCode.InvalidArgument, `工单释放消费器收到未注册 topic：${event.topic}`);
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `工单释放消费器收到未注册 topic：${event.topic}`,
+      );
     }
     const payload = (event.payload ?? {}) as Partial<TicketResolvedPayload>;
     if (
@@ -301,7 +315,10 @@ export class SettlementConsumer implements OnModuleInit {
       ONE_ON_ONE_SETTLED_TOPIC,
       createOneOnOneSettledHandler(this.settlements),
     );
-    this.relay.registerHandler(ATTENDANCE_ADJUDICATED_TOPIC, createAttendanceHandler(this.settlements));
+    this.relay.registerHandler(
+      ATTENDANCE_ADJUDICATED_TOPIC,
+      createAttendanceHandler(this.settlements),
+    );
     this.relay.registerHandler(
       FIRM_MERCHANT_SUSPENDED_TOPIC,
       createFirmMerchantSuspendedHandler(this.settlements),
@@ -310,6 +327,9 @@ export class SettlementConsumer implements OnModuleInit {
       FIRM_MERCHANT_ACTIVATED_TOPIC,
       createFirmMerchantActivatedHandler(this.settlements),
     );
-    this.relay.registerHandler(TICKET_RESOLVED_TOPIC, createTicketResolvedHandler(this.settlements));
+    this.relay.registerHandler(
+      TICKET_RESOLVED_TOPIC,
+      createTicketResolvedHandler(this.settlements),
+    );
   }
 }

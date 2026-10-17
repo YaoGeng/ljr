@@ -18,15 +18,20 @@ import { ScheduleExecutorRegistry } from '../schedule/scheduler-executor.registr
 import { MockPhoneAlertSink, SchedulerAlertService } from '../schedule/scheduler-alerts';
 import { SchedulerService } from '../schedule/scheduler.service';
 import { ChannelRouter, MockChannelAdapter } from '../payment/payment.channels';
-import {
-  PAYMENT_SWITCH_WINDOW_MS_DEFAULT,
-  type PaymentConfig,
-} from '../payment/payment.config';
+import { PAYMENT_SWITCH_WINDOW_MS_DEFAULT, type PaymentConfig } from '../payment/payment.config';
 import { MockPaymentAlertSink, PaymentAlertService } from '../payment/payment.alerts';
 import { PaymentGatewayService } from '../payment/payment.gateway.service';
-import { FIRM_MERCHANT_CONFIG, type FirmMerchantConfig } from '../payment/firm-merchant.config';
+import type { FirmMerchantConfig } from '../payment/firm-merchant.config';
 import { FirmMerchantService } from '../payment/firm-merchant.service';
 import type { PaymentOrderView } from '../payment/payment.types';
+import {
+  countLedgersByDirection,
+  getPaymentOrderById,
+  listLedgersByDirection,
+} from '../payment/order-fixture';
+import { seedFirmMerchant, setFirmMerchantStatus } from '../payment/firm-merchant.fixture';
+import { listJobsByType } from '../schedule/job-fixture';
+import { centsToMoney } from './settlement.types';
 import { OpenTicketGate } from './settlement.gate';
 import { SettlementService } from './settlement.service';
 
@@ -74,16 +79,6 @@ describe('F3 SettlementService（需 PG）', () => {
   let wechat: MockChannelAdapter;
   let settlements: SettlementService;
   let orderSeq = 0;
-
-  const seedMerchant = async (firmId: number, status: 'ACTIVE' | 'SUSPENDED'): Promise<void> => {
-    await pool.query(
-      `INSERT INTO payment.firm_merchants (firm_id, channel, status, materials, verified_at, reverify_due)
-       VALUES ($1::bigint, 'wechat_ecom', $2::text, '{}'::jsonb,
-               CASE WHEN $2::text = 'ACTIVE' THEN now() ELSE NULL END,
-               CASE WHEN $2::text = 'ACTIVE' THEN now() + interval '365 days' ELSE NULL END)`,
-      [firmId, status],
-    );
-  };
 
   /** F1 夹具：真实支付单 CREATED→FROZEN→PAID（结算分账指令的定位单） */
   const createPaidOrder = async (cash = '100.00'): Promise<PaymentOrderView> => {
@@ -172,7 +167,14 @@ describe('F3 SettlementService（需 PG）', () => {
       poolSvc,
       outbox,
       guard,
-      new SchedulerService(poolSvc, outbox, guard, new ScheduleExecutorRegistry(), new SchedulerAlertService(new MockPhoneAlertSink()), { batch: 10 }),
+      new SchedulerService(
+        poolSvc,
+        outbox,
+        guard,
+        new ScheduleExecutorRegistry(),
+        new SchedulerAlertService(new MockPhoneAlertSink()),
+        { batch: 10 },
+      ),
       [wechat, alipay],
       MERCHANT_CONFIG,
     );
@@ -185,7 +187,15 @@ describe('F3 SettlementService（需 PG）', () => {
       { batch: 10 },
     );
     gate = new OpenTicketGate();
-    settlements = new SettlementService(poolSvc, outbox, guard, scheduler, gate, merchants, payment);
+    settlements = new SettlementService(
+      poolSvc,
+      outbox,
+      guard,
+      scheduler,
+      gate,
+      merchants,
+      payment,
+    );
   });
 
   afterAll(async () => {
@@ -206,7 +216,7 @@ describe('F3 SettlementService（需 PG）', () => {
   // =========================================================================
 
   it('A1 进结算：PENDING→HOLD（hold_reason=HOLD_24H）+ 0% 费率构成 + SETTLE_HOLD_RELEASE job 在册 + SettlementHeld 出箱', async () => {
-    await seedMerchant(FIRM, 'ACTIVE');
+    await seedFirmMerchant(pool, FIRM, 'ACTIVE');
     const order = await createPaidOrder('100.00');
     const res = await settlements.enterSettlement({
       ref_type: 'session',
@@ -229,14 +239,11 @@ describe('F3 SettlementService（需 PG）', () => {
       share_mode: 'FULL_TO_LAWYER',
       escrow_status: 'PAID',
     });
-    // SETTLE_HOLD_RELEASE job 在册（I2 目录在册：producer/executor=F3，锚=settlement 行）
-    const job = await pool.query<{ ref_id: string; due_at: Date }>(
-      `SELECT ref_id, due_at FROM schedule.schedule_jobs
-        WHERE job_type = 'SETTLE_HOLD_RELEASE' AND ref_type = 'settlement'`,
-    );
-    expect(job.rows).toHaveLength(1);
-    expect(Number(job.rows[0]!.ref_id)).toBe(res.settlement.id);
-    expect(job.rows[0]!.due_at.getTime()).toBeGreaterThan(Date.now() + 23 * 3_600_000);
+    // SETTLE_HOLD_RELEASE job 在册（I2 目录在册：producer/executor=F3，锚=settlement 行；读经 owner 夹具）
+    const jobs = await listJobsByType(pool, 'SETTLE_HOLD_RELEASE');
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]!.ref_id).toBe(res.settlement.id);
+    expect(jobs[0]!.due_at.getTime()).toBeGreaterThan(Date.now() + 23 * 3_600_000);
 
     const held = await outboxPayloads(SETTLEMENT_HELD_TOPIC);
     expect(held).toHaveLength(1);
@@ -336,7 +343,7 @@ describe('F3 SettlementService（需 PG）', () => {
   // =========================================================================
 
   it('C1 R-01 全链：释放→结算 SETTLED，F1 单 PAID→SPLIT，SplitSettled 构成出箱；重复结算幂等无操作', async () => {
-    await seedMerchant(FIRM, 'ACTIVE');
+    await seedFirmMerchant(pool, FIRM, 'ACTIVE');
     const order = await createPaidOrder('100.00');
     await enter({ refId: 620, order: order.id });
     await pool.query(
@@ -352,17 +359,13 @@ describe('F3 SettlementService（需 PG）', () => {
     expect(after!.escrow_status).toBe('SPLIT');
     expect(after!.settled_at).not.toBeNull();
 
-    // F1 指令真下发：支付单 PAID→SPLIT（唯一解冻；分账台账 CONFIRMED 一条）
-    const f1 = await pool.query<{ status: string }>(
-      `SELECT status FROM payment.payment_orders WHERE id = $1`,
-      [order.id],
+    // F1 指令真下发：支付单 PAID→SPLIT（唯一解冻；分账台账 CONFIRMED 一条；读经 owner 夹具）
+    expect((await getPaymentOrderById(pool, order.id))['status']).toBe('SPLIT');
+    const splits = (await listLedgersByDirection(pool, 'SPLIT')).filter(
+      (l) => l.status === 'CONFIRMED',
     );
-    expect(f1.rows[0]!.status).toBe('SPLIT');
-    const ledger = await pool.query<{ n: number; amount: string }>(
-      `SELECT count(*)::int AS n, min(amount::text) AS amount FROM payment.split_ledgers
-        WHERE direction='SPLIT' AND status='CONFIRMED'`,
-    );
-    expect(ledger.rows[0]).toMatchObject({ n: 1, amount: '100.00' });
+    expect(splits).toHaveLength(1);
+    expect(splits[0]!.amount).toBe('100.00');
 
     const settled = await outboxPayloads(SPLIT_SETTLED_TOPIC);
     expect(settled).toHaveLength(1);
@@ -374,31 +377,27 @@ describe('F3 SettlementService（需 PG）', () => {
       net: '100.00', // Σsplits = net = gross − penalty（构成校验锚）
       fee: '0.00',
     });
-    expect(settled[0]!.splits).toEqual([{ payee_type: 'lawyer_firm', payee_id: FIRM, amount: '100.00' }]);
+    expect(settled[0]!.splits).toEqual([
+      { payee_type: 'lawyer_firm', payee_id: FIRM, amount: '100.00' },
+    ]);
 
     // §10-7 重复触发幂等无操作
     const replay = await settlements.runSettlement({ ref_type: 'session', ref_id: 620 });
     expect(replay).toMatchObject({ settled: false, already_settled: true });
     expect((await outboxPayloads(SPLIT_SETTLED_TOPIC)).length).toBe(1);
-    const ledger2 = await pool.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM payment.split_ledgers WHERE direction='SPLIT'`,
-    );
-    expect(ledger2.rows[0]!.n).toBe(1);
+    expect(await countLedgersByDirection(pool, 'SPLIT')).toBe(1);
   });
 
   it('C2 未到 READY 不结算：HOLD 行 runSettlement → settled:false + 无 F1 指令（跳过 HOLD 直分被禁）', async () => {
-    await seedMerchant(FIRM, 'ACTIVE');
+    await seedFirmMerchant(pool, FIRM, 'ACTIVE');
     await enter({ refId: 621 });
     const res = await settlements.runSettlement({ ref_type: 'session', ref_id: 621 });
     expect(res).toMatchObject({ settled: false, status: 'HOLD' });
-    const ledger = await pool.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM payment.split_ledgers WHERE direction='SPLIT'`,
-    );
-    expect(ledger.rows[0]!.n).toBe(0);
+    expect(await countLedgersByDirection(pool, 'SPLIT')).toBe(0);
   });
 
   it('C3 R-07/§10-5 进件非 ACTIVE：READY 结算被拒并挂起 SUSPENDED（MERCHANT_NOT_ACTIVE），F1 单不分账', async () => {
-    await seedMerchant(FIRM, 'SUSPENDED'); // A3b 查询面 assertSplittable 非 ACTIVE
+    await seedFirmMerchant(pool, FIRM, 'SUSPENDED'); // A3b 查询面 assertSplittable 非 ACTIVE
     const order = await createPaidOrder('100.00');
     await enter({ refId: 622, order: order.id });
     await pool.query(
@@ -412,24 +411,24 @@ describe('F3 SettlementService（需 PG）', () => {
     const after = await getRow('session', 622);
     expect(after!.status).toBe('SUSPENDED');
     expect(after!.hold_reason).toBe('MERCHANT_NOT_ACTIVE');
-    const f1 = await pool.query<{ status: string }>(
-      `SELECT status FROM payment.payment_orders WHERE id = $1`,
-      [order.id],
-    );
-    expect(f1.rows[0]!.status).toBe('PAID'); // 未分账
+    expect((await getPaymentOrderById(pool, order.id))['status']).toBe('PAID'); // 未分账
     const held = await outboxPayloads(SETTLEMENT_HELD_TOPIC);
-    expect(held.some((p) => p['reason'] === 'MERCHANT_NOT_ACTIVE' && p['ref_id'] === 622)).toBe(true);
+    expect(held.some((p) => p['reason'] === 'MERCHANT_NOT_ACTIVE' && p['ref_id'] === 622)).toBe(
+      true,
+    );
   });
 
   it('C4 F1 支付单不可读（绑定漂移）→ 404 显性化进重试轨道（不静默）', async () => {
-    await seedMerchant(FIRM, 'ACTIVE');
+    await seedFirmMerchant(pool, FIRM, 'ACTIVE');
     await enter({ refId: 623, order: 999999999 });
     await pool.query(
       `UPDATE settlement.settlements SET created_at = now() - interval '25 hours' WHERE ref_type='session' AND ref_id=623`,
     );
     const row = await getRow('session', 623);
     await settlements.releaseDueHold(row!.id as number, 'HOLD_EXPIRED');
-    await expect(settlements.runSettlement({ ref_type: 'session', ref_id: 623 })).rejects.toMatchObject({
+    await expect(
+      settlements.runSettlement({ ref_type: 'session', ref_id: 623 }),
+    ).rejects.toMatchObject({
       code: ErrorCode.NotFound,
     });
   });
@@ -439,7 +438,7 @@ describe('F3 SettlementService（需 PG）', () => {
   // =========================================================================
 
   it('D1 R-07 进件挂起：该律所 HOLD/READY 全量 → SUSPENDED（STL 留痕）；恢复（冻结期满）→ READY→SETTLED 全链', async () => {
-    await seedMerchant(FIRM, 'ACTIVE');
+    await seedFirmMerchant(pool, FIRM, 'ACTIVE');
     const orderA = await createPaidOrder('100.00');
     const orderB = await createPaidOrder('40.00');
     await enter({ refId: 630, order: orderA.id }); // HOLD（24h 内）
@@ -456,7 +455,9 @@ describe('F3 SettlementService（需 PG）', () => {
       `SELECT ref_id::int AS ref_id, status, hold_reason FROM settlement.settlements WHERE firm_id = $1 ORDER BY ref_id`,
       [FIRM],
     );
-    expect(states.rows.every((r) => r.status === 'SUSPENDED' && r.hold_reason === 'MERCHANT_NOT_ACTIVE')).toBe(true);
+    expect(
+      states.rows.every((r) => r.status === 'SUSPENDED' && r.hold_reason === 'MERCHANT_NOT_ACTIVE'),
+    ).toBe(true);
     // STL 留痕（entity_type='settlement'，经守卫）
     const stl = await pool.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM platform.state_transition_log
@@ -466,7 +467,7 @@ describe('F3 SettlementService（需 PG）', () => {
 
     // 恢复（进件 ACTIVE 化 + FirmMerchantActivated 消费核）：冻结期已满 → READY；
     // 重驱动分账由消费链承担（resume 原子面只做状态迁移，F1 外部指令在消费器续跑——本用例同形）
-    await pool.query(`UPDATE payment.firm_merchants SET status='ACTIVE' WHERE firm_id=$1`, [FIRM]);
+    await setFirmMerchantStatus(pool, FIRM, 'ACTIVE');
     const resumed = await settlements.resumeForFirm(FIRM);
     expect(resumed.readied.length).toBe(2);
     for (const id of resumed.readied) {
@@ -481,22 +482,26 @@ describe('F3 SettlementService（需 PG）', () => {
   });
 
   it('D2 恢复但冻结期未满：SUSPENDED→HOLD + SETTLE_HOLD_RELEASE job 重新注册（锚仍=created_at）', async () => {
-    await seedMerchant(FIRM, 'ACTIVE');
+    await seedFirmMerchant(pool, FIRM, 'ACTIVE');
     await enter({ refId: 632 });
     const row = await getRow('session', 632);
     await settlements.suspendForFirm(FIRM, 'REVERIFY_OVERDUE');
-    await pool.query(`DELETE FROM schedule.schedule_jobs WHERE job_type='SETTLE_HOLD_RELEASE'`); // 模拟原 job 已 CANCELLED 消费
+    // 模拟原 job 已被消费：经 I2 API 作废在册行（schedule_jobs 禁直改）
+    await scheduler.cancelJob(pool, {
+      jobType: 'SETTLE_HOLD_RELEASE',
+      refType: 'settlement',
+      refId: row!.id as number,
+    });
 
-    await pool.query(`UPDATE payment.firm_merchants SET status='ACTIVE' WHERE firm_id=$1`, [FIRM]);
+    await setFirmMerchantStatus(pool, FIRM, 'ACTIVE');
     const resumed = await settlements.resumeForFirm(FIRM);
     expect(resumed.readied).toHaveLength(0);
     expect(resumed.reheld).toBe(1);
     expect((await getRow('session', 632))!.status).toBe('HOLD');
-    const job = await pool.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM schedule.schedule_jobs
-        WHERE job_type='SETTLE_HOLD_RELEASE' AND ref_type='settlement' AND status='PENDING'`,
+    const pending = (await listJobsByType(pool, 'SETTLE_HOLD_RELEASE')).filter(
+      (j) => j.status === 'PENDING',
     );
-    expect(job.rows[0]!.n).toBe(1); // 重注册（恢复后冻结期重走）
+    expect(pending).toHaveLength(1); // 重注册（恢复后冻结期重走）
     expect(row).toBeDefined();
   });
 
@@ -518,7 +523,12 @@ describe('F3 SettlementService（需 PG）', () => {
     await enter({ refId: 640, gross: '50.00', lawyer: LAWYER });
     await enter({ refId: 641, gross: '30.00', lawyer: LAWYER });
     const res = await settlements.applyPenalty(penaltyInput()); // 60.00
-    expect(res).toMatchObject({ replayed: false, from_settlement: '60.00', from_deposit: '0.00', debt: '0.00' });
+    expect(res).toMatchObject({
+      replayed: false,
+      from_settlement: '60.00',
+      from_deposit: '0.00',
+      debt: '0.00',
+    });
 
     const r1 = await getRow('session', 640);
     const r2 = await getRow('session', 641);
@@ -531,24 +541,26 @@ describe('F3 SettlementService（需 PG）', () => {
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({ leg: 'settlement', amount: '60.00', status: 'CONFIRMED' });
 
-    // F1 DEDUCT 台账一条 CONFIRMED（from=settlement）
-    const ledger = await pool.query<{ n: number; from: string }>(
-      `SELECT count(*)::int AS n, min(detail->>'from') AS from FROM payment.split_ledgers WHERE direction='DEDUCT' AND status='CONFIRMED'`,
+    // F1 DEDUCT 台账一条 CONFIRMED（from=settlement；读经 owner 夹具）
+    const deducts = (await listLedgersByDirection(pool, 'DEDUCT')).filter(
+      (l) => l.status === 'CONFIRMED',
     );
-    expect(ledger.rows[0]).toMatchObject({ n: 1, from: 'settlement' });
+    expect(deducts).toHaveLength(1);
+    expect(deducts[0]!.detail?.['from']).toBe('settlement');
     // 欠款事件不出（无欠款）
     expect((await outboxPayloads(SETTLEMENT_DEBT_INCURRED_TOPIC)).length).toBe(0);
   });
 
   it('E2 R-04 第二档（§10-4）：余额 80 违约 100 → settlement 80 + 保证金专户 20，两腿 CONFIRMED 留痕', async () => {
     await enter({ refId: 642, gross: '80.00', lawyer: LAWYER });
-    const res = await settlements.applyPenalty(penaltyInput({ amount: '100.00', key: 'penalty/session-643/cancel-50' }));
-    expect(res).toMatchObject({ from_settlement: '80.00', from_deposit: '20.00', debt: '0.00' });
-    const legs = await pool.query<{ from: string; amount: string }>(
-      `SELECT detail->>'from' AS from, amount::text AS amount FROM payment.split_ledgers
-        WHERE direction='DEDUCT' AND status='CONFIRMED' ORDER BY id`,
+    const res = await settlements.applyPenalty(
+      penaltyInput({ amount: '100.00', key: 'penalty/session-643/cancel-50' }),
     );
-    expect(legs.rows).toEqual([
+    expect(res).toMatchObject({ from_settlement: '80.00', from_deposit: '20.00', debt: '0.00' });
+    const legs = (await listLedgersByDirection(pool, 'DEDUCT')).filter(
+      (l) => l.status === 'CONFIRMED',
+    );
+    expect(legs.map((l) => ({ from: l.detail?.['from'], amount: l.amount }))).toEqual([
       { from: 'settlement', amount: '80.00' },
       { from: 'deposit', amount: '20.00' },
     ]);
@@ -557,12 +569,13 @@ describe('F3 SettlementService（需 PG）', () => {
   });
 
   it('E3 无未结算行：全额走保证金专户；无行可锚=deduction_detail 缺位（F1 台账+事件承载）', async () => {
-    const res = await settlements.applyPenalty(penaltyInput({ amount: '30.00', key: 'penalty/session-644/cancel-30' }));
-    expect(res).toMatchObject({ from_settlement: '0.00', from_deposit: '30.00', debt: '0.00' });
-    const ledger = await pool.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM payment.split_ledgers WHERE direction='DEDUCT' AND status='CONFIRMED'`,
+    const res = await settlements.applyPenalty(
+      penaltyInput({ amount: '30.00', key: 'penalty/session-644/cancel-30' }),
     );
-    expect(ledger.rows[0]!.n).toBe(1);
+    expect(res).toMatchObject({ from_settlement: '0.00', from_deposit: '30.00', debt: '0.00' });
+    expect(
+      (await listLedgersByDirection(pool, 'DEDUCT')).filter((l) => l.status === 'CONFIRMED'),
+    ).toHaveLength(1);
   });
 
   it('E4 §10-4 保证金亦不足：SHORTFALL 腿留痕 + SettlementDebtIncurred 出箱（G1 SUSPEND_TAKE 消费位=M2）', async () => {
@@ -629,10 +642,7 @@ describe('F3 SettlementService（需 PG）', () => {
     expect(first.replayed).toBe(false);
     const replay = await settlements.applyPenalty(penaltyInput({ amount: '40.00' }));
     expect(replay).toMatchObject({ replayed: true, from_settlement: '40.00', debt: '0.00' });
-    const ledger = await pool.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM payment.split_ledgers WHERE direction='DEDUCT'`,
-    );
-    expect(ledger.rows[0]!.n).toBe(1);
+    expect(await countLedgersByDirection(pool, 'DEDUCT')).toBe(1);
     expect((await getRow('session', 647))!.penalty).toBe('40.00');
 
     await expect(
@@ -653,10 +663,12 @@ describe('F3 SettlementService（需 PG）', () => {
   });
 
   it('E7 R-05 全链钉：违约后结算构成——penalty 不进 platform_fee、净额递减、Σsplits=net=gross−penalty', async () => {
-    await seedMerchant(FIRM, 'ACTIVE');
+    await seedFirmMerchant(pool, FIRM, 'ACTIVE');
     const order = await createPaidOrder('100.00');
     await enter({ refId: 648, gross: '100.00', order: order.id });
-    await settlements.applyPenalty(penaltyInput({ amount: '30.00', key: 'penalty/session-648/cancel-20' }));
+    await settlements.applyPenalty(
+      penaltyInput({ amount: '30.00', key: 'penalty/session-648/cancel-20' }),
+    );
     await pool.query(
       `UPDATE settlement.settlements SET created_at = now() - interval '25 hours' WHERE ref_id=648`,
     );
@@ -665,17 +677,24 @@ describe('F3 SettlementService（需 PG）', () => {
     await settlements.runSettlement({ ref_type: 'session', ref_id: 648 });
 
     const after = await getRow('session', 648);
-    expect(after).toMatchObject({ status: 'SETTLED', penalty: '30.00', platform_fee: '0.00', net: '70.00' });
+    expect(after).toMatchObject({
+      status: 'SETTLED',
+      penalty: '30.00',
+      platform_fee: '0.00',
+      net: '70.00',
+    });
     const settled = (await outboxPayloads(SPLIT_SETTLED_TOPIC))[0]!;
     expect(settled).toMatchObject({ net: '70.00', fee: '0.00' });
-    expect(settled['splits']).toEqual([{ payee_type: 'lawyer_firm', payee_id: FIRM, amount: '70.00' }]);
-    // F1 台账守恒：SPLIT 70 + DEDUCT 30 = gross 100
-    const sum = await pool.query<{ split: string; deduct: string }>(
-      `SELECT COALESCE(SUM(amount) FILTER (WHERE direction='SPLIT'),0)::text AS split,
-              COALESCE(SUM(amount) FILTER (WHERE direction='DEDUCT'),0)::text AS deduct
-         FROM payment.split_ledgers WHERE status='CONFIRMED'`,
-    );
-    expect(sum.rows[0]).toEqual({ split: '70.00', deduct: '30.00' });
+    expect(settled['splits']).toEqual([
+      { payee_type: 'lawyer_firm', payee_id: FIRM, amount: '70.00' },
+    ]);
+    // F1 台账守恒：SPLIT 70 + DEDUCT 30 = gross 100（读经 owner 夹具）
+    const sumOf = async (direction: 'SPLIT' | 'DEDUCT'): Promise<number> =>
+      (await listLedgersByDirection(pool, direction))
+        .filter((l) => l.status === 'CONFIRMED')
+        .reduce((s, l) => s + Number(l.amount.replace('.', '')), 0);
+    expect(centsToMoney(await sumOf('SPLIT'))).toBe('70.00');
+    expect(centsToMoney(await sumOf('DEDUCT'))).toBe('30.00');
   });
 
   // =========================================================================
@@ -683,7 +702,7 @@ describe('F3 SettlementService（需 PG）', () => {
   // =========================================================================
 
   it('F1 §10-3 缺席 70/30：标记→结算构成 firm=floor(net×0.7)、备付=尾差，SplitSettled.splits 携带备付份额（F4 消费位）', async () => {
-    await seedMerchant(FIRM, 'ACTIVE');
+    await seedFirmMerchant(pool, FIRM, 'ACTIVE');
     const order = await createPaidOrder('100.00');
     await enter({ refId: 650, gross: '100.00', order: order.id });
     expect(await settlements.markAbsenceShare('session', 650)).toEqual({ marked: true });
@@ -710,10 +729,13 @@ describe('F3 SettlementService（需 PG）', () => {
       marked: false,
       reason: 'NO_SETTLEMENT',
     });
-    await seedMerchant(FIRM, 'ACTIVE');
+    await seedFirmMerchant(pool, FIRM, 'ACTIVE');
     await enter({ refId: 652 });
     await pool.query(`UPDATE settlement.settlements SET status='SETTLED' WHERE ref_id=652`); // 测试直改终态（夹具）
-    expect(await settlements.markAbsenceShare('session', 652)).toEqual({ marked: false, reason: 'SETTLED' });
+    expect(await settlements.markAbsenceShare('session', 652)).toEqual({
+      marked: false,
+      reason: 'SETTLED',
+    });
   });
 
   // =========================================================================
@@ -721,7 +743,7 @@ describe('F3 SettlementService（需 PG）', () => {
   // =========================================================================
 
   it('G1 §10-6 1对1 结算落表 ref_type=one_on_one，平台费同 fee_versions 口径（升级 5% 版本后构成含费项）', async () => {
-    await seedMerchant(FIRM, 'ACTIVE');
+    await seedFirmMerchant(pool, FIRM, 'ACTIVE');
     await pool.query(
       `INSERT INTO settlement.fee_versions (rate, effective_at) VALUES (0.0500, now())`,
     ); // 运营配置升级（H7 位；afterEach 自清）

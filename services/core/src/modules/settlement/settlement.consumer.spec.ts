@@ -27,15 +27,14 @@ import { ScheduleExecutorRegistry } from '../schedule/scheduler-executor.registr
 import { MockPhoneAlertSink, SchedulerAlertService } from '../schedule/scheduler-alerts';
 import { SchedulerService } from '../schedule/scheduler.service';
 import { ChannelRouter, MockChannelAdapter } from '../payment/payment.channels';
-import {
-  PAYMENT_SWITCH_WINDOW_MS_DEFAULT,
-  type PaymentConfig,
-} from '../payment/payment.config';
+import { PAYMENT_SWITCH_WINDOW_MS_DEFAULT, type PaymentConfig } from '../payment/payment.config';
 import { MockPaymentAlertSink, PaymentAlertService } from '../payment/payment.alerts';
 import { PaymentGatewayService } from '../payment/payment.gateway.service';
-import { FIRM_MERCHANT_CONFIG, type FirmMerchantConfig } from '../payment/firm-merchant.config';
+import type { FirmMerchantConfig } from '../payment/firm-merchant.config';
 import { FirmMerchantService } from '../payment/firm-merchant.service';
 import type { PaymentOrderView } from '../payment/payment.types';
+import { countLedgersByDirection, getPaymentOrderById } from '../payment/order-fixture';
+import { seedFirmMerchant, setFirmMerchantStatus } from '../payment/firm-merchant.fixture';
 import { OpenTicketGate } from './settlement.gate';
 import { SettlementConsumer, createRoomClosedHandler } from './settlement.consumer';
 import { SettlementJobExecutors } from './settlement.executors';
@@ -83,16 +82,6 @@ describe('F3 事件消费端（需 PG）', () => {
   let settlements: SettlementService;
   let relay: OutboxRelayService;
   let orderSeq = 0;
-
-  const seedMerchant = async (firmId: number, status: 'ACTIVE' | 'SUSPENDED'): Promise<void> => {
-    await pool.query(
-      `INSERT INTO payment.firm_merchants (firm_id, channel, status, materials, verified_at, reverify_due)
-       VALUES ($1::bigint, 'wechat_ecom', $2::text, '{}'::jsonb,
-               CASE WHEN $2::text = 'ACTIVE' THEN now() ELSE NULL END,
-               CASE WHEN $2::text = 'ACTIVE' THEN now() + interval '365 days' ELSE NULL END)`,
-      [firmId, status],
-    );
-  };
 
   const createPaidOrder = async (cash = '100.00'): Promise<PaymentOrderView> => {
     orderSeq += 1;
@@ -155,8 +144,18 @@ describe('F3 事件消费端（需 PG）', () => {
 
   beforeAll(async () => {
     pool = await ensureTestDatabase();
-    const wechat = new MockChannelAdapter('wechat_ecom', 'mock-wechat-mch', 'test-secret-w', () => new Date(DAY));
-    const alipay = new MockChannelAdapter('alipay', 'mock-alipay-mch', 'test-secret-a', () => new Date(DAY));
+    const wechat = new MockChannelAdapter(
+      'wechat_ecom',
+      'mock-wechat-mch',
+      'test-secret-w',
+      () => new Date(DAY),
+    );
+    const alipay = new MockChannelAdapter(
+      'alipay',
+      'mock-alipay-mch',
+      'test-secret-a',
+      () => new Date(DAY),
+    );
     poolSvc = new PgPoolService(pool);
     outbox = new OutboxService();
     const guard = new StateTransitionGuardService(new StateTransitionLogService(), poolSvc);
@@ -174,10 +173,32 @@ describe('F3 事件消费端（需 PG）', () => {
       testConfig(),
     );
     executors = new ScheduleExecutorRegistry();
-    scheduler = new SchedulerService(poolSvc, outbox, guard, executors, new SchedulerAlertService(new MockPhoneAlertSink()), { batch: 10 });
-    merchants = new FirmMerchantService(poolSvc, outbox, guard, scheduler, [wechat, alipay], MERCHANT_CONFIG);
+    scheduler = new SchedulerService(
+      poolSvc,
+      outbox,
+      guard,
+      executors,
+      new SchedulerAlertService(new MockPhoneAlertSink()),
+      { batch: 10 },
+    );
+    merchants = new FirmMerchantService(
+      poolSvc,
+      outbox,
+      guard,
+      scheduler,
+      [wechat, alipay],
+      MERCHANT_CONFIG,
+    );
     const gate = new OpenTicketGate();
-    settlements = new SettlementService(poolSvc, outbox, guard, scheduler, gate, merchants, payment);
+    settlements = new SettlementService(
+      poolSvc,
+      outbox,
+      guard,
+      scheduler,
+      gate,
+      merchants,
+      payment,
+    );
     relay = new OutboxRelayService(poolSvc, { batch: 50, maxRetry: 2 });
     new SettlementJobExecutors(executors, settlements).onModuleInit();
     new SettlementConsumer(relay, settlements).onModuleInit();
@@ -194,7 +215,7 @@ describe('F3 事件消费端（需 PG）', () => {
   });
 
   it('① §10-1 时间注入全链：RoomClosed 直投 → HOLD+job；24h 内 tick 不放行；到期 tick → READY→SETTLED（F1 SPLIT+SplitSettled）', async () => {
-    await seedMerchant(FIRM, 'ACTIVE');
+    await seedFirmMerchant(pool, FIRM, 'ACTIVE');
     const order = await createPaidOrder('100.00');
     await recordEvent(ROOM_CLOSED_TOPIC, roomClosed({ payment_order_id: order.id }));
     await relay.tick();
@@ -215,11 +236,7 @@ describe('F3 事件消费端（需 PG）', () => {
 
     const settled = await getRow('session', 801);
     expect(settled!.status).toBe('SETTLED'); // READY→SETTLED 由执行器链内完成（R-01 唯一解冻节点）
-    const f1 = await pool.query<{ status: string }>(
-      `SELECT status FROM payment.payment_orders WHERE id = $1`,
-      [order.id],
-    );
-    expect(f1.rows[0]!.status).toBe('SPLIT');
+    expect((await getPaymentOrderById(pool, order.id))['status']).toBe('SPLIT');
     const splitEvents = await pool.query<{ payload: Record<string, unknown> }>(
       `SELECT payload FROM platform.outbox WHERE topic = $1`,
       [SPLIT_SETTLED_TOPIC],
@@ -229,13 +246,21 @@ describe('F3 事件消费端（需 PG）', () => {
   });
 
   it('② RoomClosed 重复投递幂等：UNIQUE(ref) 短路不重建（at-least-once 语义）', async () => {
-    await seedMerchant(FIRM, 'ACTIVE');
+    await seedFirmMerchant(pool, FIRM, 'ACTIVE');
     const order = await createPaidOrder('100.00');
-    await recordEvent(ROOM_CLOSED_TOPIC, roomClosed({ session_id: 802, payment_order_id: order.id }));
+    await recordEvent(
+      ROOM_CLOSED_TOPIC,
+      roomClosed({ session_id: 802, payment_order_id: order.id }),
+    );
     await relay.tick();
-    await recordEvent(ROOM_CLOSED_TOPIC, roomClosed({ session_id: 802, payment_order_id: order.id }));
+    await recordEvent(
+      ROOM_CLOSED_TOPIC,
+      roomClosed({ session_id: 802, payment_order_id: order.id }),
+    );
     await relay.tick();
-    const n = await pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM settlement.settlements`);
+    const n = await pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM settlement.settlements`,
+    );
     expect(n.rows[0]!.n).toBe(1);
     const events = await pool.query<{ status: string }>(
       `SELECT status FROM platform.outbox WHERE topic = $1`,
@@ -248,12 +273,14 @@ describe('F3 事件消费端（需 PG）', () => {
     await recordEvent(ROOM_CLOSED_TOPIC, { session_id: 803 } as unknown as RoomClosedPayload);
     const tick = await relay.tick();
     expect(tick.retried).toBe(1);
-    const n = await pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM settlement.settlements`);
+    const n = await pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM settlement.settlements`,
+    );
     expect(n.rows[0]!.n).toBe(0);
   });
 
   it('④ OneOnOneSettled 直投（D6=M2 桩）：ref_type=one_on_one 落表（§10-6 前半）', async () => {
-    await seedMerchant(FIRM, 'ACTIVE');
+    await seedFirmMerchant(pool, FIRM, 'ACTIVE');
     const order = await createPaidOrder('80.00');
     const payload: OneOnOneSettledPayload = {
       order_id: 501,
@@ -269,9 +296,12 @@ describe('F3 事件消费端（需 PG）', () => {
   });
 
   it('⑤ AttendanceAdjudicated 直投（D3=M2 桩）：user+absent 切 70/30；normal/late 与律师缺席 no-op', async () => {
-    await seedMerchant(FIRM, 'ACTIVE');
+    await seedFirmMerchant(pool, FIRM, 'ACTIVE');
     const order = await createPaidOrder('100.00');
-    await recordEvent(ROOM_CLOSED_TOPIC, roomClosed({ session_id: 804, payment_order_id: order.id }));
+    await recordEvent(
+      ROOM_CLOSED_TOPIC,
+      roomClosed({ session_id: 804, payment_order_id: order.id }),
+    );
     await relay.tick();
     await recordEvent(ATTENDANCE_ADJUDICATED_TOPIC, {
       adjudication_id: 1,
@@ -299,9 +329,12 @@ describe('F3 事件消费端（需 PG）', () => {
   });
 
   it('⑥ FirmMerchantSuspended/Activated（A3b 真事件）：挂起全量 SUSPENDED；恢复重驱动 READY→SETTLED', async () => {
-    await seedMerchant(FIRM, 'ACTIVE');
+    await seedFirmMerchant(pool, FIRM, 'ACTIVE');
     const order = await createPaidOrder('100.00');
-    await recordEvent(ROOM_CLOSED_TOPIC, roomClosed({ session_id: 805, payment_order_id: order.id }));
+    await recordEvent(
+      ROOM_CLOSED_TOPIC,
+      roomClosed({ session_id: 805, payment_order_id: order.id }),
+    );
     await relay.tick();
     await travelCreated(805);
 
@@ -317,23 +350,23 @@ describe('F3 事件消费端（需 PG）', () => {
     });
 
     // 恢复（R-W3-C2：变更完成 →ACTIVE）：READY 化 + 消费链重驱动分账
-    await pool.query(`UPDATE payment.firm_merchants SET status='ACTIVE' WHERE firm_id=$1`, [FIRM]);
+    await setFirmMerchantStatus(pool, FIRM, 'ACTIVE');
     await recordEvent(FIRM_MERCHANT_ACTIVATED_TOPIC, {
       firm_id: FIRM,
       channel: 'wechat_ecom',
     } satisfies FirmMerchantActivatedPayload);
     await relay.tick();
     expect((await getRow('session', 805))!.status).toBe('SETTLED');
-    const splits = await pool.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM payment.split_ledgers WHERE direction='SPLIT' AND status='CONFIRMED'`,
-    );
-    expect(splits.rows[0]!.n).toBe(1);
+    expect(await countLedgersByDirection(pool, 'SPLIT')).toBe(1); // CONFIRMED 恒等（唯一一笔分账）
   });
 
   it('⑦ TicketResolved 直投（H3=M2 桩）：24h 内不释放；冻结期满后释放并结算', async () => {
-    await seedMerchant(FIRM, 'ACTIVE');
+    await seedFirmMerchant(pool, FIRM, 'ACTIVE');
     const order = await createPaidOrder('100.00');
-    await recordEvent(ROOM_CLOSED_TOPIC, roomClosed({ session_id: 806, payment_order_id: order.id }));
+    await recordEvent(
+      ROOM_CLOSED_TOPIC,
+      roomClosed({ session_id: 806, payment_order_id: order.id }),
+    );
     await relay.tick();
     const held = await getRow('session', 806);
 
@@ -359,10 +392,9 @@ describe('F3 事件消费端（需 PG）', () => {
   it('⑧ handler 工厂直调：非注册 topic 显性拒绝（防错接）', async () => {
     const handler = createRoomClosedHandler(settlements);
     await expect(
-      handler(
-        { id: 1, eventId: 'e', topic: 'trade.session.failed', payload: {}, retryCount: 0 },
-        { query: async () => ({ rows: [], rowCount: 0 }) } as never,
-      ),
+      handler({ id: 1, eventId: 'e', topic: 'trade.session.failed', payload: {}, retryCount: 0 }, {
+        query: async () => ({ rows: [], rowCount: 0 }),
+      } as never),
     ).rejects.toMatchObject({ code: 'E_INVALID_ARGUMENT' });
   });
 });

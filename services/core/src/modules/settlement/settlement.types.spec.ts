@@ -103,7 +103,12 @@ describe('composeSplits 分账构成（§2；Σsplits=net 恒等式；R-05 违�
       platform_fee_cents: 0,
       share_mode: 'FULL_TO_LAWYER',
     });
-    expect(r).toMatchObject({ fee_cents: 0, net_cents: 10_000, firm_share_cents: 10_000, reserve_share_cents: 0 });
+    expect(r).toMatchObject({
+      fee_cents: 0,
+      net_cents: 10_000,
+      firm_share_cents: 10_000,
+      reserve_share_cents: 0,
+    });
     expect(r.splits).toEqual([{ payee_type: 'lawyer_firm', payee_id: 31, amount: '100.00' }]);
   });
 
@@ -179,18 +184,52 @@ describe('composeSplits 分账构成（§2；Σsplits=net 恒等式；R-05 违�
 
   it('入参防御：负值/penalty>gross/费超过净额显性抛（内部不变量失守即硬错误）', () => {
     expect(() =>
-      composeSplits({ firm_id: 31, gross_cents: -1, penalty_cents: 0, platform_fee_cents: 0, share_mode: 'FULL_TO_LAWYER' }),
+      composeSplits({
+        firm_id: 31,
+        gross_cents: -1,
+        penalty_cents: 0,
+        platform_fee_cents: 0,
+        share_mode: 'FULL_TO_LAWYER',
+      }),
     ).toThrowError();
     expect(() =>
-      composeSplits({ firm_id: 31, gross_cents: 100, penalty_cents: 200, platform_fee_cents: 0, share_mode: 'FULL_TO_LAWYER' }),
+      composeSplits({
+        firm_id: 31,
+        gross_cents: 100,
+        penalty_cents: 200,
+        platform_fee_cents: 0,
+        share_mode: 'FULL_TO_LAWYER',
+      }),
     ).toThrowError(/扣减顺序守恒失守/);
     expect(() =>
-      composeSplits({ firm_id: 31, gross_cents: 100, penalty_cents: 0, platform_fee_cents: 500, share_mode: 'FULL_TO_LAWYER' }),
+      composeSplits({
+        firm_id: 31,
+        gross_cents: 100,
+        penalty_cents: 0,
+        platform_fee_cents: 500,
+        share_mode: 'FULL_TO_LAWYER',
+      }),
     ).toThrowError(/行内构成不变量失守/);
     expect(() =>
-      composeSplits({ firm_id: 31, gross_cents: 100, penalty_cents: 0, platform_fee_cents: 0, share_mode: 'FULL_TO_LAWYER' }),
+      composeSplits({
+        firm_id: 31,
+        gross_cents: 100,
+        penalty_cents: 0,
+        platform_fee_cents: 0,
+        share_mode: 'FULL_TO_LAWYER',
+      }),
     ).not.toThrowError();
     // centsToMoney 出口恒两位小数（Money 契约）
-    expect(centsToMoney(composeSplits({ firm_id: 1, gross_cents: 1, penalty_cents: 0, platform_fee_cents: 0, share_mode: 'FULL_TO_LAWYER' }).net_cents)).toBe('0.01');
+    expect(
+      centsToMoney(
+        composeSplits({
+          firm_id: 1,
+          gross_cents: 1,
+          penalty_cents: 0,
+          platform_fee_cents: 0,
+          share_mode: 'FULL_TO_LAWYER',
+        }).net_cents,
+      ),
+    ).toBe('0.01');
   });
 });
