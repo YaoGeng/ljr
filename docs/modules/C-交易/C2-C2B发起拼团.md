@@ -55,7 +55,7 @@ PUBLISHED/REACHED → CONVERTED（C4 认领转化）
 - 发布事务（B2 PENDING_PAYMENT 锁+插入+支付单创建）P95 ≤150ms；列表含倒计时（客户端计算+服务端 deadline）。
 
 ## 9. AI 开发标准（本模块附加）
-- TDD：R-01 越界矩阵、R-02 分摊额精度（NUMERIC 除法保留 2 位、银行家舍入 ⚠舍入规则实现前确认）、R-04 不可变；
+- TDD：R-01 越界矩阵、R-02 分摊额精度（NUMERIC 除法保留 2 位、**HALF_UP 到分**——⚠W3-6 已裁决（PRD §9.2 实查无定义，04 §8 #35；实现=V24 落地，task-5-report §2））、R-04 不可变；
 - 禁止：share_price 用 float；发布后 UPDATE 子范围字段。
 
 ## 10. 验收清单
