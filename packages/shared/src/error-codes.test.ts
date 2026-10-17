@@ -129,3 +129,10 @@ describe('错误码契约（ErrorCode 常量表 + AppError{code,httpStatus}）',
     expect(isAppError('string')).toBe(false);
   });
 });
+
+describe('C6 改价错误码（M1-W3 T9）', () => {
+  it('Past24h：撤销超 24h 窗（C6 §5 409 PAST_24H，R-04）', () => {
+    expect(ErrorCode.Past24h).toBe('E_PAST_24H');
+    expect(new AppError(ErrorCode.Past24h).httpStatus).toBe(409);
+  });
+});

@@ -20,9 +20,15 @@ import {
   PointsRedeemedPayload,
   PointsTxnKind,
   PRICE_CHANGE_APPROVED_TOPIC,
+  PRICE_CHANGE_REJECTED_TOPIC,
+  PRICE_COUPON_INSTRUCTED_TOPIC,
+  PRICE_REVOKED_TOPIC,
   PRICE_VERSION_CREATED_TOPIC,
   PriceChangeApprovedPayload,
   PriceChangeKind,
+  PriceChangeRejectedPayload,
+  PriceCouponInstructedPayload,
+  PriceRevokedPayload,
   PriceVersionCreatedPayload,
   REAL_NAME_VERIFIED_TOPIC,
   RECONCILIATION_DIFF_FOUND_TOPIC,
@@ -583,5 +589,39 @@ describe('F3 消费契约（M1-W3 T8 消费方定型，R-W2-A 口径；生产方
     expect(TICKET_RESOLVED_TOPIC).toBe('ops.ticket.resolved');
     const payload: TicketResolvedPayload = { ticket_id: 3001, ref_type: 'session', ref_id: 61 };
     expect(payload.ticket_id).toBe(3001);
+  });
+});
+
+describe('C6 改价与补偿事件契约（M1-W3 T9）：C6 §6 生产契约——Approved 已由 G1 消费端 W2 钉形（import 不重定义），本批补齐 Rejected/Revoked + 券补偿指令（F4 ②全量消费位）', () => {
+  it('PriceChangeRejected：topic=pricing.price_change.rejected，{price_change_id, lawyer_id, kind}（与 Approved 三字段同形对称；审批否决→版本不生效+不出信用事件）', () => {
+    expect(PRICE_CHANGE_REJECTED_TOPIC).toBe('pricing.price_change.rejected');
+    const payload: PriceChangeRejectedPayload = {
+      price_change_id: 42,
+      lawyer_id: 9101,
+      kind: 'PRICE_DOWN_LE10',
+    };
+    expect(payload).toEqual({ price_change_id: 42, lawyer_id: 9101, kind: 'PRICE_DOWN_LE10' });
+  });
+
+  it('PriceRevoked：topic=pricing.price_change.revoked，{price_change_id, lawyer_id}（撤销不扣信用：无 kind 档位字段，G1 不消费本事件）', () => {
+    expect(PRICE_REVOKED_TOPIC).toBe('pricing.price_change.revoked');
+    const payload: PriceRevokedPayload = { price_change_id: 42, lawyer_id: 9101 };
+    expect(payload).toEqual({ price_change_id: 42, lawyer_id: 9101 });
+  });
+
+  it('PriceCouponInstructed：topic=pricing.price_coupon.instructed，{price_change_id, lawyer_id, user_id, coupon_kind}（降价>10% 档券发放指令；券面额/有效期 PRD 未定义——F4 ②全量按 H7 配置落，载荷不发明金额字段）', () => {
+    expect(PRICE_COUPON_INSTRUCTED_TOPIC).toBe('pricing.price_coupon.instructed');
+    const payload: PriceCouponInstructedPayload = {
+      price_change_id: 42,
+      lawyer_id: 9101,
+      user_id: 601,
+      coupon_kind: 'PRICE_COMP',
+    };
+    expect(payload).toEqual({
+      price_change_id: 42,
+      lawyer_id: 9101,
+      user_id: 601,
+      coupon_kind: 'PRICE_COMP',
+    });
   });
 });

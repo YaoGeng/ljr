@@ -645,3 +645,44 @@ export interface TicketResolvedPayload {
   readonly ref_type: 'session' | 'one_on_one';
   readonly ref_id: number;
 }
+
+// ---------------------------------------------------------------------------
+// C6 改价与补偿（M1-W3 T9）：3 生产契约。PriceChangeApproved 已在 G1 段由消费端 W2 钉形
+// （上方 PRICE_CHANGE_APPROVED_TOPIC——C6 生产方 import 同一契约，不重定义，R-W2-A 口径）。
+// 消费位：PriceChangeRejected/PriceRevoked 出箱即止（审计+I1 通知扇出位，I1/C1=M2 联调）；
+// PriceCouponInstructed → F4 券发放=②全量（M2-W2 消费；积分补偿不走本事件——F4 ①切片已暴露
+// PointsService.grant COMPENSATION 授予原语，C6 直调真链，幂等键=(user_id, COMPENSATION,
+// price_change:{id})，简报 T9「真链优先」裁决）。
+// ---------------------------------------------------------------------------
+
+/** 改价审批否决（C6 §6 生产 → 审计/I1 通知扇出位；版本不生效、不出信用事件——approved=false）。
+ *  载荷与 PriceChangeApproved 三字段同形对称（kind=被否决改价的档位归类，审计口径）。 */
+export const PRICE_CHANGE_REJECTED_TOPIC = 'pricing.price_change.rejected';
+
+export interface PriceChangeRejectedPayload {
+  readonly price_change_id: number;
+  readonly lawyer_id: number;
+  readonly kind: PriceChangeKind;
+}
+
+/** 改价撤销（C6 §6/R-04 生产 → 审计+受影响用户通知扇出位=M2 联调）。撤销不扣信用：
+ *  载荷无 kind 档位字段（G1 不消费本事件；受影响用户恢复原价，无信用/补偿语义）。 */
+export const PRICE_REVOKED_TOPIC = 'pricing.price_change.revoked';
+
+export interface PriceRevokedPayload {
+  readonly price_change_id: number;
+  readonly lawyer_id: number;
+}
+
+/** 券补偿发放指令（C6 §6/R-01 降价>10% 档生产 → F4 券=②全量 M2-W2 消费）。券面额/有效期
+ *  PRD §8.2 未定义（⚠04 待澄清）——载荷不发明金额字段，F4 ②按 H7 规则配置落值；coupon_kind
+ *  为发放口径标记（PRICE_COMP=改价补偿券），幂等锚=(price_change_id, user_id)。 */
+export const PRICE_COUPON_INSTRUCTED_TOPIC = 'pricing.price_coupon.instructed';
+
+export interface PriceCouponInstructedPayload {
+  readonly price_change_id: number;
+  readonly lawyer_id: number;
+  /** 受影响用户（identity 侧用户 id；=补偿对象 PAID enrollment 付款人） */
+  readonly user_id: number;
+  readonly coupon_kind: 'PRICE_COMP';
+}

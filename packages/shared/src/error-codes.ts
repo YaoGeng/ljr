@@ -106,6 +106,8 @@ export const ErrorCode = {
   FullOrDeadline: 'E_FULL_OR_DEADLINE',
   /** C3 报名幂等键同键异载荷：同 user+ref 已有活跃报名但载荷不一致（F1 R-02 口径先例：同键同载荷=幂等重放原单；C3 §5 409） */
   EnrollDuplicateKey: 'E_ENROLL_DUP_KEY',
+  /** C6 撤销超窗：改价生效已超 24h 不可撤销（C6 §5 409 PAST_24H，PRD §8.2 R-04） */
+  Past24h: 'E_PAST_24H',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -306,6 +308,10 @@ const ERROR_CODE_META: Readonly<Record<ErrorCode, ErrorCodeMeta>> = {
     httpStatus: 409,
     defaultMessage:
       '报名幂等键冲突：同场次同用户已有活跃报名且载荷不一致（同载荷请走幂等重放，返回原单）',
+  },
+  [ErrorCode.Past24h]: {
+    httpStatus: 409,
+    defaultMessage: '改价已超过 24h 撤销窗口（R-04），不可撤销',
   },
 };
 
