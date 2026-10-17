@@ -100,7 +100,7 @@ describe('composeSplits 分账构成（§2；Σsplits=net 恒等式；R-05 违�
       firm_id: 31,
       gross_cents: 10_000,
       penalty_cents: 0,
-      rate: '0.0000',
+      platform_fee_cents: 0,
       share_mode: 'FULL_TO_LAWYER',
     });
     expect(r).toMatchObject({ fee_cents: 0, net_cents: 10_000, firm_share_cents: 10_000, reserve_share_cents: 0 });
@@ -112,7 +112,7 @@ describe('composeSplits 分账构成（§2；Σsplits=net 恒等式；R-05 违�
       firm_id: 31,
       gross_cents: 10_000,
       penalty_cents: 0,
-      rate: '0.0000',
+      platform_fee_cents: 0,
       share_mode: 'ABSENCE_7030',
     });
     expect(r.firm_share_cents).toBe(7_000);
@@ -128,17 +128,17 @@ describe('composeSplits 分账构成（§2；Σsplits=net 恒等式；R-05 违�
       firm_id: 31,
       gross_cents: 10_000,
       penalty_cents: 0,
-      rate: '0.0500',
+      platform_fee_cents: 500,
       share_mode: 'FULL_TO_LAWYER',
     });
     const withPenalty = composeSplits({
       firm_id: 31,
       gross_cents: 10_000,
       penalty_cents: 2_000,
-      rate: '0.0500',
+      platform_fee_cents: 500,
       share_mode: 'FULL_TO_LAWYER',
     });
-    expect(noPenalty.fee_cents).toBe(500);
+    expect(noPenalty.fee_cents).toBe(500); // 建行固化值注入（R-06 计算由 platformFeeCents 专测钉住）
     expect(withPenalty.fee_cents).toBe(500); // 不因 penalty 变 400（gross 基数，平台不抽违约金）
     expect(withPenalty.net_cents).toBe(8_000); // 分账净额=gross−penalty=80
     expect(withPenalty.firm_share_cents).toBe(7_500); // 律师份额在扣费后净额上（80−5）
@@ -153,10 +153,10 @@ describe('composeSplits 分账构成（§2；Σsplits=net 恒等式；R-05 违�
       firm_id: 31,
       gross_cents: 3_333,
       penalty_cents: 0,
-      rate: '0.0500',
+      platform_fee_cents: 166,
       share_mode: 'ABSENCE_7030',
     });
-    expect(r.fee_cents).toBe(166); // floor(3333×0.05)=floor(166.65)
+    expect(r.fee_cents).toBe(166); // 建行固化（platformFeeCents(3333, 0.0500)=166 已专测）
     expect(r.net_cents).toBe(3_333); // gross−penalty
     expect(r.firm_share_cents).toBe(2_216); // floor((3333−166)×0.7)=floor(2216.9)
     expect(r.reserve_share_cents).toBe(951);
@@ -170,27 +170,27 @@ describe('composeSplits 分账构成（§2；Σsplits=net 恒等式；R-05 违�
       firm_id: 31,
       gross_cents: 5_000,
       penalty_cents: 5_000,
-      rate: '0.0000',
+      platform_fee_cents: 0,
       share_mode: 'FULL_TO_LAWYER',
     });
     expect(r.net_cents).toBe(0);
     expect(r.splits).toEqual([]);
   });
 
-  it('入参防御：负值/penalty>gross/非法费率显性抛（内部不变量失守即硬错误）', () => {
+  it('入参防御：负值/penalty>gross/费超过净额显性抛（内部不变量失守即硬错误）', () => {
     expect(() =>
-      composeSplits({ firm_id: 31, gross_cents: -1, penalty_cents: 0, rate: '0.0000', share_mode: 'FULL_TO_LAWYER' }),
+      composeSplits({ firm_id: 31, gross_cents: -1, penalty_cents: 0, platform_fee_cents: 0, share_mode: 'FULL_TO_LAWYER' }),
     ).toThrowError();
     expect(() =>
-      composeSplits({ firm_id: 31, gross_cents: 100, penalty_cents: 200, rate: '0.0000', share_mode: 'FULL_TO_LAWYER' }),
+      composeSplits({ firm_id: 31, gross_cents: 100, penalty_cents: 200, platform_fee_cents: 0, share_mode: 'FULL_TO_LAWYER' }),
     ).toThrowError(/扣减顺序守恒失守/);
     expect(() =>
-      composeSplits({ firm_id: 31, gross_cents: 100, penalty_cents: 0, rate: 'bad', share_mode: 'FULL_TO_LAWYER' }),
-    ).toThrowError();
+      composeSplits({ firm_id: 31, gross_cents: 100, penalty_cents: 0, platform_fee_cents: 500, share_mode: 'FULL_TO_LAWYER' }),
+    ).toThrowError(/行内构成不变量失守/);
     expect(() =>
-      composeSplits({ firm_id: 31, gross_cents: 100, penalty_cents: 0, rate: '0.0000', share_mode: 'FULL_TO_LAWYER' }),
+      composeSplits({ firm_id: 31, gross_cents: 100, penalty_cents: 0, platform_fee_cents: 0, share_mode: 'FULL_TO_LAWYER' }),
     ).not.toThrowError();
     // centsToMoney 出口恒两位小数（Money 契约）
-    expect(centsToMoney(composeSplits({ firm_id: 1, gross_cents: 1, penalty_cents: 0, rate: '0.0000', share_mode: 'FULL_TO_LAWYER' }).net_cents)).toBe('0.01');
+    expect(centsToMoney(composeSplits({ firm_id: 1, gross_cents: 1, penalty_cents: 0, platform_fee_cents: 0, share_mode: 'FULL_TO_LAWYER' }).net_cents)).toBe('0.01');
   });
 });

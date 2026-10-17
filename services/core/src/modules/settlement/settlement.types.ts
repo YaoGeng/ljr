@@ -32,6 +32,125 @@ export const HOLD_REASONS = ['HOLD_24H', 'OPEN_TICKETS', 'MERCHANT_NOT_ACTIVE'] 
 export type HoldReason = (typeof HOLD_REASONS)[number];
 
 // ---------------------------------------------------------------------------
+// 契约入参/出参（snake_case 逐字；金额/时间一律字符串 ISO）
+// ---------------------------------------------------------------------------
+
+/** 违约扣减留痕单腿（deduction_detail.items[]；§3 注释 {from: settlement|deposit, items[]} 口径归一） */
+export interface DeductionLeg {
+  /** 扣减来源（R-04 顺序：settlement=待结算余额优先，deposit=保证金专户补足） */
+  readonly leg: 'settlement' | 'deposit';
+  readonly amount: Money;
+  readonly idempotency_key: string;
+  /** F1 split_ledgers 流水 id（SHORTFALL 腿无流水=null） */
+  readonly ledger_id: number | null;
+  readonly status: 'CONFIRMED' | 'SHORTFALL';
+}
+
+/** 违约扣减留痕（settlements.deduction_detail；锚=该律师最后被摊扣的结算行） */
+export interface SettlementDeductionDetail {
+  readonly items: readonly DeductionLeg[];
+  /** 挂欠款（待结算余额与保证金专户均不足部分；>0 时同事务出箱 SettlementDebtIncurred） */
+  readonly debt: Money;
+  /** APPLY_PENALTY 入参快照（重放载荷比对 + M2 C3 快照回查换装位锚） */
+  readonly amount: Money;
+  readonly base_ref: { readonly ref_type: string; readonly ref_id: number };
+  readonly base_version: number | null;
+  readonly reason: string;
+  readonly idempotency_key: string;
+  readonly applied_at: string;
+}
+
+/** 结算单视图（DB 行读出口径） */
+export interface SettlementView {
+  readonly id: number;
+  readonly ref_type: SettlementRefType;
+  readonly ref_id: number;
+  readonly lawyer_id: number;
+  readonly firm_id: number;
+  readonly gross: Money;
+  readonly penalty: Money;
+  readonly platform_fee: Money;
+  readonly fee_version_id: number;
+  readonly net: Money;
+  readonly share_mode: ShareMode;
+  readonly payment_order_id: number | null;
+  readonly escrow_status: string | null;
+  readonly deduction_detail: SettlementDeductionDetail | null;
+  readonly status: SettlementStatus;
+  readonly hold_reason: string | null;
+  readonly created_at: string;
+  readonly settled_at: string | null;
+}
+
+/** 结算状态词汇（settlement.machine 同文再导出；视图/过滤器用） */
+export type { SettlementStatus } from './settlement.machine';
+import type { SettlementStatus } from './settlement.machine';
+
+/** 履约完成进结算（§6 消费 RoomClosed/OneOnOneSettled 的载荷归一；§5 内部 RUN_SETTLEMENT 前置） */
+export interface EnterSettlementInput {
+  readonly ref_type: SettlementRefType;
+  readonly ref_id: number;
+  readonly lawyer_id: number;
+  readonly firm_id: number;
+  /** 入账总额快照（F1 冻结额口径） */
+  readonly gross: Money;
+  /** F1 支付单 id（/pay/split 指令定位；恢复重驱动持久绑定） */
+  readonly payment_order_id: number;
+}
+
+/** RUN_SETTLE 结果（§5 内部指令；幂等键=ref_type+ref_id） */
+export interface RunSettleResult {
+  readonly settlement_id: number;
+  readonly settled: boolean;
+  /** 幂等重放：已 SETTLED（§10-7 重复触发无操作） */
+  readonly already_settled?: boolean;
+  /** 未到 READY（当前状态） */
+  readonly status?: SettlementStatus;
+  /** R-07：进件非 ACTIVE → 挂起 SUSPENDED 不分账 */
+  readonly suspended?: boolean;
+}
+
+/** HOLD 释放结果（blocked=未满足的释放条件） */
+export interface ReleaseHoldResult {
+  readonly released: boolean;
+  readonly blocked?: 'HOLD_24H' | 'OPEN_TICKETS';
+}
+
+/** 缺席分成标记结果（R-03；NO_SETTLEMENT=D3 先于 RoomClosed 的真实时序=M2 联调位） */
+export interface MarkAbsenceResult {
+  readonly marked: boolean;
+  readonly reason?: 'NO_SETTLEMENT' | 'SETTLED';
+}
+
+/** APPLY_PENALTY 入参（§5 逐字 {owner, amount, base_ref, base_version, reason, idempotency_key}；
+ *  R-W3-A 裁决：W3 带金额入参（调用方 D4=M2 自备快照金额），按 base_ref 回查 C3 快照=M2 换装位） */
+export interface ApplyPenaltyInput {
+  /** 违约责任人（§5 owner=lawyer，identity 侧用户 id） */
+  readonly owner_id: number;
+  readonly amount: Money;
+  /** 违约基数引用（C3 价格快照实体，如 {session, id}） */
+  readonly base_ref: { readonly ref_type: string; readonly ref_id: number };
+  /** 快照版本（W3 透传留痕；M2 快照回查时作一致性锚） */
+  readonly base_version?: number | null;
+  readonly reason: string;
+  /** 幂等键（须 penalty/ 域前缀——保证金腿派生键=首段换 deposit 防同键撞向） */
+  readonly idempotency_key: string;
+}
+
+/** APPLY_PENALTY 结果（§5 扣减结果；400 INSUFFICIENT 经 F1 语义转为 debt 挂账+出箱） */
+export interface ApplyPenaltyResult {
+  /** 同键重放=true（§10-7 幂等无操作） */
+  readonly replayed: boolean;
+  /** 实际从待结算余额扣到（CONFIRMED 腿合计） */
+  readonly from_settlement: Money;
+  /** 实际从保证金专户扣到 */
+  readonly from_deposit: Money;
+  /** 挂欠款（R-04：不足挂欠款+暂停接单，G1 事件出箱） */
+  readonly debt: Money;
+  readonly items: readonly DeductionLeg[];
+}
+
+// ---------------------------------------------------------------------------
 // 分 ↔ Money 字符串（与 payment.types 同形；禁 float）
 // ---------------------------------------------------------------------------
 
@@ -122,8 +241,8 @@ export interface ComposeSplitsInput {
   readonly firm_id: number;
   readonly gross_cents: number;
   readonly penalty_cents: number;
-  /** 生效费率文本（fee_versions.rate 读回，如 '0.0000'） */
-  readonly rate: string;
+  /** 平台服务费（分；建行时按生效费率固化于行——settle 时从行读，不随版本漂移） */
+  readonly platform_fee_cents: number;
   readonly share_mode: ShareMode;
 }
 
@@ -140,12 +259,13 @@ export interface ComposeSplitsResult {
   readonly splits: readonly SettlementSplitItem[];
 }
 
-/** 分账构成（§2：律师费→律所对公 + 平台服务费 + 缺席 30% 备付；构成校验 Σsplits=net） */
+/** 分账构成（§2：律师费→律所对公 + 平台服务费 + 缺席 30% 备付；构成校验 Σsplits=net=gross−penalty） */
 export function composeSplits(input: ComposeSplitsInput): ComposeSplitsResult {
-  const { firm_id, gross_cents, penalty_cents, rate, share_mode } = input;
+  const { firm_id, gross_cents, penalty_cents, platform_fee_cents, share_mode } = input;
   for (const [name, v] of [
     ['gross_cents', gross_cents],
     ['penalty_cents', penalty_cents],
+    ['platform_fee_cents', platform_fee_cents],
   ] as const) {
     if (!Number.isSafeInteger(v) || v < 0) {
       throw new AppError(ErrorCode.InternalError, `${name} 须为非负安全整数：${String(v)}`);
@@ -157,17 +277,16 @@ export function composeSplits(input: ComposeSplitsInput): ComposeSplitsResult {
       `penalty 超过 gross（扣减顺序守恒失守）：${penalty_cents} > ${gross_cents}`,
     );
   }
-  const fee = platformFeeCents(gross_cents, rate);
+  const fee = platform_fee_cents;
   const net = gross_cents - penalty_cents; // 分账净额（=Σsplits；fee 为其中构成项）
-  if (net < 0) {
+  if (net < fee) {
     throw new AppError(
       ErrorCode.InternalError,
-      `分账净额为负（gross−penalty<0）：${gross_cents}−${penalty_cents}`,
+      `可分配额为负（net−fee<0）：${net}−${fee}（行内构成不变量失守）`,
     );
   }
   // 律师/备付份额在扣费后的可分配额上切分（fee 亦为 splits 构成项——平台服务费实走分账指令）
-  const firmShare =
-    share_mode === 'ABSENCE_7030' ? splitAbsence7030(net - fee).firm_cents : net - fee;
+  const firmShare = share_mode === 'ABSENCE_7030' ? splitAbsence7030(net - fee).firm_cents : net - fee;
   const reserveShare = net - fee - firmShare;
 
   const splits: SettlementSplitItem[] = [];
