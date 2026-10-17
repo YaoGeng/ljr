@@ -853,15 +853,16 @@ export class SettlementService {
       };
       let anchorFirm: number | null = null;
       if (touched.length > 0) {
-        anchorFirm = rows.rows.filter((r) => touched.includes(Number(r.id))).at(-1)!
-          .firm_id as number;
+        // SettlementRow.firm_id 为 pg bigint 文本——Number 显式转换（禁 as 断言跨型）
+        anchorFirm = Number(
+          rows.rows.filter((r) => touched.includes(Number(r.id))).at(-1)!.firm_id,
+        );
         await uow.query(
           `UPDATE settlement.settlements SET deduction_detail = $2::jsonb WHERE id = $1`,
           [touched[touched.length - 1]!, JSON.stringify(detail)],
         );
       }
       if (debtCents > 0) {
-        if (anchorFirm !== null) anchorFirm = Number(anchorFirm);
         await this.outbox.recordOutbox(uow, {
           type: SETTLEMENT_DEBT_INCURRED_TOPIC,
           payload: {

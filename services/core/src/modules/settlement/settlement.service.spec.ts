@@ -17,7 +17,7 @@ import { StateTransitionLogService } from '../../infrastructure/state-machine/st
 import { ScheduleExecutorRegistry } from '../schedule/scheduler-executor.registry';
 import { MockPhoneAlertSink, SchedulerAlertService } from '../schedule/scheduler-alerts';
 import { SchedulerService } from '../schedule/scheduler.service';
-import { ChannelRouter, MockChannelAdapter } from '../payment/payment.channels';
+import { ChannelFaultError, ChannelRouter, MockChannelAdapter } from '../payment/payment.channels';
 import { PAYMENT_SWITCH_WINDOW_MS_DEFAULT, type PaymentConfig } from '../payment/payment.config';
 import { MockPaymentAlertSink, PaymentAlertService } from '../payment/payment.alerts';
 import { PaymentGatewayService } from '../payment/payment.gateway.service';
@@ -581,7 +581,6 @@ describe('F3 SettlementService（需 PG）', () => {
   it('E4 §10-4 保证金亦不足：SHORTFALL 腿留痕 + SettlementDebtIncurred 出箱（G1 SUSPEND_TAKE 消费位=M2）', async () => {
     await enter({ refId: 645, gross: '80.00', lawyer: LAWYER });
     // 腿级故障注入：仅保证金腿（from='deposit'）通道业务应答 INSUFFICIENT——R-04 次序下第二档不足
-    const { ChannelFaultError } = await import('../payment/payment.channels');
     const depositFault = Object.create(wechat) as MockChannelAdapter & {
       deduct: (req: { from?: string }) => Promise<unknown>;
     };
