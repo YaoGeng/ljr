@@ -369,6 +369,14 @@ describe('A3b 进件服务（§4/§5/§7，需 PG）', () => {
     });
   });
 
+  it('listByFirm（H1/T10 档案导出面）：按 firm 列全通道商户行（含多通道）；未进件/未知 firm → 空数组不抛', async () => {
+    await submitActive(26);
+    const rows = await service.listByFirm(26);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ firm_id: 26, channel: 'wechat_ecom', status: 'ACTIVE' });
+    expect(await service.listByFirm(999999)).toEqual([]);
+  });
+
   it('LawyerAuditPassed 消费：建 SUBMITTING 行启动进件；重投幂等短路；firm_id=null 记日志跳过不崩溃；载荷缺 lawyer_user_id 进重试轨道', async () => {
     const loggerSpy = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
     try {

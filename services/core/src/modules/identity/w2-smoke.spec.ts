@@ -22,6 +22,7 @@ import {
   type NotifyChannelMessage,
   NOTIFY_CHANNEL_ADAPTERS,
 } from '../notify/notify.channels';
+import { LawyerAdminModule } from '../ops/lawyer-admin.module';
 import { RuleCenterService } from '../ops/rule-center.service';
 import { SLOT_ABUSE_DETECTED_TOPIC, SLOT_LOCKED_TOPIC } from '../schedule/slot-lock.events';
 import { SlotLockModule } from '../schedule/slot-lock.module';
@@ -31,12 +32,15 @@ import { TimeTableService } from '../schedule/time-table.service';
 import { IDENTITY_CONFIG, type IdentityConfig } from './identity.config';
 import { IdentityCryptoService } from './identity.crypto';
 import { IdentityModule } from './identity.module';
+import { IdentityTokenService } from './identity.token.service';
 import { LawyerQualificationModule } from './lawyer-qualification.module';
 
 /**
- * M1-W2 事件链集成烟测（W2 DoD 收口，W1 w1-smoke 同款形态）：一条真实链贯通六模块三既有机制——
+ * M1-W2 事件链集成烟测（W2 DoD 收口，W1 w1-smoke 同款形态；W3 T10 随 G-A 接线小步演化：
+ * admin 审核面/限制令查询面改持 DB 预置 admin 旗标调用并加未认证 401 步进）：一条真实链贯通六模块三既有机制——
  *   A1 注册登录（I1 VerifyCodeRateLimiter 真计数 → mock SMS 捕获 → verify_codes 哈希落库直查比对
- *   → 双 token）→ A3a 资质提交 → admin 领取→通过（LawyerAuditPassed 同事务出箱）→ 真 relay tick
+ *   → 双 token）→ A3a 资质提交 → admin 领取→通过（ops H1 面 @RequireRole('admin')，G-A 关闭；
+ *   LawyerAuditPassed 同事务出箱，A1 授角+A3b 进件双 handler 扇出）→ 真 relay tick
  *   → A1 消费端授 lawyer role（user_roles 双行）→ /auth/switch-role 重签 claims.role=lawyer；
  *   旧 user token 打律师面端点（PUT /lawyer/schedule）403 E_ROLE_FORBIDDEN（R-03 一次）→
  *   B1 PUT 模板 → materializeSlots 候选 FREE → B2 lockSlot 真加锁（C1 创建即锁 LOCKED）→
@@ -149,6 +153,8 @@ describe('M1-W2 单链烟测（A1→A3a→授角色→切换→B1/B2→G1 限制
   let timeTable: TimeTableService;
   let slotLocks: SlotLockService;
   let rules: RuleCenterService;
+  /** W3 T10 G-A：DB 预置 admin 账号的测试 token（admin 面/限制令查询面接线后必持旗标） */
+  let adminToken: string;
 
   /** 由 access_token 解 claims（测试侧校验签发内容，identity-api.spec 同款） */
   function claimsOf(token: string): Record<string, unknown> {
@@ -199,6 +205,7 @@ describe('M1-W2 单链烟测（A1→A3a→授角色→切换→B1/B2→G1 限制
       imports: [
         IdentityModule,
         LawyerQualificationModule,
+        LawyerAdminModule, // W3 T10：admin 审核面路由已归 ops（G-A 前置门接线）；经其带 A3a/Trade/Payment 全链装配
         TimeTableModule,
         SlotLockModule,
         CreditModule,
@@ -311,14 +318,36 @@ describe('M1-W2 单链烟测（A1→A3a→授角色→切换→B1/B2→G1 限制
     expect(profile.rows[0]).toMatchObject({ audit_status: 'SUBMITTED' });
     const profileId = Number(profile.rows[0]!.id);
 
+    // G-A 接线（W3 T10）：admin 面必持旗标——未认证 401 先钉一步；admin 账号=DB 级预置
+    // （users+user_roles 直插 role='admin'，⚠W3-8 口径；audit 面路由=ops LawyerAdminModule）
+    const anonAudit = await request(app.getHttpServer())
+      .post(`/admin/lawyers/${profileId}/audit`)
+      .send({ action: 'claim' });
+    expect(anonAudit.status).toBe(401);
+    const admin = await pool.query<{ id: string }>(
+      `INSERT INTO identity.users (phone_enc, phone_blind_idx, status, age_declared)
+       VALUES ($1, $2, 'ACTIVE', true) RETURNING id`,
+      [Buffer.from('smoke-admin'), randomBytes(32).toString('hex')],
+    );
+    const adminUserId = Number(admin.rows[0]!.id);
+    await pool.query(
+      "INSERT INTO identity.user_roles (user_id, role) VALUES ($1, 'user'), ($1, 'admin') ON CONFLICT DO NOTHING",
+      [adminUserId],
+    );
+    adminToken = await app
+      .get(IdentityTokenService)
+      .signAccessToken({ userId: adminUserId, role: 'user', roles: ['user', 'admin'] });
+
     const claim = await request(app.getHttpServer())
       .post(`/admin/lawyers/${profileId}/audit`)
+      .set('Authorization', `Bearer ${adminToken}`)
       .send({ action: 'claim' });
     expect(claim.status).toBe(201);
     expect(claim.body).toEqual({ status: 'IN_REVIEW' });
 
     const approve = await request(app.getHttpServer())
       .post(`/admin/lawyers/${profileId}/audit`)
+      .set('Authorization', `Bearer ${adminToken}`)
       .send({ action: 'approve' });
     expect(approve.status).toBe(201);
     expect(approve.body).toEqual({ status: 'PASSED' });
@@ -478,9 +507,15 @@ describe('M1-W2 单链烟测（A1→A3a→授角色→切换→B1/B2→G1 限制
     const tick2 = await relay.tick();
     expect(tick2).toMatchObject({ dispatched: 5, retried: 0, dead: 0 });
 
-    // 断言⑪ G1 限制令查询面：/credit/restrictions 查到该用户 BAN_JOIN（行为内嵌发行，reason=行为锚）
+    // 断言⑪ G1 限制令查询面：/credit/restrictions 查到该用户 BAN_JOIN（行为内嵌发行，reason=行为锚）。
+    // G-A 接线（R-W2-H）：查询面挂 admin 守卫——未认证 401 / 持旗标 200
+    const anonRestrictions = await request(app.getHttpServer())
+      .get('/credit/restrictions')
+      .query({ owner_type: 'user', owner_id: String(user.userId) });
+    expect(anonRestrictions.status).toBe(401);
     const restrictions = await request(app.getHttpServer())
       .get('/credit/restrictions')
+      .set('Authorization', `Bearer ${adminToken}`)
       .query({ owner_type: 'user', owner_id: String(user.userId) });
     expect(restrictions.status).toBe(200);
     expect(restrictions.body).toHaveLength(1);
@@ -551,6 +586,7 @@ describe('M1-W2 单链烟测（A1→A3a→授角色→切换→B1/B2→G1 限制
 
     const restrictionsReplay = await request(app.getHttpServer())
       .get('/credit/restrictions')
+      .set('Authorization', `Bearer ${adminToken}`)
       .query({ owner_type: 'user', owner_id: String(user.userId) });
     expect(restrictionsReplay.body).toHaveLength(1);
 

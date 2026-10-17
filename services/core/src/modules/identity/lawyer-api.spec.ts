@@ -13,9 +13,10 @@ import { LawyerQualificationModule } from './lawyer-qualification.module';
 import { LawyerQualificationService } from './lawyer.service';
 
 /**
- * A3a REST 契约（§5）：POST /lawyer/qualification、GET /lawyer/audit-status（本人视角，
- * user_id 取 JWT claims——提交者尚未持有 lawyer 角色，R-03 角色守卫不适用，A2 同口径）与
- * POST /admin/lawyers/{id}/audit（H1 契约归 A3a，本批交付；admin 鉴权占位=R-W2-F park 先例）。
+ * A3a REST 契约（§5 律师侧）：POST /lawyer/qualification、GET /lawyer/audit-status（本人视角，
+ * user_id 取 JWT claims——提交者尚未持有 lawyer 角色，R-03 角色守卫不适用，A2 同口径）。
+ * W3 T10：POST /admin/lawyers/{id}/audit 的 HTTP 面随 H1 落位迁 ops（ops/lawyer-admin.http.spec，
+ * G-A 前置门接线+同事务审计+auditor_id 断言在彼处承载）——本文件原 admin 面用例随迁移退役。
  * 路由参数 {id}=lawyer_profiles.id（审核工作台操作对象=资质档案）。
  */
 
@@ -175,66 +176,5 @@ describe('A3a REST 契约（律师提交面 + admin 审核面，需 PG）', () =
       .set('Authorization', `Bearer ${token}`);
     expect(rejected.status).toBe(200);
     expect(rejected.body).toEqual({ status: 'REJECTED', reason: '执业证照片模糊' });
-  });
-
-  it('POST /admin/lawyers/{id}/audit：404 未知档案；坏参 → 400；reject 缺 reject_reason → 400', async () => {
-    await request(app.getHttpServer())
-      .post('/lawyer/qualification')
-      .set('Authorization', `Bearer ${token}`)
-      .send(VALID_BODY);
-    const profileId = await profileIdOf(userId);
-
-    const missing = await request(app.getHttpServer())
-      .post('/admin/lawyers/999999/audit')
-      .send({ action: 'claim' });
-    expect(missing.status).toBe(404);
-    expect(missing.body.code).toBe(ErrorCode.NotFound);
-
-    const badAction = await request(app.getHttpServer())
-      .post(`/admin/lawyers/${profileId}/audit`)
-      .send({ action: 'destroy' });
-    expect(badAction.status).toBe(400);
-    expect(badAction.body.code).toBe(ErrorCode.InvalidArgument);
-
-    const badId = await request(app.getHttpServer())
-      .post('/admin/lawyers/abc/audit')
-      .send({ action: 'claim' });
-    expect(badId.status).toBe(400);
-    expect(badId.body.code).toBe(ErrorCode.InvalidArgument);
-
-    const noReason = await request(app.getHttpServer())
-      .post(`/admin/lawyers/${profileId}/audit`)
-      .send({ action: 'reject' });
-    expect(noReason.status).toBe(400);
-    expect(noReason.body.code).toBe(ErrorCode.InvalidArgument);
-
-    // claim 前直接拒绝（IN_REVIEW 前置缺失）→ 守卫 409（admin 面同样禁越权迁移）
-    const skip = await request(app.getHttpServer())
-      .post(`/admin/lawyers/${profileId}/audit`)
-      .send({ action: 'approve' });
-    expect(skip.status).toBe(409);
-    expect(skip.body.code).toBe(ErrorCode.StateIllegalTransition);
-  });
-
-  it('POST /admin/lawyers/{id}/audit：claim→approve→suspend→resume 全链 200/201，状态出参逐步翻转', async () => {
-    await request(app.getHttpServer())
-      .post('/lawyer/qualification')
-      .set('Authorization', `Bearer ${token}`)
-      .send(VALID_BODY);
-    const profileId = await profileIdOf(userId);
-    const audit = (action: string, extra: Record<string, unknown> = {}) =>
-      request(app.getHttpServer())
-        .post(`/admin/lawyers/${profileId}/audit`)
-        .send({ action, ...extra });
-
-    expect((await audit('claim')).body).toEqual({ status: 'IN_REVIEW' });
-    expect((await audit('approve')).body).toEqual({ status: 'PASSED' });
-    expect((await audit('suspend', { reason: '投诉核查' })).body).toEqual({ status: 'SUSPENDED' });
-    expect((await audit('resume')).body).toEqual({ status: 'PASSED' });
-
-    // 已 PASSED 后再 approve（PASSED→PASSED）→ 守卫 409
-    const repeat = await audit('approve');
-    expect(repeat.status).toBe(409);
-    expect(repeat.body.code).toBe(ErrorCode.StateIllegalTransition);
   });
 });

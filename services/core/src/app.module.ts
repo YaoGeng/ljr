@@ -15,6 +15,7 @@ import { PricingChangeModule } from './modules/pricing/price-change.module';
 import { CreditModule } from './modules/credit/credit.module';
 import { RuleCenterModule } from './modules/ops/rule-center.module';
 import { WordDictModule } from './modules/ops/word-dict.module';
+import { LawyerAdminModule } from './modules/ops/lawyer-admin.module';
 import { SpecialtyKnowledgeModule } from './modules/agent-assist/specialty.module';
 import { SanitizeModule } from './modules/agent-assist/sanitize.module';
 import { PaymentModule } from './modules/payment/payment.module';
@@ -42,6 +43,7 @@ import { HealthController } from './health.controller';
     CreditModule, // G1 信用体系（credit schema owner，M1-W2 Task 6；不可变流水+规则表驱动限制令，入口拦截查询面待 W3 C1/C3 消费）
     RuleCenterModule, // H7 规则中心（ops schema owner，M1-W1 Task 4）
     WordDictModule, // H5 风控词库切片（ops schema owner，M1-W1 Task 5；人审闭环 M2-W2）
+    LawyerAdminModule, // H1 律师与资质管理（ops schema owner，M1-W3 Task 10 压轴；W2 终审 G-A 前置门关闭承载面：/admin/lawyers @RequireRole('admin')+auditor_id 回填+ops.audit_logs 同事务审计；A3a 的 admin 占位控制器退役，契约归 A3a、HTTP 面归 ops）
     SpecialtyKnowledgeModule, // E3 专项配置与知识库基建（agent_assist schema owner，M1-W1 Task 6；E1 Task 7 同目录追加）
     SanitizeModule, // E1 实时脱敏层切片（agent_assist schema owner，M1-W1 Task 7；草稿管线接线 M2-W3）
     PaymentModule, // F1 支付网关与回调 Inbox（payment schema owner，M1-W3 Task 1；指令面+回调验签+Inbox+对账；下游 C3=T7/H3=M2 接线）+ A3b 律所进件子域（M1-W3 Task 3：firm_merchants 状态机/R-01 查询面/FIRM_REVERIFY/保证金指令台账；下游 F3=T8/T10 H1 消费 FirmMerchantService）

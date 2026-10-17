@@ -293,6 +293,19 @@ export class FirmMerchantService {
     return res.rows[0] ? toView(res.rows[0]) : null;
   }
 
+  /**
+   * 律所全通道商户行（H1/T10 档案导出面，W3 T10 增）：进件状态视图不预设通道——H1 按
+   * firm 聚合展示（任意通道行均返回，created_at ASC 稳定序）；未进件/未知 firm → 空数组不抛。
+   */
+  async listByFirm(firmId: number): Promise<FirmMerchantView[]> {
+    const res = await this.pool.query<MerchantRow>(
+      `SELECT ${MERCHANT_COLS} FROM payment.firm_merchants
+        WHERE firm_id = $1 ORDER BY created_at ASC, id ASC`,
+      [assertPositiveInt(firmId, 'firm_id')],
+    );
+    return res.rows.map(toView);
+  }
+
   // ===========================================================================
   // LawyerAuditPassed 消费启动位（§6；幂等=UNIQUE(firm_id, channel) 短路）
   // ===========================================================================
