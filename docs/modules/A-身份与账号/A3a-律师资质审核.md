@@ -11,6 +11,7 @@
 - 提交资质材料（执业证号、执业证照片、律所授权书→加密 OSS）
 - 状态：DRAFT → SUBMITTED → IN_REVIEW → PASSED / REJECTED(可重提) / SUSPENDED
 - PASSED 联动：授予 lawyer role（事件→A1）、用户端可见（事件→C3）
+- **执业年限登记（2026-10-16 增量，随 H1 实力档案）：审核时依据执业证信息核验并登记执业年限，供 H1 实力档案资质字段带出（PRD §7.2.1——资质字段随审核核验）；≥3 年+劳动法经验是招募筛选口径（PRD §11.3），不作为入驻审核硬门禁**
 
 ## 3. 领域模型
 lawyer_profiles(
@@ -36,7 +37,7 @@ DRAFT→SUBMITTED（提交）/ SUBMITTED→IN_REVIEW（H1 领取）/ →PASSED�
 审核操作（运营）：见 H1 契约（POST /admin/lawyers/{id}/audit）。
 
 ## 6. 领域事件
-- 生产：LawyerAuditPassed{lawyer_user_id, firm_id}；LawyerSuspended{lawyer_user_id, reason}。
+- 生产：LawyerAuditSubmitted{lawyer_user_id, submitted_at}（进入 SUBMITTED 时发布——首次提交/重提/材料变更重提同口径，→H1 审核队列刷新）；LawyerAuditPassed{lawyer_user_id, firm_id}；LawyerSuspended{lawyer_user_id, reason}。
 - 消费：无。
 
 ## 7. 业务规则
@@ -44,6 +45,7 @@ DRAFT→SUBMITTED（提交）/ SUBMITTED→IN_REVIEW（H1 领取）/ →PASSED�
 - R-02 3 个工作日 SLA（超时 H1 看板告警）｜PRD §7.2.1
 - R-03 license_no 唯一（盲索引，防一人多号重复入驻）｜架构 §5.1
 - R-04 律师账号默认同时具备用户身份 ｜PRD §3
+- R-05 执业年限随审核核验登记，供 H1 实力档案资质字段带出（2026-10-16 增量）｜PRD §7.2.1
 
 ## 8. 非功能要求
 - 材料文件仅加密 OSS（I3），库内只存引用；审核操作全审计（H9）。
@@ -57,6 +59,7 @@ DRAFT→SUBMITTED（提交）/ SUBMITTED→IN_REVIEW（H1 领取）/ →PASSED�
 - [x] 状态机非法迁移被守卫拒绝并告警（证据：commits bb809a3..dbd6453，task-3-report §四——409 E_STATE_ILLEGAL_TRANSITION+STL allowed=false 留痕（独立连接），6×6 矩阵封闭性断言）
 - [x] 重复 license_no 提交被 409（证据：commits bb809a3..dbd6453，task-3-report §四——E_LICENSE_NO_TAKEN 预检+唯一索引 23505 DB 事实源+竞窗显式复检用例）
 - [ ] 审核动作在 H9 审计可查（后续联调：M4——现形态=每动作一行 STL+应用日志（无 PII）可查，H9 正式审计存储=M4；auditor_id 回填随 H1 鉴权接线绑定（R-W2-G 前置门），task-3-report §四）
+- [ ] 执业年限随 PASSED 登记且 H1 可带出（2026-10-16 增量，随 H1 实力档案施工=W3）
 
 ## 11. 待澄清点
 - ⚠04§8-4 保证金金额（A3b 承接，本模块仅在 PASSED 后触发 A3b 流程）。

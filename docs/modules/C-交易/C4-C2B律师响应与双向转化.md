@@ -1,7 +1,7 @@
 # C4 C2B 律师响应与双向转化
 
 > 域：C-交易 ｜ 架构模块：trade ｜ V1 ｜ P1 ｜ 阶段：②
-> 上游：C2（PENDING_LAWYER）、I2（12h 超时 job） ｜ 下游：F2（退款）、G1（拒绝/超时 -5）、I1（通知）、C1（履约 Session） ｜ 技能：P0六件套 + lj-domain-rules
+> 上游：C2（PENDING_LAWYER）、I2（12h 超时 job） ｜ 下游：F2（退款）、G1（拒绝/超时 -5）、I1（通知）、C1（履约 Session）、H1（接单响应统计源） ｜ 技能：P0六件套 + lj-domain-rules
 
 ## 1. 职责与边界
 - 做：律师 12h 确认/拒绝（超时自动拒绝）；确认后生成履约 Session（复用 C1 表）；认领转化 C2B→B2C。
@@ -12,6 +12,7 @@
 - 确认 → 生成 mode=C2B 的 Session + 新建 enrollment 行迁移
 - 拒绝/超时 → 全额退款 + 律师信用 -5
 - 认领转化：高需求 C2B → B2C 场次；原任务 CONVERTED；参与者快照价迁移；新加入按 B2C 价；24h 退款窗
+- 接单响应统计查询面（12h 确认时长，口径=H4）供 H1 实力档案公开面聚合（2026-10-16 增量）
 
 ## 3. 领域模型
 复用 sessions（mode=C2B）、group_buys（status=CONVERTED）、enrollments（新建行 + prev_enrollment_id 回链，旧行置 CONVERTED_OUT）。
@@ -25,6 +26,7 @@
 | POST | /group-buys/{id}/confirm | - | {session_id} | 409 NOT_REACHED | 幂等键=gb
 | POST | /group-buys/{id}/reject | {reason?} | {status} | 409 NOT_PENDING | 幂等键=gb
 | POST | /group-buys/{id}/convert | {capacity?, price 覆盖?} | {session_id} | 409 NOT_CONVERTIBLE | 幂等键=gb
+| GET  | /lawyer/response-stats?from=&to= | 内部（H1 实力档案聚合） | {samples, avg_confirm_minutes} | - | 否（2026-10-16 增量；口径=H4）
 
 ## 6. 领域事件
 - 生产：LawyerConfirmed{gb_id, session_id}；LawyerRejected{gb_id, timeout:bool}（→G1 -5、F2 全额退款）；GroupBuyConverted{gb_id, session_id}（→I1 通知+24h 窗、F2 受理）。

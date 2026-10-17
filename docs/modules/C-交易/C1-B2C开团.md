@@ -1,7 +1,7 @@
 # C1 B2C 开团（含律师场次看板）
 
 > 域：C-交易 ｜ 架构模块：trade ｜ V1 ｜ P0 ｜ 阶段：①
-> 上游：B1（选段）、B2（加锁）、B3（默认价）、G1（停接限制校验） ｜ 下游：C3（报名）、D1-D4（履约）、H4（看板数据源） ｜ 技能：P0六件套 + lj-domain-rules + lj-test-matrix
+> 上游：B1（选段）、B2（加锁）、B3（默认价）、G1（停接限制校验） ｜ 下游：C3（报名）、D1-D4（履约）、H4（看板数据源）、H1（实力档案成团率聚合源） ｜ 技能：P0六件套 + lj-domain-rules + lj-test-matrix
 
 ## 1. 职责与边界
 - 做：律师开团全流程（选段→配置→创建）；场次列表与详情（用户端）；B2C 状态机；律师侧场次数据看板接口。
@@ -10,8 +10,8 @@
 ## 2. 功能点
 - 开团配置页：自动填入默认价格与人数，律师可修改本次价格与人数（仅本次有效）
 - enroll_deadline 设置（默认开始前 24h ⚠，律师可改）
-- 用户端列表：律师、时间、计价方式、单价、已报名/还差几人、沟通形式（仅审核通过律师）
-- 律师场次看板：GET /lawyer/sessions/stats（报名率/成团率/到场率/1对1转化率）
+- 用户端列表：律师、时间、计价方式、单价、已报名/还差几人、沟通形式（仅审核通过律师）；**卡片附律师实力摘要（执业年限/专长/信用分/成团率——批量调 H1 GET /lawyers/{id}/profile/summary，禁直查 identity/ops schema，2026-10-16 PRD §7.1.2 增量）**
+- 律师场次看板：GET /lawyer/sessions/stats（报名率/成团率/到场率/1对1转化率；统计面同步供 H1 实力档案公开面聚合，口径=H4，2026-10-16 增量）
 
 ## 3. 领域模型
 sessions(
@@ -42,7 +42,7 @@ CREATED → FAILED(截止未满) → REFUNDED
 
 ## 6. 领域事件
 - 生产：SessionCreated{id, lawyer_id, slot_start, enroll_deadline}（→I2 预写截止/提醒 job）；SessionFull{id}；SessionFailed{id}（→F2 批量退款）。
-- 消费：EnrollmentPaid（C3 守卫推进 FULL）；RoomClosed/D4 终态事件（推进 FINISHED 等）。
+- 消费：EnrollmentPaid（C3 守卫推进 FULL）；RoomClosed/D4 终态事件（推进 FINISHED 等）；ReviewSubmitted（G2——评分入列表排序因子）；LawyerProfileTakedown（H1——档案下架时卡片实力摘要隐藏/缓存失效，H1 R-07 缓存 TTL ≤5min）。
 
 ## 7. 业务规则
 - R-01 开团配置仅本次有效，不改默认值 ｜PRD §6.2/§7.2.4
@@ -64,6 +64,7 @@ CREATED → FAILED(截止未满) → REFUNDED
 - [ ] 截止 job 流标 + 全员退款指令（F2 桩）
 - [ ] 停接律师开团被 403
 - [ ] stats 四率出数（H4 数据源联调）
+- [ ] takedown 后列表卡片摘要同步隐藏（LawyerProfileTakedown 消费，H1 联调=W3）
 
 ## 11. 待澄清点
 - ⚠04§8-3 B2C 截止时间默认规则。
