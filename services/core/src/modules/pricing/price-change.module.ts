@@ -18,6 +18,7 @@ import { BenefitsModule } from '../benefits/points.module';
 import { NotifyModule } from '../notify/notify.module';
 import { PriceChangeController } from './price-change.controller';
 import { PriceChangeService } from './price-change.service';
+import { PriceChangePatrolService } from './price-change.patrol';
 
 @Module({
   imports: [
@@ -29,7 +30,11 @@ import { PriceChangeService } from './price-change.service';
     NotifyModule,
   ],
   controllers: [PriceChangeController],
-  providers: [PriceChangeService],
-  exports: [PriceChangeService],
+  providers: [
+    PriceChangeService,
+    // H4 资损巡检⑤类补偿检测件（M1-W4 T1：pricing 侧自持 SQL，ops 巡检聚合消费）
+    PriceChangePatrolService,
+  ],
+  exports: [PriceChangeService, PriceChangePatrolService],
 })
 export class PricingChangeModule {}

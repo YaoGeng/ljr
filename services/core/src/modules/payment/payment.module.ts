@@ -34,6 +34,7 @@ import { PAYMENT_CONFIG, paymentConfigFromEnv, type PaymentConfig } from './paym
 import { MockPaymentAlertSink, PaymentAlertService } from './payment.alerts';
 import { PaymentController } from './payment.controller';
 import { PaymentGatewayService } from './payment.gateway.service';
+import { PaymentPatrolService } from './payment.patrol';
 import { PaymentReconcileService } from './payment.reconcile.service';
 import { FIRM_MERCHANT_CONFIG, firmMerchantConfigFromEnv } from './firm-merchant.config';
 import { FirmMerchantConsumer } from './firm-merchant.consumer';
@@ -83,6 +84,8 @@ import { RefundSourceRegistry } from './refund.source';
     },
     PaymentGatewayService,
     PaymentReconcileService,
+    // H4 资损巡检④类指令检测件（M1-W4 T1：payment 侧自持 SQL，ops 巡检聚合消费）
+    PaymentPatrolService,
     FirmMerchantService,
     DepositService,
     // F2 退款执行域（R-W3-M 注册表：trade 真源=T7 经本注册表注册；测试假源 override 注入）
@@ -99,6 +102,7 @@ import { RefundSourceRegistry } from './refund.source';
   exports: [
     PaymentGatewayService,
     PaymentReconcileService,
+    PaymentPatrolService,
     FirmMerchantService,
     RefundService,
     RefundSourceRegistry,

@@ -11,6 +11,7 @@ import { SchedulerModule } from './scheduler.module';
 import { MockSlotLockAlertSink, SlotLockAlertService } from './slot-lock.alerts';
 import { SLOT_LOCK_CONFIG, slotLockConfigFromEnv } from './slot-lock.config';
 import { SlotLockJobExecutors } from './slot-lock.executors';
+import { SlotLockPatrolService } from './slot-lock.patrol';
 import { SlotLockService } from './slot-lock.service';
 import { TerminalStateRegistry } from './slot-lock.terminal-registry';
 
@@ -32,6 +33,8 @@ import { TerminalStateRegistry } from './slot-lock.terminal-registry';
     SlotLockService,
     // SLOT_TTL/SLOT_REAPER 执行器经 onModuleInit 注册到 I2 执行器注册表
     SlotLockJobExecutors,
+    // H4 资损巡检②类锁检测件（M1-W4 T1：schedule 侧自持 SQL+终态注册表，ops 巡检聚合消费）
+    SlotLockPatrolService,
   ],
   exports: [
     SlotLockService,
@@ -39,6 +42,7 @@ import { TerminalStateRegistry } from './slot-lock.terminal-registry';
     TerminalStateRegistry,
     SlotLockAlertService,
     MockSlotLockAlertSink,
+    SlotLockPatrolService,
   ],
 })
 export class SlotLockModule {}

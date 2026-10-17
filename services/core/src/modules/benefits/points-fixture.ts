@@ -65,3 +65,19 @@ export async function listRefundRestoreTxns(
   );
   return res.rows;
 }
+
+// ---- M1-W4 T1 扩展：H4 资损巡检⑤类核对锚（COMPENSATION 授予流水直插） ----
+
+/** 直插一 COMPENSATION 授予流水（巡检⑤类「已发」清零侧夹具；ref=price_change:{id} 同款形态） */
+export async function seedCompensationGrantRef(
+  pool: Pool,
+  userId: number,
+  ref: string,
+  points = 100,
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO benefits.points_txns (user_id, delta, kind, source_ref, expires_at)
+     VALUES ($1, $2, 'COMPENSATION', $3, now() + interval '30 days')`,
+    [userId, points, ref],
+  );
+}

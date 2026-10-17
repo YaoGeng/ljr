@@ -22,6 +22,7 @@ import { PaymentModule } from './modules/payment/payment.module';
 import { BenefitsModule } from './modules/benefits/points.module';
 import { TradeModule } from './modules/trade/trade.module';
 import { SettlementModule } from './modules/settlement/settlement.module';
+import { PatrolModule } from './modules/ops/patrol.module';
 import { HealthController } from './health.controller';
 
 // ObservabilityModule 紧随配置之后：http/pg 插桩先于 Infrastructure/Demo 建池注册
@@ -51,6 +52,7 @@ import { HealthController } from './health.controller';
     TradeModule, // C1 B2C 开团（trade schema owner，M1-W3 Task 4；开团事务=B2 加锁+INSERT 同事务、幂等键=lawyer+slot_start、ENROLL_DEADLINE 流标执行器、session 终态 provider；下游 C3=T7 消费 markFull/SessionFull、F2=T6 消费 SessionFailed）
     PricingChangeModule, // C6 改价与补偿（与 B3 同 pricing 域独立装配——TradeModule 依赖 B3，C6 消费 Trade 导出面，并入即环；M1-W3 Task 9：三档引擎/频率 DB 滑窗 ⚠W3-7/①人工兜底审批/24h 撤销/补偿 F4 真链+券指令/I1 三档话术真消费）
     SettlementModule, // F3 分账结算（settlement schema owner，M1-W3 Task 8；分账触发状态机 R-01 唯一解冻节点/HOLD 冻结期/违约扣减 R-04/缺席 70-30 R-03/进件前置 R-07；下游 H4/F4 备付/I1=M2 联调，G1 欠款消费位=M2）
+    PatrolModule, // H4 资损巡检首轮（ops schema owner，M1-W4 Task 1；架构 §7.2 五类不变量分钟级 RISK_PATROL job：检测 SQL 各域自持+ops 侧聚合，违例台账=patrol-findings 两表 dedup 入账；告警=供应商位 mock）
   ],
   controllers: [HealthController],
 })

@@ -400,6 +400,10 @@ export class SchedulerService {
   /**
    * 积压监控判定（§5：积压 >60s 告警，H4 巡检联动的数据位）：PENDING 且逾期超阈值的 job 数
    * 与最老逾期秒数。阈值事实源=config.backlogAlertMs。
+   *
+   * H4 巡检消费注记（M1-W4 T1）：只看 PENDING 逾期——FAILED（含 REMIND 系列与 ROOM_OPEN
+   * 未装配执行器的 NO_EXECUTOR 已知噪音，04 §8 #33）属 JOB_FAILED 告警面非积压面，本面不计
+   * （现状语义即如此，注记锚定）。patrol 直连消费本方法，勿在巡检侧重写判定。
    */
   async backlog(now: Date = new Date()): Promise<SchedulerBacklogStats> {
     const cutoff = new Date(now.getTime() - this.config.backlogAlertMs);
@@ -417,6 +421,28 @@ export class SchedulerService {
       oldestOverdueSeconds:
         oldest === null || oldest === undefined ? null : Math.floor(Number(oldest)),
     };
+  }
+
+  /**
+   * 指定类型在册 PENDING job 定位（周期 job 自投的在册检查导出面，M1-W4 T1：H4 RISK_PATROL
+   * 消费——B2 ensureReaperJob 同语义；slot-locks 同域内联，本面为跨域消费的合法缝）。
+   * exec 形态：与注册方（advisory 锁 → 检查 → registerJob）同一 uow 串行化，独立连接读不到
+   * 本事务上下文无意义。excludeJobId：排除当前轮自见（其 RUNNING 推进未提交，uow 内仍视其
+   * 为 PENDING——不排除会把当前轮误判为「已注册」而跳过自投，节拍链断链）。
+   */
+  async findPendingJobId(
+    exec: SqlExecutor,
+    jobType: ScheduleJobType,
+    excludeJobId?: number,
+  ): Promise<number | null> {
+    const res = await exec.query<{ id: string }>(
+      `SELECT id FROM schedule.schedule_jobs
+        WHERE job_type = $1 AND status = 'PENDING' AND id <> $2
+        ORDER BY id LIMIT 1`,
+      [jobType, excludeJobId ?? 0],
+    );
+    const id = res.rows[0]?.id;
+    return id === undefined ? null : Number(id);
   }
 
   // ---------- 内部件 ----------
@@ -518,7 +544,7 @@ export class SchedulerService {
     if (!isScheduleJobType(jobType)) {
       throw new AppError(
         ErrorCode.InvalidArgument,
-        `job_type 不在全集注册表（I2 §2/§4，22 种）：${JSON.stringify(jobType)}`,
+        `job_type 不在全集注册表（I2 §2/§4，23 种）：${JSON.stringify(jobType)}`,
       );
     }
     if (typeof refType !== 'string' || refType.length === 0 || refType.length > 16) {

@@ -3,8 +3,10 @@
  *
  * 全集口径（⚠计数差异说明，见任务报告）：I2 §2 标称「19 种」但逐项枚举为 20 个名字；
  * §4 job 全集对照表在其之上另有 FIRM_REVERIFY（生产方/执行器/回查锚点齐全）；控制者裁决 R2
- * 追加 RULE_EFFECTIVE（生产方/执行器=H7 规则中心，回查锚点=rule_definitions.publish_status）。
- * 本注册表取三者并集 = 22 种——全集是「程序化一致性检查的准入门」，多收无害、漏收断路。
+ * 追加 RULE_EFFECTIVE（生产方/执行器=H7 规则中心，回查锚点=rule_definitions.publish_status）；
+ * M1-W4 T1 追加 RISK_PATROL（H4 资损巡检周期 job，架构 §7.2 五类不变量，回查锚点=patrol_runs
+ * 最近一轮状态；I2 文档 §4 表已补行）。本注册表取并集 = 23 种——全集是「程序化一致性检查的
+ * 准入门」，多收无害、漏收断路。
  *
  * 排除声明（I2 §2）：RESTRICTION_EXPIRE 不建 job——G1 限制令采用惰性失效（查询时比对 until，G1 §3）。
  *
@@ -33,6 +35,7 @@ export const SCHEDULE_JOB_TYPES = [
   'RETENTION_PURGE',
   'FIRM_REVERIFY',
   'RULE_EFFECTIVE',
+  'RISK_PATROL',
 ] as const;
 
 export type ScheduleJobType = (typeof SCHEDULE_JOB_TYPES)[number];
@@ -182,6 +185,12 @@ export const SCHEDULE_JOB_CATALOG: Readonly<Record<ScheduleJobType, ScheduleJobD
     producer: 'H7 规则中心',
     executor: 'H7 规则中心',
     recheckAnchor: 'rule_definitions.publish_status', // 控制者裁决 R2（M1-W1 Task 4 消费）
+  },
+  RISK_PATROL: {
+    jobType: 'RISK_PATROL',
+    producer: 'H4 资损巡检（main.ts 引导首个 + 执行器自投下一周期，分钟级）',
+    executor: 'H4 资损巡检（PatrolService.runOnce：五类不变量检测→违例台账+告警）',
+    recheckAnchor: 'patrol_runs 最近一轮状态', // 架构 §7.2 五类（M1-W4 T1；I2 文档 §4 表已补行）
   },
 };
 

@@ -5,6 +5,8 @@
  * 夹具——SQL 落本文件（owner=trade，同域合法），spec 只 import 函数，不直写 trade.* 表
  * （架构 §3.2「跨模块取数走接口」的测试面口径；运行时取数仍走导出服务）。仅供 *.spec.ts
  * 使用，生产代码禁 import。
+ *
+ * M1-W4 T1 扩展：终态迁移时刻回拨（H4 巡检①类窗口锚=status_since 的故障注入用）。
  */
 import type { Pool } from 'pg';
 import { centsToMoney, moneyToCents } from './session.types';
@@ -77,5 +79,33 @@ export async function seedPaidEnrollmentRaw(
         points_amount, price_version_id, pay_status, credit_used)
      VALUES ($1, $2, $3, '{}'::jsonb, $4, $5, $6, $7, 1, 'PAID', 0)`,
     [refType, refId, o.userId, o.unitPrice, paidFull, o.cash, o.points],
+  );
+}
+
+// ---- M1-W4 T1 扩展：H4 资损巡检①类故障注入（终态迁移时刻回拨，窗口锚=status_since） ----
+
+/** 回拨场次终态迁移时刻（status_since=now()-ago；巡检①类窗口判定锚） */
+export async function backdateSessionStatusSince(
+  pool: Pool,
+  sessionId: number,
+  agoMs: number,
+): Promise<void> {
+  await pool.query(
+    `UPDATE trade.sessions SET status_since = now() - ($2::bigint * interval '1 millisecond')
+      WHERE id = $1`,
+    [sessionId, agoMs],
+  );
+}
+
+/** 回拨拼团终态迁移时刻（status_since=now()-ago；巡检①类窗口判定锚） */
+export async function backdateGroupBuyStatusSince(
+  pool: Pool,
+  groupBuyId: number,
+  agoMs: number,
+): Promise<void> {
+  await pool.query(
+    `UPDATE trade.group_buys SET status_since = now() - ($2::bigint * interval '1 millisecond')
+      WHERE id = $1`,
+    [groupBuyId, agoMs],
   );
 }

@@ -464,6 +464,25 @@ export class PointsService {
     };
   }
 
+  /**
+   * 按 kind+source_ref 的流水存在性只读面（M1-W4 T1 导出加法扩展，findOrderById 同形先例）：
+   * H4 资损巡检第⑤类消费——C6「EFFECTED DOWN 历史行对照积分流水对账」的 benefits 侧核对锚
+   * （如 COMPENSATION × price_change:{id}）。存在性语义，不扫金额（巡检只读面，金额核对=M2 对账）。
+   */
+  async hasTxnOfKindRef(kind: string, ref: string): Promise<boolean> {
+    if (typeof kind !== 'string' || kind.length === 0 || kind.length > 20) {
+      throw new AppError(ErrorCode.InvalidArgument, `kind 越域：${JSON.stringify(kind)}`);
+    }
+    if (typeof ref !== 'string' || ref.length === 0 || ref.length > 64) {
+      throw new AppError(ErrorCode.InvalidArgument, `ref 越域：${JSON.stringify(ref)}`);
+    }
+    const res = await this.pool.query<{ ok: number }>(
+      `SELECT 1 AS ok FROM benefits.points_txns WHERE kind = $1 AND source_ref = $2 LIMIT 1`,
+      [kind, ref],
+    );
+    return res.rows.length > 0;
+  }
+
   // ===========================================================================
   // 过期 job 路径（POINTS_EXPIRE 执行器内核；惰性路径为纯计算不落行，物化扣减唯一在此）
   // ===========================================================================

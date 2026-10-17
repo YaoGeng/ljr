@@ -16,10 +16,10 @@ import {
  * I2 纯单元（无需 PG）：job 全集注册表、告警判定、配置默认值。
  * job 全集=I2 §2 枚举 + §4 对照表 FIRM_REVERIFY + 控制者裁决 R2 增 RULE_EFFECTIVE（头注见 scheduler.catalog.ts）。
  */
-describe('I2 job 全集注册表（§2/§4 + 控制者裁决 R2）', () => {
-  it('全集 22 种且无重复：§2 枚举 20 种 + FIRM_REVERIFY（§4 对照表）+ RULE_EFFECTIVE（裁决 R2）', () => {
-    expect(SCHEDULE_JOB_TYPES).toHaveLength(22);
-    expect(new Set(SCHEDULE_JOB_TYPES).size).toBe(22);
+describe('I2 job 全集注册表（§2/§4 + 控制者裁决 R2 + M1-W4 RISK_PATROL）', () => {
+  it('全集 23 种且无重复：§2 枚举 20 种 + FIRM_REVERIFY（§4 对照表）+ RULE_EFFECTIVE（裁决 R2）+ RISK_PATROL（M1-W4 T1 H4 资损巡检）', () => {
+    expect(SCHEDULE_JOB_TYPES).toHaveLength(23);
+    expect(new Set(SCHEDULE_JOB_TYPES).size).toBe(23);
     expect([...SCHEDULE_JOB_TYPES]).toEqual([
       'REMIND_24H',
       'REMIND_1H',
@@ -43,6 +43,7 @@ describe('I2 job 全集注册表（§2/§4 + 控制者裁决 R2）', () => {
       'RETENTION_PURGE',
       'FIRM_REVERIFY',
       'RULE_EFFECTIVE',
+      'RISK_PATROL',
     ]);
   });
 
@@ -60,6 +61,14 @@ describe('I2 job 全集注册表（§2/§4 + 控制者裁决 R2）', () => {
       producer: expect.stringContaining('H7'),
       executor: expect.stringContaining('H7'),
       recheckAnchor: expect.stringContaining('rule_definitions.publish_status'),
+    });
+  });
+
+  it('RISK_PATROL（M1-W4 T1）：生产方/执行器=H4 资损巡检，回查锚点=patrol_runs', () => {
+    expect(SCHEDULE_JOB_CATALOG.RISK_PATROL).toMatchObject({
+      producer: expect.stringContaining('H4'),
+      executor: expect.stringContaining('H4'),
+      recheckAnchor: expect.stringContaining('patrol_runs'),
     });
   });
 

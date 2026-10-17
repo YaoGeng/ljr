@@ -97,3 +97,57 @@ export async function countJobLogsByResult(
   );
   return res.rows[0]!.n;
 }
+
+// ---- M1-W4 T1 扩展：H4 资损巡检故障注入（活跃锁直插 + PENDING job 直插回拨） ----
+
+/** 直插一把占用锁（活跃三态可指定；slotStartAgoMs/ttlAtAgoMs 回拨段位/TTL 时刻——巡检②类窗口锚） */
+export async function seedSlotLockRaw(
+  pool: Pool,
+  o: {
+    readonly lawyerId: number;
+    readonly refType: string;
+    readonly refId: number;
+    readonly status: 'PENDING_PAYMENT' | 'LOCKED' | 'OCCUPIED' | 'RELEASED';
+    readonly slotStartAgoMs?: number;
+    readonly ttlAtAgoMs?: number;
+  },
+): Promise<number> {
+  const res = await pool.query<{ id: string }>(
+    `INSERT INTO schedule.slot_locks
+       (lawyer_id, slot_start, status, ref_type, ref_id, initiator_user_id, ttl_at)
+     VALUES ($1,
+             now() - ($2::bigint * interval '1 millisecond'),
+             $3, $4, $5, 601,
+             CASE WHEN $6::bigint IS NULL THEN NULL
+                  ELSE now() - ($6::bigint * interval '1 millisecond') END)
+     RETURNING id`,
+    [
+      o.lawyerId,
+      o.slotStartAgoMs ?? -3_600_000,
+      o.status,
+      o.refType,
+      o.refId,
+      o.ttlAtAgoMs ?? null,
+    ],
+  );
+  return Number(res.rows[0]!.id);
+}
+
+/** 直插一 PENDING job 并回拨到期时刻（巡检③类积压故障注入；dueAtAgoMs 回拨 due_at） */
+export async function seedPendingJobRaw(
+  pool: Pool,
+  o: {
+    readonly jobType: string;
+    readonly refType: string;
+    readonly refId: number;
+    readonly dueAtAgoMs: number;
+  },
+): Promise<number> {
+  const res = await pool.query<{ id: string }>(
+    `INSERT INTO schedule.schedule_jobs (job_type, ref_type, ref_id, due_at)
+     VALUES ($1, $2, $3, now() - ($4::bigint * interval '1 millisecond'))
+     RETURNING id`,
+    [o.jobType, o.refType, o.refId, o.dueAtAgoMs],
+  );
+  return Number(res.rows[0]!.id);
+}

@@ -44,6 +44,8 @@
     "notify.notifications": "V4__notify.sql",
     "notify.verify_code_sends": "V4__notify.sql",
     "ops.audit_logs": "V32__ops.sql",
+    "ops.patrol_findings": "V34__ops.sql",
+    "ops.patrol_runs": "V34__ops.sql",
     "ops.risk_records": "V8__ops.sql",
     "ops.rule_definitions": "V7__ops.sql",
     "payment.firm_merchants": "V22__payment.sql",

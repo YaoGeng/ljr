@@ -98,3 +98,77 @@ export async function countLedgersByDirection(
   );
   return res.rows[0]!.n;
 }
+
+// ---- M1-W4 T1 扩展：H4 资损巡检故障注入（支付单/退款单/指令流水直插 + 时刻回拨） ----
+// 头注纪律同上：owner=payment 唯一合法直触点，引用方（ops 巡检 spec）只 import 函数。
+
+/** 直插一支付单（缺省 CREATED→可指定状态；幂等键=调用方给定——巡检①类 enroll/e{id}/pay 关联锚） */
+export async function seedPaymentOrderRaw(
+  pool: Pool,
+  o: {
+    readonly idempotencyKey: string;
+    readonly bizId: number;
+    readonly cash?: string;
+    readonly points?: number;
+    readonly status?: string;
+  },
+): Promise<number> {
+  const res = await pool.query<{ id: string }>(
+    `INSERT INTO payment.payment_orders
+       (biz_type, biz_id, channel, cash_amount, points_amount, status, idempotency_key)
+     VALUES ('enroll', $1, 'wechat_ecom', $2, $3, $4, $5)
+     RETURNING id`,
+    [o.bizId, o.cash ?? '100.00', o.points ?? 0, o.status ?? 'CREATED', o.idempotencyKey],
+  );
+  return Number(res.rows[0]!.id);
+}
+
+/** 直插一退款单（状态可指定——巡检①类在途/终局失败核对面） */
+export async function seedRefundRaw(
+  pool: Pool,
+  o: {
+    readonly orderId: number;
+    readonly userId: number;
+    readonly status: string;
+    readonly idempotencyKey: string;
+    readonly cash?: string;
+    readonly points?: number;
+  },
+): Promise<number> {
+  const res = await pool.query<{ id: string }>(
+    `INSERT INTO payment.refunds
+       (payment_order_id, user_id, cash_amount, points_amount, reason, status, idempotency_key)
+     VALUES ($1, $2, $3, $4, 'GROUP_FAIL', $5, $6)
+     RETURNING id`,
+    [o.orderId, o.userId, o.cash ?? '100.00', o.points ?? 0, o.status, o.idempotencyKey],
+  );
+  return Number(res.rows[0]!.id);
+}
+
+/** 直插一指令流水行（巡检④类 ISSUED 未确认故障注入；createdAtAgoMs 回拨指令时刻） */
+export async function seedSplitLedgerRaw(
+  pool: Pool,
+  o: {
+    readonly direction: 'SPLIT' | 'DEDUCT' | 'REFUND';
+    readonly status: 'ISSUED' | 'CONFIRMED';
+    readonly amount?: string;
+    readonly createdAtAgoMs?: number;
+    readonly idempotencyKey?: string;
+  },
+): Promise<number> {
+  const res = await pool.query<{ id: string }>(
+    `INSERT INTO payment.split_ledgers
+       (period, channel, direction, amount, status, idempotency_key, created_at)
+     VALUES (current_date, 'wechat_ecom', $1, $2, $3, $4,
+             now() - ($5::bigint * interval '1 millisecond'))
+     RETURNING id`,
+    [
+      o.direction,
+      o.amount ?? '80.00',
+      o.status,
+      o.idempotencyKey ?? `patrol-fixture/${o.direction}/${Date.now()}-${Math.random()}`,
+      o.createdAtAgoMs ?? 0,
+    ],
+  );
+  return Number(res.rows[0]!.id);
+}

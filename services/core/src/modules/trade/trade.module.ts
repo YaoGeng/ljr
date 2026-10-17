@@ -49,6 +49,7 @@ import { GroupBuyService } from './group-buy.service';
 import { GroupBuyTerminalProvider } from './group-buy.terminal-provider';
 import { EnrollmentConsumer } from './enrollment.consumer';
 import { EnrollmentController } from './enrollment.controller';
+import { EnrollmentPatrolService } from './enrollment.patrol';
 import { EnrollmentQueryService } from './enrollment.query';
 import { SessionRefundSource } from './enrollment.refund-source';
 import { EnrollmentService } from './enrollment.service';
@@ -81,6 +82,8 @@ import { EnrollmentService } from './enrollment.service';
     EnrollmentService,
     SessionRefundSource,
     EnrollmentConsumer,
+    // H4 资损巡检①类候选检测件（M1-W4 T1：trade 侧自持 SQL，ops 巡检聚合消费——跨域经导出服务）
+    EnrollmentPatrolService,
     // ENROLL_DEADLINE 执行器（按 ref_type 分流 session/groupbuy）+ C2B_CONFIRM_TIMEOUT 执行器
     // 经 onModuleInit 注册到 I2 执行器注册表（producer/executor=trade）
     SessionJobExecutors,
@@ -90,6 +93,6 @@ import { EnrollmentService } from './enrollment.service';
     GroupBuyTerminalProvider,
   ],
   // 可剥离纪律：只导出应用服务（内部件不外泄）
-  exports: [SessionService, GroupBuyService, EnrollmentService],
+  exports: [SessionService, GroupBuyService, EnrollmentService, EnrollmentPatrolService],
 })
 export class TradeModule {}

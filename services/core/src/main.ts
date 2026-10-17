@@ -9,6 +9,7 @@ import { NotifyDispatchWorker } from './modules/notify/notify-dispatch.worker';
 import { SchedulerWorker } from './modules/schedule/scheduler.worker';
 import { SlotLockService } from './modules/schedule/slot-lock.service';
 import { PointsJobExecutors } from './modules/benefits/points.executors';
+import { PatrolService } from './modules/ops/patrol.service';
 
 async function bootstrap(): Promise<void> {
   // bufferLogs：create 期间的启动日志先进缓冲，挂上 TraceLogger（含 trace_id 注入）后统一回放；
@@ -51,6 +52,19 @@ async function bootstrap(): Promise<void> {
       app
         .get<TraceLogger>(TRACE_LOGGER)
         .error(`POINTS_EXPIRE 引导注册失败（每日过期扫不可用，待进程重启再引导）：${String(e)}`);
+    });
+
+  // H4 资损巡检周期 job 引导（M1-W4 Task 1）：幂等注册首个 RISK_PATROL（分钟级，在册 PENDING
+  // 已存在则跳过），后续周期由执行器 DONE 前自投（ADR-0003 周期 job 自续口径，SLOT_REAPER/
+  // POINTS_EXPIRE 同款）。引导失败必须留痕（一次性动作无 interval 自愈窗口——巡检停摆只能
+  // 等进程重启再引导，资损违例检出随之延后不丢账：dedup 锚保证恢复后不重复入账）。
+  app
+    .get(PatrolService)
+    .ensureScheduled()
+    .catch((e: unknown) => {
+      app
+        .get<TraceLogger>(TRACE_LOGGER)
+        .error(`RISK_PATROL 引导注册失败（资损巡检不可用，待进程重启再引导）：${String(e)}`);
     });
 
   // 监听端口经配置装载（M0-8：env PORT > config/<env>/app.env > 默认 3000）
