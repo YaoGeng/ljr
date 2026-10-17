@@ -36,3 +36,23 @@ export async function seedPriceHistoryRaw(
   );
   return Number(res.rows[0]!.id);
 }
+
+/**
+ * 既有改价历史行生效时刻回拨（owner=pricing 同域 SQL；M1-W4 T2 起）。巡检⑤类窗口锚=
+ * created_at——真链（C6 requestChange/approve HTTP 面）落行的 created_at 恒为当下，无法经
+ * API 注入超窗时刻；本 helper 与 trade-fixture backdateSessionStatusSince / settlement-fixture
+ * travelHoldCreated 同款时间注入形态（w3-smoke 段 ⑩ SETTLE_HOLD_RELEASE 先例），供链路级
+ * 验收 spec 把真链改价行推入巡检候选窗（不新造简化夹具——巡检清零并验须以真链数据承载）。
+ */
+export async function backdatePriceHistorySince(
+  pool: Pool,
+  historyId: number,
+  agoMs: number,
+): Promise<void> {
+  await pool.query(
+    `UPDATE pricing.pricing_histories
+        SET created_at = now() - ($2::bigint * interval '1 millisecond')
+      WHERE id = $1`,
+    [historyId, agoMs],
+  );
+}
