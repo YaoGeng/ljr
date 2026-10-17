@@ -2,7 +2,7 @@
  * 执行器注册表（job_type → 回查+执行回调；I2 §2「job 类型全集注册」的机制面）。
  *
  * I2 只做机制不做业务：默认空表，真实执行器由各业务模块经 register() 注册（形态同
- * OutboxRelayService.registerHandler——模块 onModuleInit 注册，如 demo/notify 消费者）：
+ * OutboxRelayService.registerHandler——模块 onModuleInit 注册，如 demo 消费者）：
  *   constructor(registry: ScheduleExecutorRegistry) {
  *     onModuleInit(): void { this.registry.register({ jobType: 'SLOT_TTL', recheck, execute }); }
  *   }

@@ -2,7 +2,7 @@
  * 通知下发服务（I1 §4 关键流程：事件消费 → 模板渲染 → 偏好过滤 → 通道下发 → 回执更新；失败重试 3 次）。
  *
  * 两段式驱动（重试需要时间维度的间隔，单事务内同步重试无意义）：
- *   1) 登记：事件消费（notify-event.consumer）或内部 DISPATCH_NOTIFY（§5）把触达请求幂等落表
+ *   1) 登记：业务模块事务内直调本服务（C6 registerForEvent / DISPATCH_NOTIFY §5）把触达请求幂等落表
  *      （INSERT ... ON CONFLICT (idempotency_key) DO NOTHING——R-03 同键一次触达，DB 唯一约束兜底）；
  *   2) 下发：processPending() 拾取 QUEUED 逐条处理；单条内 SELECT ... FOR UPDATE 行锁 + 条件更新，
  *      并发 worker 争用同行使输方读到 0 行（gone）短路——效果与 SKIP LOCKED 抢占等价且不会双发；
@@ -10,6 +10,9 @@
  *      NotificationDispatched 与回执同事务落 outbox（§6 →H4 触达率）。
  *   失败重试：通道失败 retry_count+1 仍 QUEUED，由 worker 下一轮重试；失败计数超上限
  *   （默认 3 次重试，⚠决策位=模块文档 §4 默认值）→ FAILED 终态。计数口径同 platform.outbox。
+ *
+ * 通知路径（N-1 终审收口）：业务模块事务内直调 NotifyDispatcherService；话题式事件扇出消费者
+ * （占位 topic 全仓零生产方）已移除，待 I1 契约定型后 M2 按新契约重建。
  */
 import { Injectable, Optional } from '@nestjs/common';
 import { AppError, ErrorCode, isValidIdempotencyKey } from '@ljr/shared';
@@ -107,7 +110,7 @@ export class NotifyDispatcherService {
     );
   }
 
-  /** 事件消费入口（notify-event.consumer 专用）：键缺省回落 event_id（uuid 36 字符 < varchar(64)） */
+  /** 业务模块事务内登记入口（C6 改价等经 uow 同事务调用；幂等键由调用方按 shared 规范给定） */
   async registerForEvent(
     uow: SqlExecutor,
     req: {

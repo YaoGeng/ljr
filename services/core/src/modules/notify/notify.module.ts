@@ -17,7 +17,6 @@ import {
 } from './notify.channels';
 import { NotifyDispatchWorker } from './notify-dispatch.worker';
 import { NotifyDispatcherService } from './notify-dispatcher.service';
-import { NotifyEventConsumer } from './notify-event.consumer';
 import { NotifyPrefsService } from './notify-prefs.service';
 import { NotifyTemplateService } from './notify-template.service';
 import { VerifyCodeRateLimiter } from './verify-code-rate-limiter.service';
@@ -41,7 +40,6 @@ import { VerifyCodeRateLimiter } from './verify-code-rate-limiter.service';
     NotifyChannelRegistry,
     NotifyDispatcherService,
     VerifyCodeRateLimiter,
-    NotifyEventConsumer,
     NotifyDispatchWorker,
   ],
   exports: [

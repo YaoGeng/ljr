@@ -4,8 +4,6 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { Pool } from 'pg';
-import { OutboxRelayService } from '../../infrastructure/outbox/outbox-relay.service';
-import { OutboxService } from '../../infrastructure/outbox/outbox.service';
 import { ensureTestDatabase, truncateAll } from '../../infrastructure/testing/db';
 import {
   NotifyChannelRegistry,
@@ -13,13 +11,14 @@ import {
   type NotifyChannelAdapter,
 } from './notify.channels';
 import { NOTIFY_DISPATCHED_TOPIC, NotifyDispatcherService } from './notify-dispatcher.service';
-import { NOTIFY_EVENT_TOPICS } from './notify-event.consumer';
 import { NotifyModule } from './notify.module';
 import { NotifyPrefsService } from './notify-prefs.service';
 
 /**
- * I1 下发链路 e2e（需 PG）：合成事件 → relay 消费 → 登记幂等（R-03）→ 模板渲染 → 偏好过滤 →
+ * I1 下发链路 e2e（需 PG）：dispatch 事务内登记幂等（R-03）→ 模板渲染 → 偏好过滤 →
  * 通道下发（mock）→ 回执更新（状态机守卫）→ NotificationDispatched 同事务落 outbox。
+ * （N-1 终审收口：占位话题式扇出消费者已移除——通知路径=业务模块事务内直调 dispatcher，
+ *   话题式扇出待 I1 契约定型后 M2 按新契约重建。）
  *
  * DI 说明同 demo.module.spec：不 override 连接——PgPoolService 按 env 连同一个 portable PG，
  * 测试池负责清场（notify.notification_templates 为参照数据不入清场清单，fixture 自行清理）。
@@ -27,8 +26,6 @@ import { NotifyPrefsService } from './notify-prefs.service';
 describe('I1 下发链路（默认 mock 通道，需 PG）', () => {
   let pool: Pool;
   let app: INestApplication;
-  let outbox: OutboxService;
-  let relay: OutboxRelayService;
   let dispatcher: NotifyDispatcherService;
   let prefs: NotifyPrefsService;
 
@@ -36,9 +33,7 @@ describe('I1 下发链路（默认 mock 通道，需 PG）', () => {
     pool = await ensureTestDatabase();
     const moduleRef = await Test.createTestingModule({ imports: [NotifyModule] }).compile();
     app = moduleRef.createNestApplication();
-    await app.init(); // 触发 onModuleInit：notify 事件消费者注册到 relay
-    outbox = app.get(OutboxService);
-    relay = app.get(OutboxRelayService);
+    await app.init(); // 初始化 DI 容器（worker 不 start，下发由测试手动驱动）
     dispatcher = app.get(NotifyDispatcherService);
     prefs = app.get(NotifyPrefsService);
   });
@@ -57,19 +52,14 @@ describe('I1 下发链路（默认 mock 通道，需 PG）', () => {
     await pool.query(`DELETE FROM notify.notification_templates WHERE code LIKE 'TEST_%'`);
   });
 
-  const recordEvent = (payload: Record<string, unknown>, topic = NOTIFY_EVENT_TOPICS[0]) =>
-    outbox.recordOutbox(pool, { type: topic, payload });
-
-  it('全链：合成事件 → relay 消费登记 QUEUED → 渲染 → 下发 → SENT + NotificationDispatched 同事务', async () => {
-    await recordEvent({
-      user_id: 101,
-      template_code: 'PRICE_UP_LOCKED',
-      idempotency_key: 'notify/user-101/price-up-1',
+  it('全链：dispatch 事务内登记 QUEUED → 渲染 → 下发 → SENT + NotificationDispatched 同事务', async () => {
+    await dispatcher.dispatch({
+      userId: 101,
+      templateCode: 'PRICE_UP_LOCKED',
+      idempotencyKey: 'notify/user-101/price-up-1',
     });
 
-    // 消费：事件被 relay 投递，登记 QUEUED（channel 取自模板）
-    const tick = await relay.tick();
-    expect(tick.dispatched).toBe(1);
+    // 登记：QUEUED（channel 取自模板）
     const queued = await pool.query<{ id: string; channel: string; status: string }>(
       `SELECT id, channel, status FROM notify.notifications`,
     );
@@ -110,17 +100,17 @@ describe('I1 下发链路（默认 mock 通道，需 PG）', () => {
     expect(log.rows[0]).toMatchObject({ allowed: true, from_status: 'QUEUED', to_status: 'SENT' });
   });
 
-  it('R-03 重复事件一次触达：同 idempotency_key 两笔事件 → 只登记一条、只触达一次', async () => {
-    const payload = {
-      user_id: 102,
-      template_code: 'PRICE_DOWN_COMP',
-      idempotency_key: 'notify/user-102/price-down-1',
+  it('R-03 同键重复提交一次触达：两次调用返回首访登记，只登记一条、只下发一次、恰好一条回执', async () => {
+    const input = {
+      userId: 103,
+      templateCode: 'PRICE_DOWN_BIG',
+      idempotencyKey: 'notify/user-103/price-down-big-1',
     };
-    await recordEvent(payload);
-    await recordEvent(payload); // at-least-once 重投/上游重发
+    const first = await dispatcher.dispatch(input);
+    const second = await dispatcher.dispatch(input);
+    expect(first).toMatchObject({ notificationId: first.notificationId, deduplicated: false });
+    expect(second).toMatchObject({ notificationId: first.notificationId, deduplicated: true });
 
-    await relay.tick();
-    await relay.tick(); // 两笔事件都被消费
     const rows = await pool.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM notify.notifications`,
     );
@@ -137,25 +127,6 @@ describe('I1 下发链路（默认 mock 通道，需 PG）', () => {
       [NOTIFY_DISPATCHED_TOPIC],
     );
     expect(receipts.rows[0]?.n).toBe(1); // 一次触达恰好一条回执
-  });
-
-  it('R-03 内部 DISPATCH_NOTIFY 幂等：同键两次调用返回首访登记，processPending 只下发一次', async () => {
-    const input = {
-      userId: 103,
-      templateCode: 'PRICE_DOWN_BIG',
-      idempotencyKey: 'notify/user-103/price-down-big-1',
-    };
-    const first = await dispatcher.dispatch(input);
-    const second = await dispatcher.dispatch(input);
-    expect(first).toMatchObject({ notificationId: first.notificationId, deduplicated: false });
-    expect(second).toMatchObject({ notificationId: first.notificationId, deduplicated: true });
-
-    const r = await dispatcher.processPending();
-    expect(r).toMatchObject({ sent: 1 });
-    const rows = await pool.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM notify.notifications`,
-    );
-    expect(rows.rows[0]?.n).toBe(1);
   });
 
   it('非法幂等键：AppError(IdempotencyKeyInvalid, 400)，不触库', async () => {
@@ -202,14 +173,14 @@ describe('I1 下发链路（默认 mock 通道，需 PG）', () => {
     expect(rows.rows.every((x) => x.status === 'SENT')).toBe(true);
   });
 
-  it('模板缺失：事件消费被拒（AppError 上抛 → relay 重试轨道），不静默丢弃', async () => {
-    await recordEvent({
-      user_id: 105,
-      template_code: 'NO_SUCH_TEMPLATE',
-      idempotency_key: 'notify/user-105/ghost-1',
-    });
-    const tick = await relay.tick();
-    expect(tick.retried).toBe(1); // handler 抛 NotFound → 原事件进重试轨道
+  it('模板缺失：dispatch 拒绝（AppError NotFound 上抛，事务回滚），不落行不静默丢弃', async () => {
+    await expect(
+      dispatcher.dispatch({
+        userId: 105,
+        templateCode: 'NO_SUCH_TEMPLATE',
+        idempotencyKey: 'notify/user-105/ghost-1',
+      }),
+    ).rejects.toMatchObject({ code: ErrorCode.NotFound });
     const rows = await pool.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM notify.notifications`,
     );
