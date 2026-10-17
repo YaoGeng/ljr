@@ -9,6 +9,7 @@
  */
 import { AppError, ErrorCode, assertMoney, type Money } from '@ljr/shared';
 import { parsePositiveInt } from '../../infrastructure/parse-positive-int';
+import { SPECIALTY_MAX_LEN } from './group-buy.types';
 import {
   assertIsoDate,
   assertIsoDatetime,
@@ -78,7 +79,8 @@ export function parseListQuery(query: Record<string, unknown>): {
   to?: string;
 } {
   return {
-    specialty: queryParam(query['specialty'], 'specialty'),
+    // specialty 查询参上界 32=列宽对齐（T11.5-① 收口：>32 原得空集，现 400 显式拒绝）
+    specialty: queryParam(query['specialty'], 'specialty', SPECIALTY_MAX_LEN),
     city: queryParam(query['city'], 'city'),
     lawyer:
       queryParam(query['lawyer'], 'lawyer') === undefined
@@ -105,10 +107,16 @@ export function parseStatsQuery(query: Record<string, unknown>): { from: string;
   return { from: assertIsoDate(from, 'from'), to: assertIsoDate(to, 'to') };
 }
 
-function queryParam(v: unknown, field: string): string | undefined {
+function queryParam(v: unknown, field: string, maxLen?: number): string | undefined {
   if (v === undefined) return undefined;
   if (typeof v !== 'string' || v === '') {
     throw new AppError(ErrorCode.InvalidArgument, `${field} 须为非空字符串：${JSON.stringify(v)}`);
+  }
+  if (maxLen !== undefined && v.length > maxLen) {
+    throw new AppError(
+      ErrorCode.InvalidArgument,
+      `${field} 须为 1-${maxLen} 字符：${JSON.stringify(v)}`,
+    );
   }
   return v;
 }

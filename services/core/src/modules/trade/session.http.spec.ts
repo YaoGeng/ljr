@@ -227,6 +227,18 @@ describe('C1 HTTP 契约（§5，需 PG）', () => {
     expect(list2.body.map((s: { lawyer_id: number }) => s.lawyer_id)).toEqual([9501, 9503]);
   });
 
+  it('GET /sessions?specialty= 超长 400：查询参上界 32=列宽对齐（T11.5-① 收口；>32 原得空集，边界 32 放行）', async () => {
+    const tooLong = await request(app.getHttpServer()).get(`/sessions?specialty=${'a'.repeat(33)}`);
+    expect(tooLong.status).toBe(400);
+    expect(tooLong.body.code).toBe(ErrorCode.InvalidArgument);
+
+    const boundary = await request(app.getHttpServer()).get(
+      `/sessions?specialty=${'a'.repeat(32)}`,
+    );
+    expect(boundary.status).toBe(200); // 边界长度放行，走过滤空集语义
+    expect(boundary.body).toEqual([]);
+  });
+
   it('GET /sessions/{id}：详情+剩余席位；404 E_NOT_FOUND', async () => {
     const view = await createViaService(9501);
     const detail = await request(app.getHttpServer()).get(`/sessions/${view.id}`);

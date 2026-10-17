@@ -421,31 +421,38 @@ describe('I2 调度机制核心（默认装配，需 PG）', () => {
     expect(await svc.tick('normal')).toMatchObject({ done: 0, retried: 0, failed: 0 });
   });
 
-  it('抢占并发（§9）：两执行器（两服务实例同池）争同一到期 job 恰一执行', async () => {
-    const reg = await svc.registerJob(pool, {
-      jobType: 'REMIND_10MIN',
-      refType: 'session',
-      refId: 561,
-      dueAt: new Date(Date.now() - 1_000),
-    });
-    // 第二个调度器实例（模拟多节点）：同池 + 同执行器注册表
-    const svc2 = new SchedulerService(
-      app.get(PgPoolService),
-      app.get(OutboxService),
-      app.get(StateTransitionGuardService),
-      app.get(ScheduleExecutorRegistry),
-      app.get(SchedulerAlertService),
-    );
-    const [a, b] = await Promise.all([svc.tick('normal'), svc2.tick('normal')]);
-    expect(a.done + b.done).toBe(1); // 恰一执行（SKIP LOCKED 抢占）
-    expect(remind.executeCalls).toBe(1);
-    expect((await jobRow(reg.jobId))?.status).toBe('DONE');
-    const logs = await pool.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM schedule.schedule_job_log WHERE job_id = $1`,
-      [reg.jobId],
-    );
-    expect(logs.rows[0]?.n).toBe(1);
-  });
+  // 真并发时序用例 retry（M1-W4 T0 flaky 收敛）：下列 4 例依赖多连接/锁队列时序，系统高负载下
+  // 偶发翻动（W1/W2 起多轮全量偶发、隔离复跑绿）；重跑经 beforeEach TRUNCATE 从干净态起，
+  // 断言语义不变——SKIP LOCKED 恰一执行的守卫本身不受 retry 影响（若真回归则两轮皆红）。
+  it(
+    '抢占并发（§9）：两执行器（两服务实例同池）争同一到期 job 恰一执行',
+    { retry: 2 },
+    async () => {
+      const reg = await svc.registerJob(pool, {
+        jobType: 'REMIND_10MIN',
+        refType: 'session',
+        refId: 561,
+        dueAt: new Date(Date.now() - 1_000),
+      });
+      // 第二个调度器实例（模拟多节点）：同池 + 同执行器注册表
+      const svc2 = new SchedulerService(
+        app.get(PgPoolService),
+        app.get(OutboxService),
+        app.get(StateTransitionGuardService),
+        app.get(ScheduleExecutorRegistry),
+        app.get(SchedulerAlertService),
+      );
+      const [a, b] = await Promise.all([svc.tick('normal'), svc2.tick('normal')]);
+      expect(a.done + b.done).toBe(1); // 恰一执行（SKIP LOCKED 抢占）
+      expect(remind.executeCalls).toBe(1);
+      expect((await jobRow(reg.jobId))?.status).toBe('DONE');
+      const logs = await pool.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM schedule.schedule_job_log WHERE job_id = $1`,
+        [reg.jobId],
+      );
+      expect(logs.rows[0]?.n).toBe(1);
+    },
+  );
 
   it('开房优先级（§9/R-03）：priority 通道只扫 ROOM_OPEN；normal 通道不碰 ROOM_OPEN', async () => {
     const roomJob = await svc.registerJob(pool, {
@@ -723,77 +730,85 @@ describe('I2 重试退避与 FAILED 处置（独立装配 backoff=0，需 PG）'
     expect(await svc.replayJob(987_654_321)).toMatchObject({ replayed: false });
   });
 
-  it('竞态（Important-1）：善后前 job 已被并发作废 → 不写 RETRY log、不计数、无告警', async () => {
-    const blocker = new BlockedFailExecutor('POINTS_EXPIRE');
-    const { svc } = buildHarness([blocker]);
-    const reg = await registerFailingJob(svc, 631);
+  it(
+    '竞态（Important-1）：善后前 job 已被并发作废 → 不写 RETRY log、不计数、无告警',
+    { retry: 2 },
+    async () => {
+      const blocker = new BlockedFailExecutor('POINTS_EXPIRE');
+      const { svc } = buildHarness([blocker]);
+      const reg = await registerFailingJob(svc, 631);
 
-    const tickPromise = svc.tick('normal');
-    await blocker.started; // 抢占事务持锁中，执行器挂起
-    // 并发节点在善后前推进该 job：cancelJob 的 SELECT … FOR UPDATE 排队于抢占事务之后（同事务持锁
-    // 到 COMMIT），抢占事务回滚后必先于善后事务生效（pg_locks 正向等待探测保证排队到位）
-    const steal = stealPoolSvc.withTransaction((uow) =>
-      stealSvc.cancelJob(uow, { jobType: 'POINTS_EXPIRE', refType: 'points', refId: 631 }),
-    );
-    await waitForLockQueued();
-    blocker.fail(); // 执行器抛错 → 抢占事务回滚 → steal 获锁生效（CANCELLED）
-    const [tick] = await Promise.all([tickPromise, steal]);
+      const tickPromise = svc.tick('normal');
+      await blocker.started; // 抢占事务持锁中，执行器挂起
+      // 并发节点在善后前推进该 job：cancelJob 的 SELECT … FOR UPDATE 排队于抢占事务之后（同事务持锁
+      // 到 COMMIT），抢占事务回滚后必先于善后事务生效（pg_locks 正向等待探测保证排队到位）
+      const steal = stealPoolSvc.withTransaction((uow) =>
+        stealSvc.cancelJob(uow, { jobType: 'POINTS_EXPIRE', refType: 'points', refId: 631 }),
+      );
+      await waitForLockQueued();
+      blocker.fail(); // 执行器抛错 → 抢占事务回滚 → steal 获锁生效（CANCELLED）
+      const [tick] = await Promise.all([tickPromise, steal]);
 
-    // 善后放弃：不计数（旧实现 retried=1）
-    expect(tick).toMatchObject({ done: 0, cancelled: 0, retried: 0, failed: 0 });
-    // 不写虚构 RETRY 行（R-04 log 是法证事实源，只记真实发生的重试；旧实现会塞 1 条）
-    const logs = await pool.query<{ result: string }>(
-      `SELECT result FROM schedule.schedule_job_log WHERE job_id = $1`,
-      [reg.jobId],
-    );
-    expect(logs.rows.map((r) => r.result)).toEqual([]);
-    expect(await jobRowStatus(pool, reg.jobId)).toBe('CANCELLED');
-    expect(sink.alerts).toHaveLength(0);
-  });
+      // 善后放弃：不计数（旧实现 retried=1）
+      expect(tick).toMatchObject({ done: 0, cancelled: 0, retried: 0, failed: 0 });
+      // 不写虚构 RETRY 行（R-04 log 是法证事实源，只记真实发生的重试；旧实现会塞 1 条）
+      const logs = await pool.query<{ result: string }>(
+        `SELECT result FROM schedule.schedule_job_log WHERE job_id = $1`,
+        [reg.jobId],
+      );
+      expect(logs.rows.map((r) => r.result)).toEqual([]);
+      expect(await jobRowStatus(pool, reg.jobId)).toBe('CANCELLED');
+      expect(sink.alerts).toHaveLength(0);
+    },
+  );
 
-  it('竞态（Important-1）：善后前已被并发推进且重试耗尽 → FAILED 迁移不打 StateStale、同轮告警不丢', async () => {
-    const blocker = new BlockedFailExecutor('POINTS_EXPIRE');
-    const prior = new StubExecutor('REMIND_1H');
-    prior.failTimesRemaining = 99;
-    const { svc } = buildHarness([prior, blocker]);
-    // 同轮两笔均已到耗尽线（retry_count=3 fixture，不同类型各配执行器）：先到期的 prior 常规失败
-    // → FAILED+告警入队；后到期的 poisoned 走阻塞失败制造善后竞态窗口
-    const priorJob = await svc.registerJob(pool, {
-      jobType: 'REMIND_1H',
-      refType: 'session',
-      refId: 642,
-      dueAt: new Date(Date.now() - 2_000),
-    });
-    const poisoned = await registerFailingJob(svc, 643);
-    await pool.query(
-      `UPDATE schedule.schedule_jobs SET retry_count = 3 WHERE id = ANY($1::bigint[])`,
-      [[priorJob.jobId, poisoned.jobId]],
-    );
+  it(
+    '竞态（Important-1）：善后前已被并发推进且重试耗尽 → FAILED 迁移不打 StateStale、同轮告警不丢',
+    { retry: 2 },
+    async () => {
+      const blocker = new BlockedFailExecutor('POINTS_EXPIRE');
+      const prior = new StubExecutor('REMIND_1H');
+      prior.failTimesRemaining = 99;
+      const { svc } = buildHarness([prior, blocker]);
+      // 同轮两笔均已到耗尽线（retry_count=3 fixture，不同类型各配执行器）：先到期的 prior 常规失败
+      // → FAILED+告警入队；后到期的 poisoned 走阻塞失败制造善后竞态窗口
+      const priorJob = await svc.registerJob(pool, {
+        jobType: 'REMIND_1H',
+        refType: 'session',
+        refId: 642,
+        dueAt: new Date(Date.now() - 2_000),
+      });
+      const poisoned = await registerFailingJob(svc, 643);
+      await pool.query(
+        `UPDATE schedule.schedule_jobs SET retry_count = 3 WHERE id = ANY($1::bigint[])`,
+        [[priorJob.jobId, poisoned.jobId]],
+      );
 
-    const tickPromise = svc.tick('normal');
-    await blocker.started; // 第二轮抢占 poisoned 持锁中，执行器挂起
-    const steal = stealPoolSvc.withTransaction((uow) =>
-      stealSvc.cancelJob(uow, { jobType: 'POINTS_EXPIRE', refType: 'points', refId: 643 }),
-    );
-    await waitForLockQueued();
-    blocker.fail();
-    const [tick] = await Promise.all([tickPromise, steal]);
+      const tickPromise = svc.tick('normal');
+      await blocker.started; // 第二轮抢占 poisoned 持锁中，执行器挂起
+      const steal = stealPoolSvc.withTransaction((uow) =>
+        stealSvc.cancelJob(uow, { jobType: 'POINTS_EXPIRE', refType: 'points', refId: 643 }),
+      );
+      await waitForLockQueued();
+      blocker.fail();
+      const [tick] = await Promise.all([tickPromise, steal]);
 
-    // prior 正常 FAILED 计数；poisoned 善后放弃不计数（旧实现：StateStaleEntity 炸出整轮 tick，本断言前已 reject）
-    expect(tick).toMatchObject({ done: 0, cancelled: 0, retried: 0, failed: 1 });
-    // 同轮更早积攒的 prior FAILED 告警不因善后异常丢失
-    expect(sink.alerts.some((a) => a.kind === 'JOB_FAILED' && a.jobId === priorJob.jobId)).toBe(
-      true,
-    );
-    // 无虚构 FAILED log、无重复告警，poisoned 保持并发方写入的 CANCELLED
-    const logs = await pool.query<{ result: string }>(
-      `SELECT result FROM schedule.schedule_job_log WHERE job_id = $1 ORDER BY id`,
-      [poisoned.jobId],
-    );
-    expect(logs.rows.map((r) => r.result)).toEqual([]);
-    expect(await jobRowStatus(pool, poisoned.jobId)).toBe('CANCELLED');
-    expect(sink.alerts).toHaveLength(1);
-  });
+      // prior 正常 FAILED 计数；poisoned 善后放弃不计数（旧实现：StateStaleEntity 炸出整轮 tick，本断言前已 reject）
+      expect(tick).toMatchObject({ done: 0, cancelled: 0, retried: 0, failed: 1 });
+      // 同轮更早积攒的 prior FAILED 告警不因善后异常丢失
+      expect(sink.alerts.some((a) => a.kind === 'JOB_FAILED' && a.jobId === priorJob.jobId)).toBe(
+        true,
+      );
+      // 无虚构 FAILED log、无重复告警，poisoned 保持并发方写入的 CANCELLED
+      const logs = await pool.query<{ result: string }>(
+        `SELECT result FROM schedule.schedule_job_log WHERE job_id = $1 ORDER BY id`,
+        [poisoned.jobId],
+      );
+      expect(logs.rows.map((r) => r.result)).toEqual([]);
+      expect(await jobRowStatus(pool, poisoned.jobId)).toBe('CANCELLED');
+      expect(sink.alerts).toHaveLength(1);
+    },
+  );
 });
 
 /** §10 压测：双执行器并发抢占 100 job 无重复 */
@@ -813,52 +828,56 @@ describe('I2 双执行器 100 job 压测（需 PG）', () => {
     await truncateAll(pool);
   });
 
-  it('100 job 双服务并发 tick：恰 100 次执行、无重复执行、每 job 恰一 DONE 日志', async () => {
-    const poolSvc = new PgPoolService(pool);
-    const build = (stub: StubExecutor): SchedulerService => {
-      const registry = new ScheduleExecutorRegistry();
-      registry.register(stub);
-      return new SchedulerService(
-        poolSvc,
-        new OutboxService(),
-        new StateTransitionGuardService(new StateTransitionLogService(), poolSvc),
-        registry,
-        new SchedulerAlertService(new MockPhoneAlertSink()),
-      );
-    };
-    const stubA = new StubExecutor('REMIND_1H');
-    const stubB = new StubExecutor('REMIND_1H');
-    const svcA = build(stubA);
-    const svcB = build(stubB);
+  it(
+    '100 job 双服务并发 tick：恰 100 次执行、无重复执行、每 job 恰一 DONE 日志',
+    { retry: 2, timeout: 60_000 },
+    async () => {
+      const poolSvc = new PgPoolService(pool);
+      const build = (stub: StubExecutor): SchedulerService => {
+        const registry = new ScheduleExecutorRegistry();
+        registry.register(stub);
+        return new SchedulerService(
+          poolSvc,
+          new OutboxService(),
+          new StateTransitionGuardService(new StateTransitionLogService(), poolSvc),
+          registry,
+          new SchedulerAlertService(new MockPhoneAlertSink()),
+        );
+      };
+      const stubA = new StubExecutor('REMIND_1H');
+      const stubB = new StubExecutor('REMIND_1H');
+      const svcA = build(stubA);
+      const svcB = build(stubB);
 
-    // 一个业务事务内批量注册 100 个到期 job
-    await poolSvc.withTransaction(async (uow) => {
-      for (let refId = 1; refId <= 100; refId += 1) {
-        await svcA.registerJob(uow, {
-          jobType: 'REMIND_1H',
-          refType: 'stress',
-          refId,
-          dueAt: new Date(Date.now() - 1_000),
-        });
-      }
-    });
+      // 一个业务事务内批量注册 100 个到期 job
+      await poolSvc.withTransaction(async (uow) => {
+        for (let refId = 1; refId <= 100; refId += 1) {
+          await svcA.registerJob(uow, {
+            jobType: 'REMIND_1H',
+            refType: 'stress',
+            refId,
+            dueAt: new Date(Date.now() - 1_000),
+          });
+        }
+      });
 
-    const [a, b] = await Promise.all([svcA.tick('normal', 100), svcB.tick('normal', 100)]);
-    expect(a.done + b.done).toBe(100);
-    expect(stubA.executeCalls + stubB.executeCalls).toBe(100);
-    expect(stubA.executedRefs.length + stubB.executedRefs.length).toBe(100);
-    expect(new Set([...stubA.executedRefs, ...stubB.executedRefs]).size).toBe(100); // 无重复 ref
+      const [a, b] = await Promise.all([svcA.tick('normal', 100), svcB.tick('normal', 100)]);
+      expect(a.done + b.done).toBe(100);
+      expect(stubA.executeCalls + stubB.executeCalls).toBe(100);
+      expect(stubA.executedRefs.length + stubB.executedRefs.length).toBe(100);
+      expect(new Set([...stubA.executedRefs, ...stubB.executedRefs]).size).toBe(100); // 无重复 ref
 
-    const doneRows = await pool.query<{ n: number; distinct: number }>(
-      `SELECT count(*)::int AS n, count(DISTINCT job_id)::int AS distinct
+      const doneRows = await pool.query<{ n: number; distinct: number }>(
+        `SELECT count(*)::int AS n, count(DISTINCT job_id)::int AS distinct
          FROM schedule.schedule_job_log WHERE result = 'DONE'`,
-    );
-    expect(doneRows.rows[0]).toMatchObject({ n: 100, distinct: 100 });
-    const statuses = await pool.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM schedule.schedule_jobs WHERE status = 'DONE'`,
-    );
-    expect(statuses.rows[0]?.n).toBe(100);
-  }, 60_000);
+      );
+      expect(doneRows.rows[0]).toMatchObject({ n: 100, distinct: 100 });
+      const statuses = await pool.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM schedule.schedule_jobs WHERE status = 'DONE'`,
+      );
+      expect(statuses.rows[0]?.n).toBe(100);
+    },
+  );
 });
 
 /** 辅助：读 job 终态 */

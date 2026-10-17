@@ -160,14 +160,16 @@ describe('E1 脱敏服务面（需 PG）', () => {
     expect(r.ruleVersion).toBe(SANITIZE_RULESET_VERSION);
   });
 
-  it('§8 性能冒烟（P95 ≤1s，量级放宽防 CI 噪音）：纯路径 10k 文本 <50ms；服务路径 <1s', async () => {
+  it('§8 性能冒烟（P95 ≤1s，量级放宽防 CI 噪音）：纯路径 10k 文本 <200ms；服务路径 <1s', async () => {
     const pure = '正常咨询内容，另联系电话13800138000与身份证11010519491231002X。'
       .repeat(160)
       .slice(0, 10000);
     sanitizeText(pure); // warm
     const t0 = Date.now();
     const r = sanitizeText(pure);
-    expect(Date.now() - t0).toBeLessThan(50);
+    // 50ms→200ms（M1-W4 T0 flaky 收敛）：Windows 高负载下偶发超 50ms；200ms 仍锚纯引擎
+    // 与服务路径 1s 预算的量级差（退化 4 倍必红），断言语义不变
+    expect(Date.now() - t0).toBeLessThan(200);
     expect(r.hits.length).toBeGreaterThanOrEqual(2);
 
     const svcText = '我叫张伟，电话13800138000，请帮我看看。'.repeat(20);

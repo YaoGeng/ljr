@@ -8,6 +8,7 @@
  */
 import { AppError, ErrorCode } from '@ljr/shared';
 import { parsePositiveInt } from '../../infrastructure/parse-positive-int';
+import { SPECIALTY_MAX_LEN } from './group-buy.types';
 import { assertIsoDatetime } from './session.types';
 
 function asObject(body: unknown): Record<string, unknown> {
@@ -73,10 +74,14 @@ export function parseGroupBuyListQuery(query: Record<string, unknown>): {
   city?: string;
 } {
   const specialty = query['specialty'];
-  if (specialty !== undefined && (typeof specialty !== 'string' || specialty === '')) {
+  // 上界 32=列宽对齐（T11.5-① 收口：>32 原得空集，现 400 显式拒绝；长度=形态防呆，值域仍在服务层）
+  if (
+    specialty !== undefined &&
+    (typeof specialty !== 'string' || specialty === '' || specialty.length > SPECIALTY_MAX_LEN)
+  ) {
     throw new AppError(
       ErrorCode.InvalidArgument,
-      `specialty 须为非空字符串：${JSON.stringify(specialty)}`,
+      `specialty 须为 1-${SPECIALTY_MAX_LEN} 字符：${JSON.stringify(specialty)}`,
     );
   }
   const city = query['city'];

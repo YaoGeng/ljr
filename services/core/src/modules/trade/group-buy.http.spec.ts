@@ -263,6 +263,20 @@ describe('C2 HTTP 契约（§5，需 PG）', () => {
     expect(other.body).toEqual([]); // specialty 过滤真实生效
   });
 
+  it('GET /group-buys?specialty= 超长 400：查询参上界 32=列宽对齐（T11.5-① 收口；>32 原得空集，边界 32 放行）', async () => {
+    const tooLong = await request(app.getHttpServer()).get(
+      `/group-buys?specialty=${'a'.repeat(33)}`,
+    );
+    expect(tooLong.status).toBe(400);
+    expect(tooLong.body.code).toBe(ErrorCode.InvalidArgument);
+
+    const boundary = await request(app.getHttpServer()).get(
+      `/group-buys?specialty=${'a'.repeat(32)}`,
+    );
+    expect(boundary.status).toBe(200); // 边界长度放行，走过滤空集语义
+    expect(boundary.body).toEqual([]);
+  });
+
   it('POST /group-buys/{id}/cancel：{status:"EXPIRED"}；非本人 404；无 token 401', async () => {
     const pricing = app.get(PricingConfigService);
     await pricing.putPricing(9401, {
