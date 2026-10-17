@@ -74,6 +74,13 @@ describe('C6 引擎·classifyChange（R-01 三档矩阵，10.0% 边界恰档）'
   it('新价为负 → 显性拒绝', () => {
     expect(() => classifyChange(10_000, -1, true)).toThrow();
   });
+
+  it('F-5 溢出守卫：涨幅超 change_pct numeric(6,3) 域（>999.999%）→ 400 显性（10 元涨到 110 元=1000%）', () => {
+    expect(() => classifyChange(1_000, 11_000, true)).toThrowError(/999\.999/);
+    // 恰 999.999% 边界（delta×100000/old=999999）可过：old=100000, new=1009999?→用整除样本：
+    // old=1_000_000, new=10_099_990 → delta=9_099_990, pct=909.999% < 界内不抛
+    expect(() => classifyChange(1_000_000, 10_099_990, true)).not.toThrow();
+  });
 });
 
 describe('C6 引擎·computeCompensations（R-05 + D17 分母=paid_amount 全额）', () => {
@@ -123,6 +130,12 @@ describe('C6 引擎·computeCompensations（R-05 + D17 分母=paid_amount 全额
       { user_id: 601, points: 250 },
       { user_id: 602, points: 250 },
     ]);
+  });
+
+  it('F-6 负值校验提前：负 paidCents 在分母早退之前显性拒绝（不静默空补偿）', () => {
+    expect(() =>
+      computeCompensations([{ user_id: 601, paidCents: -5 }], 10_000, 9_000),
+    ).toThrowError(/负/);
   });
 
   it('Σpaid=0（无有效支付）→ 空补偿（分母 0 保护，不出授予）', () => {

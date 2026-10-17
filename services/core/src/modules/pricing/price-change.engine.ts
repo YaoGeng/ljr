@@ -38,9 +38,8 @@ function isDownLe10(oldCents: number, deltaCents: number): boolean {
   return deltaCents * 10 <= oldCents;
 }
 
-/** 百分比（3 位小数）审计文本：BigInt 向下取整（pctMilli = floor(delta/old × 100000)） */
-function changePctText(oldCents: number, deltaCents: number): string {
-  const pctMilli = (BigInt(deltaCents) * 100_000n) / BigInt(oldCents);
+/** 百分比（3 位小数）审计文本：BigInt 向下取整（pctMilli = floor(delta/old × 100000)，域已由调用方守卫） */
+function changePctText(pctMilli: bigint): string {
   const whole = pctMilli / 1_000n;
   const frac = (pctMilli % 1_000n).toString().padStart(3, '0');
   return `${whole}.${frac}`;
@@ -72,6 +71,17 @@ export function classifyChange(
   }
   const direction: ChangeDirection = newCents > oldCents ? 'UP' : 'DOWN';
   const delta = Math.abs(newCents - oldCents);
+  // F-5 溢出守卫：change_pct 列为 numeric(6,3)（上限 999.999，即 999.999%）——超大涨幅
+  // （new>10.09999×old，NUMERIC(10,2) 价格域内可达）在此显性 400，防 DB 22003 漏成 500
+  const pctMilli = (BigInt(delta) * 100_000n) / BigInt(oldCents);
+  if (pctMilli > 999_999n) {
+    throw new AppError(
+      ErrorCode.InvalidArgument,
+      `改价幅度超 change_pct 域（numeric(6,3) 上限 999.999%，本次 ${(
+        Number(pctMilli) / 1000
+      ).toFixed(3)}%）——疑似配置错误，拒绝改价`,
+    );
+  }
   const kind: PriceChangeKind =
     direction === 'UP'
       ? 'PRICE_UP'
@@ -81,7 +91,7 @@ export function classifyChange(
   return {
     direction,
     kind,
-    changePct: changePctText(oldCents, delta),
+    changePct: changePctText(pctMilli),
     creditPenalty: hasActiveGroup ? TIER_PENALTY[kind] : 0,
     tierRequiresApproval: hasActiveGroup && direction === 'DOWN',
   };
@@ -117,10 +127,7 @@ export function computeCompensations(
   if (oldCents <= newCents) {
     throw new AppError(ErrorCode.InternalError, '补偿计算前提违例：仅 DOWN 档有补偿（不应触达）');
   }
-  const delta = BigInt(oldCents - newCents);
-  const totalPaid = recipients.reduce((sum, r) => sum + BigInt(r.paidCents), 0n);
-  if (totalPaid <= 0n) return [];
-  const items: CompensationItem[] = [];
+  // F-6 域校验提前至早退之前：脏入参（负/越域）即使 Σpaid≤0 也不得静默空补偿
   for (const r of recipients) {
     if (!Number.isSafeInteger(r.paidCents) || r.paidCents < 0) {
       throw new AppError(
@@ -128,6 +135,12 @@ export function computeCompensations(
         `补偿对象 paid_amount 越安全整数域/为负（不应触达）：user=${r.user_id}`,
       );
     }
+  }
+  const delta = BigInt(oldCents - newCents);
+  const totalPaid = recipients.reduce((sum, r) => sum + BigInt(r.paidCents), 0n);
+  if (totalPaid <= 0n) return [];
+  const items: CompensationItem[] = [];
+  for (const r of recipients) {
     const points = Number((delta * BigInt(r.paidCents)) / totalPaid); // BigInt 精确整除=floor
     if (points > 0) items.push({ user_id: r.user_id, points });
   }
