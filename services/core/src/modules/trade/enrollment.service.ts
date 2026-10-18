@@ -717,6 +717,33 @@ export class EnrollmentService {
   }
 
   // ===========================================================================
+  // 导出查询面（跨域消费：D5 房间成员门，M2-W1 T3 评审 C-1 纯加法）
+  // ===========================================================================
+
+  /**
+   * 场次参与方判定（D5 room 会话成员门的 trade 侧事实源，M2-W1 T3 评审 C-1）：user 在该
+   * 场次有 PAID 报名（ref_type='session'，pay_status='PAID'——在场资格锚），或 user=场次
+   * 属主律师。拼单（groupbuy）转化成员的等价判定=sessions↔group_buys 转化链路落位时扩展
+   * （W1 无转化源反查列，W3+ 接线；04§8 登记由控制者承接）。同 schema 只读（trade 域内），
+   * 无跨域 join。
+   */
+  async isSessionParticipant(sessionId: number, userId: number): Promise<boolean> {
+    const sid = assertPositiveInt(sessionId, 'session_id');
+    const uid = assertPositiveInt(userId, 'user_id');
+    const res = await this.pool.query<{ ok: boolean }>(
+      `SELECT EXISTS(
+         SELECT 1 FROM trade.enrollments e
+          WHERE e.ref_type = 'session' AND e.ref_id = $1
+            AND e.user_id = $2 AND e.pay_status = 'PAID'
+       ) OR EXISTS(
+         SELECT 1 FROM trade.sessions s WHERE s.id = $1 AND s.lawyer_id = $2
+       ) AS ok`,
+      [sid, uid],
+    );
+    return res.rows[0]?.ok === true;
+  }
+
+  // ===========================================================================
   // 内部件
   // ===========================================================================
 

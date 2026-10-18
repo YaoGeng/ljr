@@ -4,6 +4,7 @@ import request from 'supertest';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { WsAdapter } from '@nestjs/platform-ws';
 import type { Pool } from 'pg';
 import { ErrorCode } from '@ljr/shared';
 import { ensureTestDatabase, truncateAll } from '../../infrastructure/testing/db';
@@ -94,6 +95,8 @@ describe('D1 HTTP 契约（POST /rooms/{session_id}/close，需 PG）', () => {
       .useValue(testIdentityConfig())
       .compile();
     app = moduleRef.createNestApplication();
+    // D5 WSS 网关随模块注册后（M2-W1 T3），init 前须挂 ws 适配器（同 room.spec 注记）
+    app.useWebSocketAdapter(new WsAdapter(app));
     await app.init();
     scheduler = app.get(SchedulerService);
     poolSvc = app.get(PgPoolService);

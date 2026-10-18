@@ -16,10 +16,10 @@ import {
  * I2 纯单元（无需 PG）：job 全集注册表、告警判定、配置默认值。
  * job 全集=I2 §2 枚举 + §4 对照表 FIRM_REVERIFY + 控制者裁决 R2 增 RULE_EFFECTIVE（头注见 scheduler.catalog.ts）。
  */
-describe('I2 job 全集注册表（§2/§4 + 控制者裁决 R2 + M1-W4 RISK_PATROL）', () => {
-  it('全集 23 种且无重复：§2 枚举 20 种 + FIRM_REVERIFY（§4 对照表）+ RULE_EFFECTIVE（裁决 R2）+ RISK_PATROL（M1-W4 T1 H4 资损巡检）', () => {
-    expect(SCHEDULE_JOB_TYPES).toHaveLength(23);
-    expect(new Set(SCHEDULE_JOB_TYPES).size).toBe(23);
+describe('I2 job 全集注册表（§2/§4 + 控制者裁决 R2 + M1-W4 RISK_PATROL + M2-W1 COLD_ARCHIVE）', () => {
+  it('全集 24 种且无重复：§2 枚举 20 种 + FIRM_REVERIFY（§4 对照表）+ RULE_EFFECTIVE（裁决 R2）+ RISK_PATROL（M1-W4 T1）+ COLD_ARCHIVE（M2-W1 T3 D5 消息冷存，附录 A.2 唯一目录增量）', () => {
+    expect(SCHEDULE_JOB_TYPES).toHaveLength(24);
+    expect(new Set(SCHEDULE_JOB_TYPES).size).toBe(24);
     expect([...SCHEDULE_JOB_TYPES]).toEqual([
       'REMIND_24H',
       'REMIND_1H',
@@ -44,6 +44,7 @@ describe('I2 job 全集注册表（§2/§4 + 控制者裁决 R2 + M1-W4 RISK_PAT
       'FIRM_REVERIFY',
       'RULE_EFFECTIVE',
       'RISK_PATROL',
+      'COLD_ARCHIVE',
     ]);
   });
 
@@ -69,6 +70,14 @@ describe('I2 job 全集注册表（§2/§4 + 控制者裁决 R2 + M1-W4 RISK_PAT
       producer: expect.stringContaining('H4'),
       executor: expect.stringContaining('H4'),
       recheckAnchor: expect.stringContaining('patrol_runs'),
+    });
+  });
+
+  it('COLD_ARCHIVE（M2-W1 T3）：生产方/执行器=D5 会话与消息，回查锚点=messages 冷存水位（附录 A.2 唯一目录增量）', () => {
+    expect(SCHEDULE_JOB_CATALOG.COLD_ARCHIVE).toMatchObject({
+      producer: expect.stringContaining('D5'),
+      executor: expect.stringContaining('D5'),
+      recheckAnchor: expect.stringContaining('last_archived_created_at'),
     });
   });
 

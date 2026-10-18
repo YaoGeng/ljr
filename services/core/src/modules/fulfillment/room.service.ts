@@ -52,6 +52,7 @@ import { SchedulerService } from '../schedule/scheduler.service';
 import { SessionService } from '../trade/session.service';
 import { ROOM_MACHINE, ROOM_TERMINAL_STATUSES } from './room.machine';
 import { RTC_PROVIDER, type RtcProvider } from './rtc-provider';
+import { ConversationService } from './conversation.service';
 import {
   GROSS_MAX_CENTS,
   GRACE_PERIOD_MS,
@@ -91,6 +92,8 @@ export class RoomService {
     // 跨模块消费全部走导出服务（trade 快照/聚合锚、F2 退款源注册表）——禁跨 schema join（架构 §3.2 红线）
     private readonly sessions: SessionService,
     private readonly refundSources: RefundSourceRegistry,
+    // D5 会话服务（同域同模块直注入——开房成功同事务建 room 会话，M2-W1 T3 纯加法）
+    private readonly conversations: ConversationService,
     // RTC 通道适配器（Symbol token：module useFactory 装配，测试构造直传/mock 注入失败形态）
     @Inject(RTC_PROVIDER) private readonly rtc: RtcProvider,
   ) {}
@@ -153,6 +156,10 @@ export class RoomService {
     );
     const row = inserted.rows[0]!;
     const roomId = Number(row.id);
+
+    // D5 room 会话同事务落位（M2-W1 T3 纯加法）：开房成功即建会话（UNIQUE(type,ref_id) 幂等
+    // ——重放短路路径上方已 return，此处恒新建；join 门校验会话存在的前置生产者）
+    await this.conversations.ensureConversation('room', roomId, { uow });
 
     // GRACE_END 同事务预写（附录 A.2：due=grace_end 锚约定时刻；refType='room'）
     await this.scheduler.registerJob(uow, {

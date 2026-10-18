@@ -52,7 +52,7 @@ import { HealthController } from './health.controller';
     PaymentModule, // F1 支付网关与回调 Inbox（payment schema owner，M1-W3 Task 1；指令面+回调验签+Inbox+对账；下游 C3=T7/H3=M2 接线）+ A3b 律所进件子域（M1-W3 Task 3：firm_merchants 状态机/R-01 查询面/FIRM_REVERIFY/保证金指令台账；下游 F3=T8/T10 H1 消费 FirmMerchantService）
     BenefitsModule, // F4 权益①切片（benefits schema owner，M1-W3 Task 2；积分账户/冻结核销解冻/退款还原/过期双路径；下游 C3=T7/F2=T6 消费 PointsService，券/备付=M2-W2 ②全量）
     TradeModule, // C1 B2C 开团（trade schema owner，M1-W3 Task 4；开团事务=B2 加锁+INSERT 同事务、幂等键=lawyer+slot_start、ENROLL_DEADLINE 流标执行器、session 终态 provider；下游 C3=T7 消费 markFull/SessionFull、F2=T6 消费 SessionFailed）
-    FulfillmentModule, // D1 房间生命周期（fulfillment schema owner，M2-W1 T1 履约域首模块：ROOM_OPEN/GRACE_END 执行器装配+grace_end 锚定约定时刻+close API；下游 D3/D4=F2=W2 消费 GracePeriodEnded/RoomOpenFailed/RoomClosed）
+    FulfillmentModule, // D1 房间生命周期 + D5 会话与消息（fulfillment schema owner，M2-W1 T1/T3：ROOM_OPEN/GRACE_END 执行器+grace_end 锚定+close API；T3 追加 conversations/messages/consent_records 统一模型+WSS 网关（core 单进程，/ws）+发送链（checkRisk 同步判定→BLOCKED 拒→单事务持久化+广播）+录制 consent 双门+撤回删除+OneOnOnePaid 桩+COLD_ARCHIVE 冷存；下游 D3/D4=F2=W2，D2=T4 经 ConversationService 写系统消息）
     PricingChangeModule, // C6 改价与补偿（与 B3 同 pricing 域独立装配——TradeModule 依赖 B3，C6 消费 Trade 导出面，并入即环；M1-W3 Task 9：三档引擎/频率 DB 滑窗 ⚠W3-7/①人工兜底审批/24h 撤销/补偿 F4 真链+券指令/I1 三档话术真消费）
     SettlementModule, // F3 分账结算（settlement schema owner，M1-W3 Task 8；分账触发状态机 R-01 唯一解冻节点/HOLD 冻结期/违约扣减 R-04/缺席 70-30 R-03/进件前置 R-07；下游 H4/F4 备付/I1=M2 联调，G1 欠款消费位=M2）
     PatrolModule, // H4 资损巡检首轮（ops schema owner，M1-W4 Task 1；架构 §7.2 五类不变量分钟级 RISK_PATROL job：检测 SQL 各域自持+ops 侧聚合，违例台账=patrol-findings 两表 dedup 入账；告警=供应商位 mock）

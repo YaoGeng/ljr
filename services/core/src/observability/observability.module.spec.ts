@@ -9,11 +9,17 @@ import 'reflect-metadata';
 import request from 'supertest';
 import { InMemorySpanExporter } from '@opentelemetry/sdk-trace-base';
 import { Test } from '@nestjs/testing';
+import { WsAdapter } from '@nestjs/platform-ws';
 import { describe, expect, it } from 'vitest';
 import { AppModule } from '../app.module';
 import { OBSERVABILITY, OBSERVABILITY_OPTIONS, TRACE_LOGGER } from './observability.module';
 import type { ObservabilityHandle } from './otel.setup';
 import { TraceLogger } from './trace-logger';
+
+/** D5 WSS 网关随 FulfillmentModule 注册（M2-W1 T3）：init 前挂 ws 适配器（health.spec 同口径） */
+function attachWsAdapter(app: { useWebSocketAdapter(a: unknown): void }): void {
+  app.useWebSocketAdapter(new WsAdapter(app as never));
+}
 
 /** http server span 在响应 finish 事件后异步收口——轮询等待而非硬 sleep */
 async function waitFor(predicate: () => boolean, timeoutMs = 3_000): Promise<boolean> {
@@ -33,6 +39,7 @@ describe('ObservabilityModule（AppModule 装配级）', () => {
       .useValue({ spanExporter: exporter })
       .compile();
     const app = moduleRef.createNestApplication();
+    attachWsAdapter(app);
     await app.init();
 
     const res = await request(app.getHttpServer()).get('/healthz');
@@ -66,6 +73,7 @@ describe('ObservabilityModule（AppModule 装配级）', () => {
       .useValue({ enabled: false })
       .compile();
     const app = moduleRef.createNestApplication();
+    attachWsAdapter(app);
     await app.init();
 
     const observability = app.get<ObservabilityHandle>(OBSERVABILITY);
@@ -79,6 +87,7 @@ describe('ObservabilityModule（AppModule 装配级）', () => {
   it('TRACE_LOGGER 默认装配（未 override）：句柄 enabled=true（配置开关缺省口径）', async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     const app = moduleRef.createNestApplication();
+    attachWsAdapter(app);
     await app.init();
     expect(app.get<ObservabilityHandle>(OBSERVABILITY).enabled).toBe(true);
     await app.close();

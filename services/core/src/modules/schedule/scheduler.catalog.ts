@@ -5,8 +5,10 @@
  * §4 job 全集对照表在其之上另有 FIRM_REVERIFY（生产方/执行器/回查锚点齐全）；控制者裁决 R2
  * 追加 RULE_EFFECTIVE（生产方/执行器=H7 规则中心，回查锚点=rule_definitions.publish_status）；
  * M1-W4 T1 追加 RISK_PATROL（H4 资损巡检周期 job，架构 §7.2 五类不变量，回查锚点=patrol_runs
- * 最近一轮状态；I2 文档 §4 表已补行）。本注册表取并集 = 23 种——全集是「程序化一致性检查的
- * 准入门」，多收无害、漏收断路。
+ * 最近一轮状态；I2 文档 §4 表已补行）；M2-W1 T3 追加 COLD_ARCHIVE（D5 消息冷存日扫——
+ * 附录 A.2 裁定唯一目录增量：producer/executor=D5，recheckAnchor=messages 冷存水位；
+ * I2 文档 §4 表行回写=T6 收尾，不在该任务内）。本注册表取并集 = 24 种——全集是「程序化
+ * 一致性检查的准入门」，多收无害、漏收断路。
  *
  * 排除声明（I2 §2）：RESTRICTION_EXPIRE 不建 job——G1 限制令采用惰性失效（查询时比对 until，G1 §3）。
  *
@@ -36,6 +38,7 @@ export const SCHEDULE_JOB_TYPES = [
   'FIRM_REVERIFY',
   'RULE_EFFECTIVE',
   'RISK_PATROL',
+  'COLD_ARCHIVE',
 ] as const;
 
 export type ScheduleJobType = (typeof SCHEDULE_JOB_TYPES)[number];
@@ -191,6 +194,14 @@ export const SCHEDULE_JOB_CATALOG: Readonly<Record<ScheduleJobType, ScheduleJobD
     producer: 'H4 资损巡检（main.ts 引导首个 + 执行器自投下一周期，分钟级）',
     executor: 'H4 资损巡检（PatrolService.runOnce：五类不变量检测→违例台账+告警）',
     recheckAnchor: 'patrol_runs 最近一轮状态', // 架构 §7.2 五类（M1-W4 T1；I2 文档 §4 表已补行）
+  },
+  COLD_ARCHIVE: {
+    jobType: 'COLD_ARCHIVE',
+    producer: 'D5 会话与消息（main.ts 引导首个 + 执行器自投下一周期，24h 日扫）',
+    executor:
+      'D5 会话与消息（>90d 消息按会话转 I3 cold_message + 同事务热删；写 artifacts 经 I3 PUT_ARTIFACT 统一入口）',
+    recheckAnchor:
+      'messages 冷存水位（last_archived_created_at——扫描时刻，进程内+job detail 承载）', // 附录 A.2 唯一目录增量（M2-W1 T3）
   },
 };
 

@@ -110,6 +110,8 @@ export const ErrorCode = {
   Past24h: 'E_PAST_24H',
   /** I3 存档分级管控拒绝：kind 与 ref_type 组合违反写入策略（I3 §5 403 KIND_POLICY，R-04 L4 差异化管控；M2-W1） */
   KindPolicy: 'E_KIND_POLICY',
+  /** D5 同步风控拦截：H5 checkRisk 判 BLOCK，消息拒绝发送不广播（D5 §4/§5 403 BLOCKED_BY_RISK，R-01 先拦后播；M2-W1） */
+  BlockedByRisk: 'E_BLOCKED_BY_RISK',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -318,6 +320,10 @@ const ERROR_CODE_META: Readonly<Record<ErrorCode, ErrorCodeMeta>> = {
   [ErrorCode.KindPolicy]: {
     httpStatus: 403,
     defaultMessage: '存档写入被分级管控拒绝：kind 与引用域组合不合法（R-04 L4 差异化管控）',
+  },
+  [ErrorCode.BlockedByRisk]: {
+    httpStatus: 403,
+    defaultMessage: '消息命中风控拦截词，已被拒绝发送（BLOCKED_BY_RISK）',
   },
 };
 

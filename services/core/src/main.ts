@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
+import { WsAdapter } from '@nestjs/platform-ws';
 import { AppModule } from './app.module';
 import { CONFIG_PROVIDER, type ConfigProvider } from './config/config-provider.interface';
 import { TRACE_LOGGER } from './observability/observability.module';
@@ -11,11 +12,15 @@ import { SlotLockService } from './modules/schedule/slot-lock.service';
 import { PointsJobExecutors } from './modules/benefits/points.executors';
 import { PatrolService } from './modules/ops/patrol.service';
 import { ArtifactsJobExecutors } from './infrastructure/artifacts/artifacts.executors';
+import { ConversationJobExecutors } from './modules/fulfillment/conversation.executors';
 
 async function bootstrap(): Promise<void> {
   // bufferLogs：create 期间的启动日志先进缓冲，挂上 TraceLogger（含 trace_id 注入）后统一回放；
   // rawBody：F1 回调验签须对原始报文字节做 HMAC-SHA256（payment.controller /callbacks/{channel}）
   const app = await NestFactory.create(AppModule, { bufferLogs: true, rawBody: true });
+  // D5 WSS 网关适配器（M2-W1 T3，⚠W1-2：WSS 进 core 单进程；路径 /ws 经 ConversationGateway
+  // 装饰器声明）——**必须在 init/listen 前装**（网关初始化时读取；迟挂对既有网关不生效）
+  app.useWebSocketAdapter(new WsAdapter(app));
   app.useLogger(app.get(TRACE_LOGGER));
   app.enableShutdownHooks(); // SIGTERM/SIGINT → relay/notify worker stop + 观测 shutdown(flush) + 连接池回收
 
@@ -81,6 +86,19 @@ async function bootstrap(): Promise<void> {
         .error(
           `RETENTION_PURGE 引导注册失败（存档到期处置不可用，待进程重启再引导）：${String(e)}`,
         );
+    });
+
+  // D5 COLD_ARCHIVE 每日消息冷存 job 引导（M2-W1 T3）：幂等注册首个（24h 后，在册 PENDING
+  // 已存在则跳过），后续周期由执行器 DONE 前自投（RETENTION_PURGE/RISK_PATROL 同款）。引导
+  // 失败必须留痕（一次性动作无 interval 自愈窗口——冷存停摆只能等进程重启再引导，恢复后
+  // 「created_at<水位」扫描面+putArtifact hash 幂等保证不重复归档不丢消息）。
+  app
+    .get(ConversationJobExecutors)
+    .ensureColdArchiveScheduled()
+    .catch((e: unknown) => {
+      app
+        .get<TraceLogger>(TRACE_LOGGER)
+        .error(`COLD_ARCHIVE 引导注册失败（消息冷存不可用，待进程重启再引导）：${String(e)}`);
     });
 
   // 监听端口经配置装载（M0-8：env PORT > config/<env>/app.env > 默认 3000）

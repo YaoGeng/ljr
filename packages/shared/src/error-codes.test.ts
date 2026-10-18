@@ -143,3 +143,10 @@ describe('I3 存档错误码（M2-W1 T2）', () => {
     expect(new AppError(ErrorCode.KindPolicy).httpStatus).toBe(403);
   });
 });
+
+describe('D5 会话错误码（M2-W1 T3）', () => {
+  it('BlockedByRisk：同步风控拦截 403（D5 §4/§5 403 BLOCKED_BY_RISK，R-01 先拦后播——拒发即无事件无广播）', () => {
+    expect(ErrorCode.BlockedByRisk).toBe('E_BLOCKED_BY_RISK');
+    expect(new AppError(ErrorCode.BlockedByRisk).httpStatus).toBe(403);
+  });
+});

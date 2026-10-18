@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { WsAdapter } from '@nestjs/platform-ws';
 import type { Pool } from 'pg';
 import {
   ErrorCode,
@@ -110,6 +111,9 @@ describe('D1 房间生命周期（开房/宽限锚/失败分支/幂等/GRACE_END
       .useValue(testIdentityConfig())
       .compile();
     app = moduleRef.createNestApplication();
+    // D5 WSS 网关随模块注册后（M2-W1 T3），init 前须挂 ws 适配器（否则 Nest 回落加载未安装的
+    // platform-socket.io 直接退出）——仅初始化不 listen，不承载连接
+    app.useWebSocketAdapter(new WsAdapter(app));
     await app.init(); // onModuleInit：ROOM_OPEN/GRACE_END 执行器注册
     rooms = app.get(RoomService);
     scheduler = app.get(SchedulerService);
