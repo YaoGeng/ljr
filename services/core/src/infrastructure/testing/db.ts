@@ -12,7 +12,7 @@ import { Pool } from 'pg';
 import { pgConfigFromEnv } from '../sql';
 
 /**
- * 全部基座/demo/notify/schedule/ops/agent_assist/identity/pricing/credit/payment/benefits/trade/fulfillment/settlement 测试表（TRUNCATE 清场清单，须与 V2~V35 迁移同步）。
+ * 全部基座/demo/notify/schedule/ops/agent_assist/identity/pricing/credit/payment/benefits/trade/fulfillment/settlement 测试表（TRUNCATE 清场清单，须与 V2~V36 迁移同步）。
  *
  * notify.notification_templates 不入清单：PRD §8.2 三档话术是 V4 迁移 seed 的参照数据
  * （R-01 全等断言的事实源），清场会把它一并抹掉——同 flyway 历史表不参与清场的道理。
@@ -24,6 +24,8 @@ export const TEST_DB_TABLES = [
   'platform.outbox',
   'platform.outbox_dead_letter',
   'platform.state_transition_log',
+  'platform.artifacts',
+  'platform.artifact_access_approvals',
   'demo.orders',
   'demo.order_actions',
   'demo.consumed_events',

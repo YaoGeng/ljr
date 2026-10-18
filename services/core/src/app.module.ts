@@ -24,6 +24,7 @@ import { TradeModule } from './modules/trade/trade.module';
 import { FulfillmentModule } from './modules/fulfillment/fulfillment.module';
 import { SettlementModule } from './modules/settlement/settlement.module';
 import { PatrolModule } from './modules/ops/patrol.module';
+import { ArtifactsModule } from './infrastructure/artifacts/artifacts.module';
 import { HealthController } from './health.controller';
 
 // ObservabilityModule 紧随配置之后：http/pg 插桩先于 Infrastructure/Demo 建池注册
@@ -55,6 +56,7 @@ import { HealthController } from './health.controller';
     PricingChangeModule, // C6 改价与补偿（与 B3 同 pricing 域独立装配——TradeModule 依赖 B3，C6 消费 Trade 导出面，并入即环；M1-W3 Task 9：三档引擎/频率 DB 滑窗 ⚠W3-7/①人工兜底审批/24h 撤销/补偿 F4 真链+券指令/I1 三档话术真消费）
     SettlementModule, // F3 分账结算（settlement schema owner，M1-W3 Task 8；分账触发状态机 R-01 唯一解冻节点/HOLD 冻结期/违约扣减 R-04/缺席 70-30 R-03/进件前置 R-07；下游 H4/F4 备付/I1=M2 联调，G1 欠款消费位=M2）
     PatrolModule, // H4 资损巡检首轮（ops schema owner，M1-W4 Task 1；架构 §7.2 五类不变量分钟级 RISK_PATROL job：检测 SQL 各域自持+ops 侧聚合，违例台账=patrol-findings 两表 dedup 入账；告警=供应商位 mock）
+    ArtifactsModule, // I3 文件与存证（横切基座非业务模块，⚠W1-4：platform schema owner+infrastructure/artifacts 代码位；M2-W1 T2：putArtifact 统一入口 hash 幂等+WORM/加密 bucket 策略+录音上链 mock+RETENTION_PURGE 日扫+/admin/artifacts 调取面双签门。平级挂本表的原因=Scheduler/IdentityAuth 均依赖 Infrastructure，并入基座即成环——见 artifacts.module 头注）
   ],
   controllers: [HealthController],
 })

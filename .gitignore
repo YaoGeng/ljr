@@ -17,6 +17,9 @@ coverage/
 .tools/
 .mimosa/
 
+# 本地数据目录（I3 存档 dev 根 var/artifacts 等——OSS 换装前 dev 落本地 FS，M2-W1）
+var/
+
 # Expo
 .expo/
 .expo-shared/

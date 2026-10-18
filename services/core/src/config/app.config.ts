@@ -69,6 +69,14 @@ export interface AppConfig {
     /** JWT 签名密钥（access/refresh 双 token，R-W2-3）；注入口径同上 */
     readonly jwtSecret: string;
   };
+  readonly artifacts: {
+    /**
+     * I3 存档 FS 根目录（M2-W1 T2）：dev 默认=仓库根 var/artifacts（.gitignore 已含 var/）；
+     * 部署/测试经 LJR_ARTIFACTS_DIR 覆写（测试指向 os.tmpdir() 子目录，勿污染仓库 var/）。
+     * 非敏感路径配置——env > config 文件 > 代码默认三层均可承载。
+     */
+    readonly dir: string;
+  };
 }
 
 /** env 键名（LJR_ 前缀沿用 T3 的 scripts/db 与 sql.ts 口径；PORT 沿用 main.ts 既有键） */
@@ -93,6 +101,7 @@ export const ENV_KEYS = {
   identityPhoneDataKey: 'LJR_IDENTITY_PHONE_DATA_KEY',
   identityPhoneBlindPepper: 'LJR_IDENTITY_PHONE_BLIND_PEPPER',
   authJwtSecret: 'LJR_AUTH_JWT_SECRET',
+  artifactsDir: 'LJR_ARTIFACTS_DIR',
 } as const;
 
 /** 密钥与环境选择键：禁止出现在文件层（出现即 E_CONFIG_INVALID，防凭据入库） */
@@ -204,6 +213,9 @@ export function resolveAppConfig({ env, file }: ConfigSources): AppConfig {
       enabled: parseBoolean(pick(ENV_KEYS.obsEnabled) ?? 'true', ENV_KEYS.obsEnabled),
     },
     identity: resolveIdentityKeys(envName, pick),
+    artifacts: {
+      dir: pick(ENV_KEYS.artifactsDir) ?? defaultArtifactsDir(),
+    },
   };
 }
 
@@ -260,6 +272,11 @@ function parseBoolean(raw: string, key: string): boolean {
 /** config/<env>/app.env 路径（src/config 与 dist/config 同深：上溯 4 级即仓库根） */
 export function configFilePath(envName: AppEnvName): string {
   return path.resolve(__dirname, '..', '..', '..', '..', 'config', envName, 'app.env');
+}
+
+/** I3 存档 FS 根默认（仓库根 var/artifacts——同 configFilePath 深度口径；.gitignore 已含 var/） */
+export function defaultArtifactsDir(): string {
+  return path.resolve(__dirname, '..', '..', '..', '..', 'var', 'artifacts');
 }
 
 /** 装载入口：进程 env +（dev：.secrets/dev.env 凭据层）+ 按 LJR_ENV 选文件 → 解析

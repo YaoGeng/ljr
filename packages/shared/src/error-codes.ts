@@ -108,6 +108,8 @@ export const ErrorCode = {
   EnrollDuplicateKey: 'E_ENROLL_DUP_KEY',
   /** C6 撤销超窗：改价生效已超 24h 不可撤销（C6 §5 409 PAST_24H，PRD §8.2 R-04） */
   Past24h: 'E_PAST_24H',
+  /** I3 存档分级管控拒绝：kind 与 ref_type 组合违反写入策略（I3 §5 403 KIND_POLICY，R-04 L4 差异化管控；M2-W1） */
+  KindPolicy: 'E_KIND_POLICY',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -312,6 +314,10 @@ const ERROR_CODE_META: Readonly<Record<ErrorCode, ErrorCodeMeta>> = {
   [ErrorCode.Past24h]: {
     httpStatus: 409,
     defaultMessage: '改价已超过 24h 撤销窗口（R-04），不可撤销',
+  },
+  [ErrorCode.KindPolicy]: {
+    httpStatus: 403,
+    defaultMessage: '存档写入被分级管控拒绝：kind 与引用域组合不合法（R-04 L4 差异化管控）',
   },
 };
 

@@ -136,3 +136,10 @@ describe('C6 改价错误码（M1-W3 T9）', () => {
     expect(new AppError(ErrorCode.Past24h).httpStatus).toBe(409);
   });
 });
+
+describe('I3 存档错误码（M2-W1 T2）', () => {
+  it('KindPolicy：分级管控拒绝 403（I3 §5 403 KIND_POLICY，R-04 L4 差异化管控）', () => {
+    expect(ErrorCode.KindPolicy).toBe('E_KIND_POLICY');
+    expect(new AppError(ErrorCode.KindPolicy).httpStatus).toBe(403);
+  });
+});
