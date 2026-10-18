@@ -84,6 +84,31 @@ import {
   TrainingConsentRevokedPayload,
   USER_REGISTERED_TOPIC,
   UserRegisteredPayload,
+  ROOM_OPENED_TOPIC,
+  RoomOpenedPayload,
+  GRACE_PERIOD_ENDED_TOPIC,
+  GracePeriodEndedPayload,
+  ROOM_OPEN_FAILED_TOPIC,
+  RoomOpenFailedPayload,
+  MESSAGE_SENT_TOPIC,
+  MessageSentPayload,
+  PRESENCE_JOINED_TOPIC,
+  PRESENCE_LEFT_TOPIC,
+  PresencePayload,
+  RECORDING_CONSENT_GIVEN_TOPIC,
+  RecordingConsentGivenPayload,
+  TRAINING_DATA_PURGED_TOPIC,
+  TrainingDataPurgedPayload,
+  ONE_ON_ONE_CONVERSATION_CREATED_TOPIC,
+  OneOnOneConversationCreatedPayload,
+  ONE_ON_ONE_PAID_TOPIC,
+  OneOnOnePaidPayload,
+  REMINDER_DISPATCHED_TOPIC,
+  ReminderDispatchedPayload,
+  RECORDING_ARCHIVED_TOPIC,
+  RecordingArchivedPayload,
+  ARTIFACT_PURGED_TOPIC,
+  ArtifactPurgedPayload,
 } from './events';
 
 describe('A1 身份事件契约（M1-W2）：topic 命名 + 载荷形状（PII 禁入载荷）', () => {
@@ -623,5 +648,107 @@ describe('C6 改价与补偿事件契约（M1-W3 T9）：C6 §6 生产契约—�
       user_id: 601,
       coupon_kind: 'PRICE_COMP',
     });
+  });
+});
+
+describe('M2-W1 通信与房间事件契约（T0 冻结）：D1/D5/D2/I3 生产 + D5 消费钉形（OneOnOnePaid）；RoomClosed 已在 F3 段定型不重定义', () => {
+  it('RoomOpened：topic=fulfillment.room.opened，{room_id, session_id, grace_end(ISO)}（grace_end 锚定约定开始时刻+5min，消费者免二次推算）', () => {
+    expect(ROOM_OPENED_TOPIC).toBe('fulfillment.room.opened');
+    const payload: RoomOpenedPayload = {
+      room_id: 701,
+      session_id: 61,
+      grace_end: '2026-10-23T12:35:00.000Z',
+    };
+    expect(payload.grace_end).toBe('2026-10-23T12:35:00.000Z');
+  });
+
+  it('GracePeriodEnded：topic=fulfillment.grace_period.ended，{room_id, session_id}（W1 executor=D1 发事件即止，判定=D3 W2 消费）', () => {
+    expect(GRACE_PERIOD_ENDED_TOPIC).toBe('fulfillment.grace_period.ended');
+    const payload: GracePeriodEndedPayload = { room_id: 701, session_id: 61 };
+    expect(payload).toEqual({ room_id: 701, session_id: 61 });
+  });
+
+  it('RoomOpenFailed：topic=fulfillment.room.open_failed，{session_id, reason}（→D4 平台取消/F2 退款=W2 消费；reason 开放词汇非 PII）', () => {
+    expect(ROOM_OPEN_FAILED_TOPIC).toBe('fulfillment.room.open_failed');
+    const payload: RoomOpenFailedPayload = { session_id: 61, reason: 'RTC_BUILD_FAILED' };
+    expect(payload.reason).toBe('RTC_BUILD_FAILED');
+  });
+
+  it('MessageSent：topic=fulfillment.conversation.message_sent，{conversation_id, seq, risk_flag}——载荷不含 content（PII 铁律：消费者回查 messages 表；BLOCKED 拒发无事件，risk_flag 仅 PASS|REVIEW）', () => {
+    expect(MESSAGE_SENT_TOPIC).toBe('fulfillment.conversation.message_sent');
+    const payload: MessageSentPayload = { conversation_id: 11, seq: 42, risk_flag: 'PASS' };
+    expect(payload).toEqual({ conversation_id: 11, seq: 42, risk_flag: 'PASS' });
+  });
+
+  it('PresenceJoined/Left：topic=fulfillment.presence.{joined,left}，{conversation_id, ref_id, user_id, role, at(ISO 房间时刻戳)}（presence 权威链路：at-least-once → D3 W2 快照判定）', () => {
+    expect(PRESENCE_JOINED_TOPIC).toBe('fulfillment.presence.joined');
+    expect(PRESENCE_LEFT_TOPIC).toBe('fulfillment.presence.left');
+    const payload: PresencePayload = {
+      conversation_id: 11,
+      ref_id: 701,
+      user_id: 601,
+      role: 'user',
+      at: '2026-10-23T12:30:05.000Z',
+    };
+    expect(payload.role).toBe('user');
+  });
+
+  it('RecordingConsentGiven：topic=fulfillment.recording.consent_given，{conversation_id, party_id}（审计留痕非门控信号；双门判定在 D5 同步完成）', () => {
+    expect(RECORDING_CONSENT_GIVEN_TOPIC).toBe('fulfillment.recording.consent_given');
+    const payload: RecordingConsentGivenPayload = { conversation_id: 12, party_id: 601 };
+    expect(payload).toEqual({ conversation_id: 12, party_id: 601 });
+  });
+
+  it('TrainingDataPurged：topic=fulfillment.training_data.purged，{user_id, hot_count, cold_count}（D5 标记+I3 冷存物理删除分工的执行回执 → A2/H9）', () => {
+    expect(TRAINING_DATA_PURGED_TOPIC).toBe('fulfillment.training_data.purged');
+    const payload: TrainingDataPurgedPayload = { user_id: 601, hot_count: 3, cold_count: 1 };
+    expect(payload).toEqual({ user_id: 601, hot_count: 3, cold_count: 1 });
+  });
+
+  it('OneOnOneConversationCreated：topic=fulfillment.one_on_one.conversation_created，{conversation_id, order_id, user_id, lawyer_id}（W1 合成事件桩验证，D6 W3 生产真链）', () => {
+    expect(ONE_ON_ONE_CONVERSATION_CREATED_TOPIC).toBe(
+      'fulfillment.one_on_one.conversation_created',
+    );
+    const payload: OneOnOneConversationCreatedPayload = {
+      conversation_id: 13,
+      order_id: 501,
+      user_id: 601,
+      lawyer_id: 9101,
+    };
+    expect(payload.order_id).toBe(501);
+  });
+
+  it('OneOnOnePaid：topic=fulfillment.one_on_one.paid，{order_id, user_id, lawyer_id}（D5 消费钉形最小集——R-W2-A 口径；D6 W3 落位可向后兼容扩字段）', () => {
+    expect(ONE_ON_ONE_PAID_TOPIC).toBe('fulfillment.one_on_one.paid');
+    const payload: OneOnOnePaidPayload = { order_id: 501, user_id: 601, lawyer_id: 9101 };
+    expect(payload).toEqual({ order_id: 501, user_id: 601, lawyer_id: 9101 });
+  });
+
+  it('ReminderDispatched：topic=notify.reminder.dispatched，{ref_type, ref_id, user_id, kind}（kind=I2 REMIND 词汇；→H4 W2 管道）', () => {
+    expect(REMINDER_DISPATCHED_TOPIC).toBe('notify.reminder.dispatched');
+    const payload: ReminderDispatchedPayload = {
+      ref_type: 'enrollment',
+      ref_id: 81,
+      user_id: 601,
+      kind: 'REMIND_1H',
+    };
+    expect(payload.kind).toBe('REMIND_1H');
+  });
+
+  it('RecordingArchived：topic=platform.artifact.recording_archived，{artifact_id, evidence_id, ref_type, ref_id}（hash 不入载荷表可查；evidence_id dev=mock 生成）', () => {
+    expect(RECORDING_ARCHIVED_TOPIC).toBe('platform.artifact.recording_archived');
+    const payload: RecordingArchivedPayload = {
+      artifact_id: 901,
+      evidence_id: 'EV-20261023-0001',
+      ref_type: 'one_on_one',
+      ref_id: 501,
+    };
+    expect(payload.evidence_id).toBe('EV-20261023-0001');
+  });
+
+  it('ArtifactPurged：topic=platform.artifact.purged，{artifact_id, kind}（→H9 审计；kind=artifacts 五值词汇）', () => {
+    expect(ARTIFACT_PURGED_TOPIC).toBe('platform.artifact.purged');
+    const payload: ArtifactPurgedPayload = { artifact_id: 901, kind: 'cold_message' };
+    expect(payload.kind).toBe('cold_message');
   });
 });

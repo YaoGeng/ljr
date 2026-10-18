@@ -686,3 +686,143 @@ export interface PriceCouponInstructedPayload {
   readonly user_id: number;
   readonly coupon_kind: 'PRICE_COMP';
 }
+
+// ---------------------------------------------------------------------------
+// M2-W1 通信与房间（T0 契约冻结）：D1 3 生产 + D5 6 生产 + OneOnOnePaid 消费钉形 +
+// D2 1 生产 + I3 2 生产。RoomClosed 已在上方 F3 段定型（消费方钉形先例 R-W2-A），
+// 本批不重定义；D5 消费 OneOnOnePaid（生产方 D6=W3，本批合成事件桩验证、W4 转正）。
+// 载荷铁律：MessageSent 载荷不含 content（D5 §9「明文 PII 落 MQ 载荷」禁令——消费者
+// 按需回查 messages 表）；全部时刻字段 ISO 8601 UTC 即时串。
+// ---------------------------------------------------------------------------
+
+/** 房间开启（D1 §6 生产 → D2 宽限开始房间内提醒、H2 监控）。grace_end 锚定约定开始时刻
+ *  scheduled_start+5min（R-01：不随 opened_at 漂移——载荷直载该锚点，消费者免二次推算）。 */
+export const ROOM_OPENED_TOPIC = 'fulfillment.room.opened';
+
+export interface RoomOpenedPayload {
+  readonly room_id: number;
+  readonly session_id: number;
+  /** 宽限截止时刻（ISO 8601 UTC；= scheduled_start + 5min，锚定约定开始时刻） */
+  readonly grace_end: string;
+}
+
+/** 宽限期结束（D1 §6 生产 → D3 到场判定（W2 消费）、D2 结束前 1min 提醒锚点）。
+ *  W1 executor 落 D1（发事件即止，判定禁前置——D1 §9）；catalog GRACE_END executor
+ *  字段语义=最终判定方 D3=W2 事件消费。 */
+export const GRACE_PERIOD_ENDED_TOPIC = 'fulfillment.grace_period.ended';
+
+export interface GracePeriodEndedPayload {
+  readonly room_id: number;
+  readonly session_id: number;
+}
+
+/** 开房失败（D1 §6 生产 → D4 平台取消分支（W2 消费）、F2 全额退款（W2）、H2）。
+ *  reason=开放词汇审计口径（mock 适配器错误码/RTC 回调失败因），非 PII。 */
+export const ROOM_OPEN_FAILED_TOPIC = 'fulfillment.room.open_failed';
+
+export interface RoomOpenFailedPayload {
+  readonly session_id: number;
+  readonly reason: string;
+}
+
+/** 消息已发送（D5 §6 生产 → E1 草稿管线（W3）、H5 二次模型复核（REVIEW 命中筛））。
+ *  载荷不含 content（PII 铁律）：E1/H5 按 conversation_id+seq 回查 messages 表；
+ *  risk_flag=PASS|BLOCKED|REVIEW（BLOCKED 消息不出箱——拒发即无事件，本事件仅 PASS/REVIEW）。 */
+export const MESSAGE_SENT_TOPIC = 'fulfillment.conversation.message_sent';
+
+export interface MessageSentPayload {
+  readonly conversation_id: number;
+  readonly seq: number;
+  readonly risk_flag: 'PASS' | 'REVIEW';
+}
+
+/** 在场加入（D5 §6 生产 → D3 宽限结束时点快照（W2 消费）；架构 §3.3-1 presence 权威链路：
+ *  at-least-once + 房间时刻戳）。at=服务器接收时刻（DB 钟口径），D3 判定以宽限结束快照为准。 */
+export const PRESENCE_JOINED_TOPIC = 'fulfillment.presence.joined';
+
+/** 在场离开（D5 §6 生产 → D3（W2 消费）；口径同 PresenceJoined）。 */
+export const PRESENCE_LEFT_TOPIC = 'fulfillment.presence.left';
+
+export interface PresencePayload {
+  readonly conversation_id: number;
+  /** 会话锚定的房间/订单引用（room 会话=rooms.id） */
+  readonly ref_id: number;
+  readonly user_id: number;
+  readonly role: 'user' | 'lawyer';
+  /** 房间时刻戳（ISO 8601 UTC） */
+  readonly at: string;
+}
+
+/** 录制同意已给出（D5 §6 生产 → H9 审计；双门判定在 D5 同步完成——双方齐才调 RTC 云录制，
+ *  本事件为审计留痕非门控信号）。拼单房间默认不录制（D10 边界声明，consent 门仅 1对1）。 */
+export const RECORDING_CONSENT_GIVEN_TOPIC = 'fulfillment.recording.consent_given';
+
+export interface RecordingConsentGivenPayload {
+  readonly conversation_id: number;
+  /** 给出同意的一方（identity 侧用户 id） */
+  readonly party_id: number;
+}
+
+/** 训练语料删除执行回执（D5+I3 §6 生产 → A2 授权状态回写、H9 监督；消费
+ *  TrainingConsentRevoked 后执行）。hot_count=messages 语料标记删除数、cold_count=I3 冷存
+ *  物理删除数（D5 管标记、I3 管冷存物理删除——I3 §7 R-03 分工）。 */
+export const TRAINING_DATA_PURGED_TOPIC = 'fulfillment.training_data.purged';
+
+export interface TrainingDataPurgedPayload {
+  readonly user_id: number;
+  readonly hot_count: number;
+  readonly cold_count: number;
+}
+
+/** 1对1 会话已创建（D5 §6 生产（消费 OneOnOnePaid 后）→ D6 流程推进、H4）。
+ *  W1 D5 消费端以合成事件桩验证（05 §6.1 W1 行），生产真链=D6 W3 落位、W4 转正。 */
+export const ONE_ON_ONE_CONVERSATION_CREATED_TOPIC = 'fulfillment.one_on_one.conversation_created';
+
+export interface OneOnOneConversationCreatedPayload {
+  readonly conversation_id: number;
+  readonly order_id: number;
+  readonly user_id: number;
+  readonly lawyer_id: number;
+}
+
+/** 1对1 预付完成（D6 §6 生产=W3 → D5 建 one_on_one 会话、F1/F3、I2 超时 job、H4）。
+ *  契约由 W1 消费方 D5 钉形（R-W2-A 口径）：载荷取 D5 建会话最小集；D6 W3 落位时
+ *  可向后兼容扩字段（amount 等由 D6/F3 侧按需增补），W1 不预发明。 */
+export const ONE_ON_ONE_PAID_TOPIC = 'fulfillment.one_on_one.paid';
+
+export interface OneOnOnePaidPayload {
+  readonly order_id: number;
+  readonly user_id: number;
+  readonly lawyer_id: number;
+}
+
+/** 提醒已分发（D2 §6 生产 → H4 到达率统计（W2 管道））。kind=I2 jobType 词汇
+ *  （REMIND_24H|REMIND_1H|REMIND_10MIN|REMIND_1MIN）；ref=enrollment/session 双锚。 */
+export const REMINDER_DISPATCHED_TOPIC = 'notify.reminder.dispatched';
+
+export interface ReminderDispatchedPayload {
+  readonly ref_type: 'enrollment' | 'session';
+  readonly ref_id: number;
+  readonly user_id: number;
+  readonly kind: 'REMIND_24H' | 'REMIND_1H' | 'REMIND_10MIN' | 'REMIND_1MIN';
+}
+
+/** 录音归档完成（I3 §6 生产 → H9 存证审计）。hash_sha256 不入载荷（artifacts 表可查，
+ *  最小化）；evidence_id=存证平台凭证（dev=mock 适配器生成，D-P9 至信链真对接后换装）。 */
+export const RECORDING_ARCHIVED_TOPIC = 'platform.artifact.recording_archived';
+
+export interface RecordingArchivedPayload {
+  readonly artifact_id: number;
+  readonly evidence_id: string;
+  /** 关联订单/会话引用（1对1 订单锚） */
+  readonly ref_type: string;
+  readonly ref_id: number;
+}
+
+/** 存档到期处置完成（I3 §6 生产 → H9 审计）。kind=artifacts.kind 词汇。 */
+export const ARTIFACT_PURGED_TOPIC = 'platform.artifact.purged';
+
+export interface ArtifactPurgedPayload {
+  readonly artifact_id: number;
+  readonly kind: 'recording' | 'export' | 'credential' | 'cold_message' | 'recon_file';
+}
