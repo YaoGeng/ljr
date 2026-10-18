@@ -14,35 +14,44 @@ import type { Pool } from 'pg';
 
 /** 直插一条档案行（audit_status=PASSED 供列表可见；SUBMITTED 供隐藏侧对照），返回档案 id；
  *  city 可选（序 11.5 V33 执业城市维：缺省不写列=落 DB DEFAULT '北京'，携带则显式落值——
- *  供 C1/C2 双维物化用例造「非北京执业城市」律师） */
+ *  供 C1/C2 双维物化用例造「非北京执业城市」律师）；
+ *  firmId 可选（M2-W1 T1 加法：firm_id 绑定注入——A3b 进件后形态，D1 RoomClosed 聚合用例锚） */
 export async function seedLawyerProfile(
   pool: Pool,
   userId: number,
   auditStatus: 'PASSED' | 'SUBMITTED',
   tag: string,
   city?: string,
+  firmId?: number,
 ): Promise<number> {
-  const sql =
-    city === undefined
-      ? `INSERT INTO identity.lawyer_profiles
-           (user_id, license_no_enc, license_no_blind_idx, firm_name,
-            material_version, material_fingerprint, audit_status, submitted_at)
-         VALUES ($1, $2, $3, $4, 1, $5, $6, now())
-         RETURNING id`
-      : `INSERT INTO identity.lawyer_profiles
-           (user_id, license_no_enc, license_no_blind_idx, firm_name,
-            material_version, material_fingerprint, audit_status, submitted_at, city)
-         VALUES ($1, $2, $3, $4, 1, $5, $6, now(), $7)
-         RETURNING id`;
-  const res = await pool.query<{ id: string }>(sql, [
+  const base = `INSERT INTO identity.lawyer_profiles
+       (user_id, license_no_enc, license_no_blind_idx, firm_name,
+        material_version, material_fingerprint, audit_status, submitted_at`;
+  const params: unknown[] = [
     userId,
     Buffer.from(`fixture-enc-${tag}`), // 密文列：夹具只求形态合法，不参与解密断言
     createHash('sha256').update(`blind:${tag}`).digest('hex'), // char(64) 盲索引形态
     `夹具律所-${tag}`,
     createHash('sha256').update(`fp:${tag}`).digest('hex'), // char(64) 指纹形态
     auditStatus,
-    ...(city === undefined ? [] : [city]),
-  ]);
+  ];
+  const tailCols: string[] = [];
+  const tailParams: unknown[] = [];
+  if (city !== undefined) {
+    tailCols.push('city');
+    tailParams.push(city);
+  }
+  if (firmId !== undefined) {
+    tailCols.push('firm_id');
+    tailParams.push(firmId);
+  }
+  const sql =
+    tailCols.length === 0
+      ? `${base}) VALUES ($1, $2, $3, $4, 1, $5, $6, now()) RETURNING id`
+      : `${base}, ${tailCols.join(', ')})
+         VALUES ($1, $2, $3, $4, 1, $5, $6, now(), ${tailParams.map((_, i) => `$${7 + i}`).join(', ')})
+         RETURNING id`;
+  const res = await pool.query<{ id: string }>(sql, [...params, ...tailParams]);
   return Number(res.rows[0]!.id);
 }
 

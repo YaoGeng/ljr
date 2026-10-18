@@ -43,7 +43,7 @@ import { PricingConfigService } from '../pricing/pricing.service';
 import type { ScheduleJobType } from '../schedule/scheduler.catalog';
 import { SchedulerService } from '../schedule/scheduler.service';
 import { SlotLockService } from '../schedule/slot-lock.service';
-import { SESSION_MACHINE, type SessionStatus } from './session.machine';
+import { SESSION_MACHINE, SESSION_TERMINAL_STATUSES, type SessionStatus } from './session.machine';
 import { SessionListCache } from './session.cache';
 import { TRADE_SESSION_CONFIG, type TradeSessionConfig } from './session.config';
 import {
@@ -627,6 +627,42 @@ export class SessionService {
     );
     const status = res.rows[0]?.status;
     return status === undefined ? null : (status as SessionStatus);
+  }
+
+  /**
+   * D1 开房回查锚（M2-W1 T1 纯读导出位，加法）：场次存在且非终态=仍有效可开——ROOM_OPEN
+   * 执行器 recheck 消费（I2 目录 recheckAnchor「room 状态与开房结果」的场次侧前置半边）。
+   * 终态集词汇（SESSION_TERMINAL_STATUSES）不外泄——封装为本布尔面，D1 免 import 本模块机器件。
+   *
+   * 时序假设（T1 评审 Minor-3 注记，W1 口径——**禁收紧行为**，会破坏现有 FULL 场次开房链）：
+   * 非终态即可开含 CREATED/FULL——依赖 ENROLL_DEADLINE 截止 job 先行流标兜底（enroll_deadline
+   * 恒早于 slot_start，C1 创建校验钉住），slot_start 时刻 CREATED 理论不可达；FULL→CONFIRMED
+   * 推进生产者=W2 D 域批定型。收紧面（如仅 CONFIRMED+ 可开）随 W2 复核，本批不改。
+   */
+  async sessionOpenable(exec: SqlExecutor, sessionId: number): Promise<boolean> {
+    const status = await this.statusOf(exec, assertPositiveInt(sessionId, 'session_id'));
+    return (
+      status !== null && !(SESSION_TERMINAL_STATUSES as readonly SessionStatus[]).includes(status)
+    );
+  }
+
+  /**
+   * D1 RoomClosed 聚合锚（M2-W1 T1 纯读导出位，加法）：{lawyer_id, firm_id}——close 出箱载荷的
+   * 归属半边（gross/payment_order_id 由消费方经 F2 退款源聚合）。firm_id 经 A3a getFirmId
+   * （档案绑定，A3b 进件前 null——消费方显式失败口径，不静默）；场次缺失返回 null。
+   */
+  async closeAnchorOf(
+    sessionId: number,
+  ): Promise<{ lawyer_id: number; firm_id: number | null } | null> {
+    const id = assertPositiveInt(sessionId, 'session_id');
+    const res = await this.pool.query<{ lawyer_id: string }>(
+      `SELECT lawyer_id FROM trade.sessions WHERE id = $1`,
+      [id],
+    );
+    const row = res.rows[0];
+    if (!row) return null;
+    const lawyerId = Number(row.lawyer_id);
+    return { lawyer_id: lawyerId, firm_id: await this.audit.getFirmId(lawyerId) };
   }
 
   /**

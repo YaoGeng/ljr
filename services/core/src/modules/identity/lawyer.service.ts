@@ -464,6 +464,20 @@ export class LawyerQualificationService {
     return found.rows[0]?.city ?? null;
   }
 
+  /**
+   * 律所 id 导出面（M2-W1 T1 纯读加法，getPracticeCity 同形态）：D1 RoomClosed 聚合的
+   * firm_id 取数缝（trade closeAnchorOf 消费——禁跨模块直查 identity 表）。档案 firm_id
+   * 绑定=A3b 进件后回填（W3 前多 null）；无档案/未绑定返回 null，消费方显式失败不静默。
+   */
+  async getFirmId(lawyerUserId: number): Promise<number | null> {
+    const found = await this.pool.query<{ firm_id: string | null }>(
+      `SELECT firm_id FROM identity.lawyer_profiles WHERE user_id = $1`,
+      [lawyerUserId],
+    );
+    const v = found.rows[0]?.firm_id;
+    return v === null || v === undefined ? null : Number(v);
+  }
+
   // ===========================================================================
   // H1 导出面（W3 T10）：工作台队列 / 档案视图（只读；H1 禁 join identity 表——架构 §3.2，
   // 经本服务面取数）。出参一律无 license 字段（PII 红线 §9）。

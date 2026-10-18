@@ -65,21 +65,48 @@ export async function seedGroupBuyRaw(
 }
 
 /** 直插一 PAID 报名行（F-7：paid_amount=全额口径注入=cash 分+points（1 积分=1 分）两位小数化，
- *  与 C3 报名链「paid=cash+points 折元」一致，D17 分母整化的数据源） */
+ *  与 C3 报名链「paid=cash+points 折元」一致，D17 分母整化的数据源）；M2-W1 T1 起返回报名 id
+ *  （D1 close 聚合需配对 F1 支付单幂等键 enroll/e{id}/pay——跨域 spec 组装锚） */
 export async function seedPaidEnrollmentRaw(
   pool: Pool,
   refType: 'session' | 'groupbuy',
   refId: number,
   o: SeedPaidEnrollmentOptions & { readonly userId: number },
-): Promise<void> {
+): Promise<number> {
   const paidFull = centsToMoney(moneyToCents(o.cash) + o.points);
-  await pool.query(
+  const res = await pool.query<{ id: string }>(
     `INSERT INTO trade.enrollments
        (ref_type, ref_id, user_id, price_snapshot, unit_price, paid_amount, cash_amount,
         points_amount, price_version_id, pay_status, credit_used)
-     VALUES ($1, $2, $3, '{}'::jsonb, $4, $5, $6, $7, 1, 'PAID', 0)`,
+     VALUES ($1, $2, $3, '{}'::jsonb, $4, $5, $6, $7, 1, 'PAID', 0)
+     RETURNING id`,
     [refType, refId, o.userId, o.unitPrice, paidFull, o.cash, o.points],
   );
+  return Number(res.rows[0]!.id);
+}
+
+// ---- M2-W1 T1 扩展：D1 房间生命周期 spec 的场次注入（slot_start 显式任意时刻——misfire/
+// 宽限锚/延迟告警的过去量注入；seedSessionRaw 的 slotSeq 天数偏移只造未来场次） ----
+
+/** 直插一场次行（slot_start/状态/沟通形式显式给定——过去时刻用于 ROOM_OPEN misfire 与宽限锚
+ *  用例；唯一性由调用方错开时刻保证）；返回场次 id */
+export async function seedSessionAtRaw(
+  pool: Pool,
+  lawyerId: number,
+  status: string,
+  slotStart: Date,
+  roomMode: string = 'text',
+): Promise<number> {
+  const s = await pool.query<{ id: string }>(
+    `INSERT INTO trade.sessions
+       (lawyer_id, mode, slot_start, price_mode, unit_price, session_total, capacity, joined,
+        enroll_deadline, room_mode, status)
+     VALUES ($1, 'B2C', $2, 'per_head', '100.00', '100.00', 5, 0,
+             $2::timestamptz - interval '24 hours', $3, $4)
+     RETURNING id`,
+    [lawyerId, slotStart, roomMode, status],
+  );
+  return Number(s.rows[0]!.id);
 }
 
 // ---- M1-W4 T1 扩展：H4 资损巡检①类故障注入（终态迁移时刻回拨，窗口锚=status_since） ----

@@ -30,6 +30,7 @@
     "demo.consumed_events": "V3__state_transition_log.sql",
     "demo.order_actions": "V3__state_transition_log.sql",
     "demo.orders": "V3__state_transition_log.sql",
+    "fulfillment.rooms": "V35__fulfillment.sql",
     "identity.consents": "V14__identity.sql",
     "identity.decrypt_approvals": "V14__identity.sql",
     "identity.lawyer_profiles": "V15__identity.sql",
