@@ -7,8 +7,11 @@
  * M1-W4 T1 追加 RISK_PATROL（H4 资损巡检周期 job，架构 §7.2 五类不变量，回查锚点=patrol_runs
  * 最近一轮状态；I2 文档 §4 表已补行）；M2-W1 T3 追加 COLD_ARCHIVE（D5 消息冷存日扫——
  * 附录 A.2 裁定唯一目录增量：producer/executor=D5，recheckAnchor=messages 冷存水位；
- * I2 文档 §4 表行回写=T6 收尾，不在该任务内）。本注册表取并集 = 24 种——全集是「程序化
- * 一致性检查的准入门」，多收无害、漏收断路。
+ * I2 文档 §4 表行回写=T6 收尾，不在该任务内）；M2-W1 T4 追加 REMIND_GRACE_END（D2 宽限
+ * 结束前 1min 房间消息定时器——D2 §2「宽限结束前 1min 消息」需要独立定时器：producer=D1
+ * 开房成功同事务预写 due=grace_end−1min、executor=D2 房间内提醒，recheckAnchor 与
+ * GRACE_END 同锚）。本注册表取并集 = 25 种——全集是「程序化一致性检查的准入门」，多收
+ * 无害、漏收断路。
  *
  * 排除声明（I2 §2）：RESTRICTION_EXPIRE 不建 job——G1 限制令采用惰性失效（查询时比对 until，G1 §3）。
  *
@@ -22,6 +25,7 @@ export const SCHEDULE_JOB_TYPES = [
   'ENROLL_DEADLINE',
   'ROOM_OPEN',
   'GRACE_END',
+  'REMIND_GRACE_END',
   'ABSENT_15M',
   'NO_SHOW_CLOSE',
   'C2B_CONFIRM_TIMEOUT',
@@ -97,6 +101,12 @@ export const SCHEDULE_JOB_CATALOG: Readonly<Record<ScheduleJobType, ScheduleJobD
     jobType: 'GRACE_END',
     producer: 'D1',
     executor: 'D3（宽限结束判定）',
+    recheckAnchor: 'room 状态与开房结果',
+  },
+  REMIND_GRACE_END: {
+    jobType: 'REMIND_GRACE_END',
+    producer: 'D1（开房同事务预写，due=grace_end−1min）', // M2-W1 T4 目录增量（第 25 项）
+    executor: 'D2（房间内提醒）',
     recheckAnchor: 'room 状态与开房结果',
   },
   ABSENT_15M: {

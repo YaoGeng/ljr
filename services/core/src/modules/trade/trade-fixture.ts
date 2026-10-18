@@ -109,6 +109,17 @@ export async function seedSessionAtRaw(
   return Number(s.rows[0]!.id);
 }
 
+// ---- M2-W1 T4 扩展：D2（notify 域）spec 的场次状态读数（跨域 spec 只 import，不内联表名） ----
+
+/** 场次状态直读（D2 幂等回查/流标断言锚；行不存在=undefined——修环 M1 兑现可选返回） */
+export async function sessionStatusRaw(pool: Pool, sessionId: number): Promise<string | undefined> {
+  const res = await pool.query<{ status: string }>(
+    `SELECT status FROM trade.sessions WHERE id = $1`,
+    [sessionId],
+  );
+  return res.rows[0]?.status;
+}
+
 // ---- M1-W4 T1 扩展：H4 资损巡检①类故障注入（终态迁移时刻回拨，窗口锚=status_since） ----
 
 /** 回拨场次终态迁移时刻（status_since=now()-ago；巡检①类窗口判定锚） */

@@ -544,7 +544,7 @@ export class SchedulerService {
     if (!isScheduleJobType(jobType)) {
       throw new AppError(
         ErrorCode.InvalidArgument,
-        `job_type 不在全集注册表（I2 §2/§4，23 种）：${JSON.stringify(jobType)}`,
+        `job_type 不在全集注册表（I2 §2/§4，25 种）：${JSON.stringify(jobType)}`,
       );
     }
     if (typeof refType !== 'string' || refType.length === 0 || refType.length > 16) {

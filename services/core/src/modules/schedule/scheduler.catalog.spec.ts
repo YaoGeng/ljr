@@ -16,10 +16,10 @@ import {
  * I2 纯单元（无需 PG）：job 全集注册表、告警判定、配置默认值。
  * job 全集=I2 §2 枚举 + §4 对照表 FIRM_REVERIFY + 控制者裁决 R2 增 RULE_EFFECTIVE（头注见 scheduler.catalog.ts）。
  */
-describe('I2 job 全集注册表（§2/§4 + 控制者裁决 R2 + M1-W4 RISK_PATROL + M2-W1 COLD_ARCHIVE）', () => {
-  it('全集 24 种且无重复：§2 枚举 20 种 + FIRM_REVERIFY（§4 对照表）+ RULE_EFFECTIVE（裁决 R2）+ RISK_PATROL（M1-W4 T1）+ COLD_ARCHIVE（M2-W1 T3 D5 消息冷存，附录 A.2 唯一目录增量）', () => {
-    expect(SCHEDULE_JOB_TYPES).toHaveLength(24);
-    expect(new Set(SCHEDULE_JOB_TYPES).size).toBe(24);
+describe('I2 job 全集注册表（§2/§4 + 控制者裁决 R2 + M1-W4 RISK_PATROL + M2-W1 COLD_ARCHIVE/REMIND_GRACE_END）', () => {
+  it('全集 25 种且无重复：§2 枚举 20 种 + FIRM_REVERIFY（§4 对照表）+ RULE_EFFECTIVE（裁决 R2）+ RISK_PATROL（M1-W4 T1）+ COLD_ARCHIVE（M2-W1 T3 D5 消息冷存）+ REMIND_GRACE_END（M2-W1 T4 D2 宽限结束前 1min 房间提醒，目录第 25 项）', () => {
+    expect(SCHEDULE_JOB_TYPES).toHaveLength(25);
+    expect(new Set(SCHEDULE_JOB_TYPES).size).toBe(25);
     expect([...SCHEDULE_JOB_TYPES]).toEqual([
       'REMIND_24H',
       'REMIND_1H',
@@ -28,6 +28,7 @@ describe('I2 job 全集注册表（§2/§4 + 控制者裁决 R2 + M1-W4 RISK_PAT
       'ENROLL_DEADLINE',
       'ROOM_OPEN',
       'GRACE_END',
+      'REMIND_GRACE_END',
       'ABSENT_15M',
       'NO_SHOW_CLOSE',
       'C2B_CONFIRM_TIMEOUT',
@@ -79,6 +80,15 @@ describe('I2 job 全集注册表（§2/§4 + 控制者裁决 R2 + M1-W4 RISK_PAT
       executor: expect.stringContaining('D5'),
       recheckAnchor: expect.stringContaining('last_archived_created_at'),
     });
+  });
+
+  it('REMIND_GRACE_END（M2-W1 T4，目录第 25 项）：生产方=D1 开房同事务预写（due=grace_end−1min）、执行器=D2 房间内提醒、回查锚点与 GRACE_END 同锚', () => {
+    expect(SCHEDULE_JOB_CATALOG.REMIND_GRACE_END).toMatchObject({
+      producer: expect.stringContaining('D1'),
+      executor: expect.stringContaining('D2'),
+      recheckAnchor: expect.stringContaining('room 状态与开房结果'),
+    });
+    expect(SCHEDULE_JOB_CATALOG.REMIND_GRACE_END.producer).toContain('grace_end−1min');
   });
 
   it('ROOM_OPEN 是唯一高优先级 job（独立扫描通道 ≤5s，§4/§8）', () => {

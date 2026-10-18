@@ -99,7 +99,9 @@ const TERMINAL_STATUSES_SQL = `'FAILED', 'CANCELLED', 'FINISHED', 'SETTLED'`;
 /** 成团链（group_rate 分子：已出 CREATED 进入成团后任一状态） */
 const GROUPED_STATUSES = ['FULL', 'CONFIRMED', 'OPEN', 'IN_SERVICE', 'FINISHED', 'HOLD', 'SETTLED'];
 
-/** REMIND 系列 job 的 slot_start 前置偏移（I2 目录；executor=D2=M2 只预写） */
+/** REMIND 系列 job 的 slot_start 前置偏移（I2 目录；executor=D2 已随 M2-W1 T4 装配——
+ *  本常量同时是流标作废钩（failOnDeadline）与创建预写（create/createC2BFulfillment）的
+ *  jobType 清单单一来源） */
 const REMIND_OFFSETS_MS: ReadonlyArray<readonly [ScheduleJobType, number]> = [
   ['REMIND_24H', 24 * 3_600_000],
   ['REMIND_1H', 1 * 3_600_000],
@@ -300,7 +302,8 @@ export class SessionService {
       }
 
       // I2 job 预写（同事务；ENROLL_DEADLINE 锚 deadline、REMIND×4/ROOM_OPEN 锚 slot_start；
-      // ROOM_OPEN executor=D1=M2、REMIND executor=D2=M2——只预写不装配，简报逐字）
+      // ROOM_OPEN executor=D1（M2-W1 T1 装配）、REMIND executor=D2（M2-W1 T4 装配，流标
+      // 作废钩见 failOnDeadline）
       await this.scheduler.registerJob(uow, {
         jobType: 'ENROLL_DEADLINE',
         refType: 'session',
@@ -579,7 +582,7 @@ export class SessionService {
       const sessionId = Number(row.id);
 
       // I2 job 预写（与 B2C 创建同构：REMIND×4 锚 slot_start、ENROLL_DEADLINE 锚 deadline、
-      // ROOM_OPEN 锚 slot_start——executor=D1/D2=M2 只预写不装配）
+      // ROOM_OPEN 锚 slot_start——executor=D1/D2 均已随 M2-W1 T1/T4 装配）
       await this.scheduler.registerJob(uow, {
         jobType: 'ENROLL_DEADLINE',
         refType: 'session',
@@ -644,6 +647,34 @@ export class SessionService {
     return (
       status !== null && !(SESSION_TERMINAL_STATUSES as readonly SessionStatus[]).includes(status)
     );
+  }
+
+  /**
+   * D2 提醒回查锚（M2-W1 T4 修复环 I-1）：sessionOpenable 同口径（存在且非终态）**加上**
+   * 「报名已截止仍未成团」防御半边——status='CREATED' 且 now>enroll_deadline → false。
+   *
+   * 耦合声明（头注）：ENROLL_DEADLINE 流标执行器异常进重试退避窗时，CREATED 场次的 REMIND_24H
+   * （due=slot_start−24h，与 deadline 同刻同源）若先行拾取会对即将 FAILED 的场次发出幽灵提醒
+   * ——本半边在流标 job 终态化之前先行拦截（R-03 幽灵提醒禁令）。成团链（FULL/CONFIRMED/OPEN/
+   * IN_SERVICE）不受截止窗影响恒可提醒；sessionOpenable 本身**不收紧**（T1 评审 Minor-3 禁令，
+   * 开房链口径不动）——本面为 D2 专用独立导出。
+   */
+  async sessionRemindable(exec: SqlExecutor, sessionId: number): Promise<boolean> {
+    const res = await exec.query<{ status: string; enroll_deadline: Date }>(
+      `SELECT status, enroll_deadline FROM trade.sessions WHERE id = $1`,
+      [assertPositiveInt(sessionId, 'session_id')],
+    );
+    const row = res.rows[0];
+    if (!row) return false; // 不存在 → false（sessionOpenable 同口径）
+    if (
+      (SESSION_TERMINAL_STATUSES as readonly SessionStatus[]).includes(row.status as SessionStatus)
+    ) {
+      return false; // 终态 → false
+    }
+    if (row.status === 'CREATED' && Date.now() > new Date(row.enroll_deadline).getTime()) {
+      return false; // 报名已截止仍未成团（修环 I-1 防御半边）
+    }
+    return true;
   }
 
   /**
@@ -714,6 +745,13 @@ export class SessionService {
     }
     // 锁同事务释放（架构 §4.2）：FAILED=锁终态（「不再需要占用锁」），不等 reaper 兜底
     await this.locks.releaseSlot(uow, { refType: 'session', refId: id, reason: 'session_failed' });
+    // R-03 作废钩（M2-W1 T4 补位，D2 §4「取消/改期/流标 → 业务侧作废未发 job（同事务）」）：
+    // 未发 REMIND×4 同事务作废（幽灵提醒禁令；M1 未落，本批纯加法补）。ROOM_OPEN 不在
+    // 本钩范围（D1 职责——其 recheck=sessionOpenable 对 FAILED 场次自然 CANCELLED 兜底）。
+    // SessionCancelled（用户/平台取消）作废路径=D4/W2（W1 无该事件生产方，交接见 D2 头注）。
+    for (const [jobType] of REMIND_OFFSETS_MS) {
+      await this.scheduler.cancelJob(uow, { jobType, refType: 'session', refId: id });
+    }
     await this.outbox.recordOutbox(uow, {
       type: SESSION_FAILED_TOPIC,
       payload: {

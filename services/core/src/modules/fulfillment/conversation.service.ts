@@ -373,12 +373,21 @@ export class ConversationService {
    * 名义提交、走与人工消息完全相同的判定/发号/出箱路径）——本面永不承载律师署名内容。
    * 不走 checkRisk（平台/模板内容——词面拦截职责在模板治理+E1 草稿管线）；与客户端消息
    * 共用 seq 序列与 MessageSent 出箱；I-1 长度护栏同 sendMessage。
+   *
+   * uow 形态（M2-W1 T4 纯加法，可选入参）：同事务调用方（D2 REMIND 执行器/RoomOpened
+   * 消费）传入 job/relay 认领事务的 uow——发号+落库+出箱与 job DONE/SENT 标记同一事务
+   * （I2 §4「效果与 DONE 原子」）；缺省自开事务（既有调用形态不变）。uow 形态下
+   * hub.publish 在外层事务提交前触发，存在极窄回滚幽灵窗（dev 单进程先持久后广播形态
+   * 的接受项：全量刷新/对账自愈——增量补拉 after_seq 不消除客户端本地幽灵行；V2 剥离
+   * rtc-im 随「广播先行+MQ 异步落库」换装一并收敛）。
    */
   async postInternalMessage(input: {
     readonly conversationId: number;
     readonly senderRole: 'system' | 'agent';
     readonly content: string;
     readonly mention?: MentionTarget;
+    /** 同事务承载（job 执行器/事件消费路径）；缺省=自开事务 */
+    readonly uow?: SqlExecutor;
   }): Promise<MessageView> {
     const conversationId = assertPositiveInt(input.conversationId, 'conversation_id');
     if (input.senderRole !== 'system' && input.senderRole !== 'agent') {
@@ -400,8 +409,8 @@ export class ConversationService {
     if (!conversation) {
       throw new AppError(ErrorCode.NotFound, `会话 ${conversationId} 不存在`);
     }
-    const message = await this.pool.withTransaction(async (uow) => {
-      const seqRow = await uow.query<{ next_seq: string }>(
+    const write = async (exec: SqlExecutor): Promise<MessageView> => {
+      const seqRow = await exec.query<{ next_seq: string }>(
         `UPDATE fulfillment.conversations SET next_seq = next_seq + 1 WHERE id = $1 RETURNING next_seq`,
         [conversationId],
       );
@@ -409,7 +418,7 @@ export class ConversationService {
       if (!Number.isInteger(seq) || seq <= 0) {
         throw new AppError(ErrorCode.NotFound, `会话 ${conversationId} 不存在（发号无行）`);
       }
-      const inserted = await uow.query<MessageRow>(
+      const inserted = await exec.query<MessageRow>(
         `INSERT INTO fulfillment.messages
            (conversation_id, seq, sender_id, sender_role, type, content, mention, risk_flag)
          VALUES ($1, $2, $3, $4, 'system', $5, $6, 'PASS')
@@ -424,7 +433,7 @@ export class ConversationService {
         ],
       );
       const view = toMessageView(inserted.rows[0]!);
-      await this.outbox.recordOutbox(uow, {
+      await this.outbox.recordOutbox(exec, {
         type: MESSAGE_SENT_TOPIC,
         payload: {
           conversation_id: conversationId,
@@ -433,7 +442,8 @@ export class ConversationService {
         } satisfies MessageSentPayload,
       });
       return view;
-    });
+    };
+    const message = input.uow ? await write(input.uow) : await this.pool.withTransaction(write);
     this.hub.publish(conversationId, { type: 'message', conversation_id: conversationId, message });
     return message;
   }

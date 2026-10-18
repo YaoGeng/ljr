@@ -18,6 +18,13 @@ export type RoomMode = (typeof ROOM_MODES)[number];
 /** R-01 宽限期 5 分钟（毫秒）：grace_end=scheduled_start+本值，应用层锚定（V35 头注禁 DB 表达式） */
 export const GRACE_PERIOD_MS = 5 * 60_000;
 
+/**
+ * D2 宽限结束前 1min 提醒前置量（毫秒，D2 §2「宽限结束前 1min 消息」）：REMIND_GRACE_END
+ * job 的 due=grace_end−本值（D1 开房同事务预写，锚定 grace_end 约定时刻不漂移）。
+ * 常量落 D1 侧的原因=预写方持有偏移（D2 executor 只消费 job，不反算时刻）。
+ */
+export const REMIND_GRACE_END_LEAD_MS = 60_000;
+
 /** open_fail_reason 列宽（V35 varchar(64)；超长截断——错误码审计口径非 PII） */
 export const OPEN_FAIL_REASON_MAX = 64;
 

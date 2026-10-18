@@ -743,6 +743,27 @@ export class EnrollmentService {
     return res.rows[0]?.ok === true;
   }
 
+  /**
+   * D2 提醒对象清单（M2-W1 T4 纯读窄面，加法）：该场次 PAID 报名的 {enrollment_id, user_id}
+   * ——REMIND×4 执行器逐人 I1 通知分发与 ReminderDispatched{ref_type:'enrollment'} 事件锚
+   * （enrollment id=「确认到场/改期入口」的用户锚，A.1 契约口径）。ux_enroll_active 保证
+   * 同 (session,user) 活跃报名唯一 → 逐人恰一行。同 schema 只读（trade 域内）；exec=job uow
+   * 同事务读（与 job DONE 原子，isSessionParticipant 的池连接形态在此取 uow 形态——分发
+   * 判定与登记同事务一致性）。
+   */
+  async listPaidEnrollmentUsers(
+    exec: SqlExecutor,
+    sessionId: number,
+  ): Promise<Array<{ enrollment_id: number; user_id: number }>> {
+    const res = await exec.query<{ id: string; user_id: string }>(
+      `SELECT id, user_id::text AS user_id FROM trade.enrollments
+        WHERE ref_type = 'session' AND ref_id = $1 AND pay_status = 'PAID'
+        ORDER BY id`,
+      [assertPositiveInt(sessionId, 'session_id')],
+    );
+    return res.rows.map((r) => ({ enrollment_id: Number(r.id), user_id: Number(r.user_id) }));
+  }
+
   // ===========================================================================
   // 内部件
   // ===========================================================================

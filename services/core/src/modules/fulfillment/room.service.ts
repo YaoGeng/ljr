@@ -7,9 +7,11 @@
  *   快照（scheduled_start/mode）经 trade 导出面 getDetail 取（禁直连跨域 SQL，R-04 透传）；
  *   RTC 建房经 RTC_PROVIDER 适配器（mock=W1，声网=M3-W1 换装缝）；成功 → INSERT rooms
  *   （OPEN，grace_end=scheduled_start+5min **应用层锚定**——R-01 开房延迟不吞宽限，与 job
- *   实际触发时刻无关）+ 同事务预写 GRACE_END job（due=grace_end，refType='room'）+ RoomOpened
- *   出箱；失败（适配器异常）→ CANCELLED 行直插（初始态承载，open_fail_reason 截 64）+
- *   RoomOpenFailed 出箱——**不发出任何信用事件**（G1 桩验证），无 GRACE_END 预写。
+ *   实际触发时刻无关）+ 同事务预写 GRACE_END job（due=grace_end，refType='room'）与
+ *   REMIND_GRACE_END job（due=grace_end−1min，M2-W1 T4——D2 宽限结束前 1min 房间提醒
+ *   定时器，同锚约定时刻）+ RoomOpened 出箱；失败（适配器异常）→ CANCELLED 行直插
+ *   （初始态承载，open_fail_reason 截 64）+ RoomOpenFailed 出箱——**不发出任何信用事件**
+ *   （G1 桩验证），无 GRACE_END/REMIND_GRACE_END 预写。
  *
  * 宽限结束（GRACE_END 执行器）：出箱 GracePeriodEnded **即止**——判定=D3（W2 事件消费，
  * 附录 A.2 裁决；D1 §9 禁止跳过 D3 直接判缺席/改 room 状态）。
@@ -57,6 +59,7 @@ import {
   GROSS_MAX_CENTS,
   GRACE_PERIOD_MS,
   OPEN_FAIL_REASON_MAX,
+  REMIND_GRACE_END_LEAD_MS,
   assertPositiveInt,
   assertRoomMode,
   centsToMoney,
@@ -168,6 +171,14 @@ export class RoomService {
       refId: roomId,
       dueAt: graceEnd,
     });
+    // REMIND_GRACE_END 同事务预写（M2-W1 T4，目录第 25 项）：D2 宽限结束前 1min 房间消息的
+    // 定时器——due=grace_end−1min 同锚约定时刻（executor=D2，见 notify/reminder.executors）
+    await this.scheduler.registerJob(uow, {
+      jobType: 'REMIND_GRACE_END',
+      refType: 'room',
+      refId: roomId,
+      dueAt: new Date(graceEnd.getTime() - REMIND_GRACE_END_LEAD_MS),
+    });
     await this.outbox.recordOutbox(uow, {
       type: ROOM_OPENED_TOPIC,
       payload: {
@@ -191,6 +202,22 @@ export class RoomService {
     );
     const status = res.rows[0]?.status;
     return status === undefined ? null : (status as RoomStatus);
+  }
+
+  /**
+   * D2 房间内提醒锚（M2-W1 T4 纯读窄面，加法）：场次的进行中房间 id（OPEN/IN_SERVICE——
+   * D2 §4「进行中房间」字面承载；IN_SERVICE 词汇=W2 D3 生产者，查询面预留）。无房间/
+   * 已终态 → null（REMIND×4 不发房间消息的判定半边）。exec=job uow 同事务读（本域直读）。
+   */
+  async activeRoomIdOfSession(exec: SqlExecutor, sessionId: number): Promise<number | null> {
+    const res = await exec.query<{ id: string }>(
+      `SELECT id FROM fulfillment.rooms
+        WHERE session_id = $1 AND status IN ('OPEN', 'IN_SERVICE')
+        LIMIT 1`,
+      [assertPositiveInt(sessionId, 'session_id')],
+    );
+    const row = res.rows[0];
+    return row === undefined ? null : Number(row.id);
   }
 
   /** 宽限结束：出箱 GracePeriodEnded 即止——不改 room 状态（IN_SERVICE/缺席判定=D3=W2 消费） */
