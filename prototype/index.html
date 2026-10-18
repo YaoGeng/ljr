@@ -562,9 +562,6 @@ DB.lawyers=[
   served:118,grp:'88%',pun:'96%',resp:'0.5h',edu:'西南政法大学法学硕士，执业 11 年',cases:['某互联网公司违法解除系列咨询'],o2o:{ask:{text:130,voice:220,video:280},doc:{text:220,voice:300,video:360},strat:{text:280,voice:380,video:440}},priceVer:'v2'},
 ];
 const L=id=>DB.lawyers.find(x=>x.id===id);
-/* 双维度字段归一（历史 mock 与新建发布统一：city 默认北京、specialty 取律师专长） */
-DB.sessions.forEach(s=>{if(!s.city)s.city='北京';});
-DB.groups.forEach(g=>{if(!g.city)g.city='北京';if(!g.specialty)g.specialty=L(g.lawyer).spec;});
 /* B2C 律师开团场次 */
 DB.sessions=[
  {id:'S-2041',lawyer:'L1',title:'工资拖欠 · 劳动仲裁全流程拆解',start:'10-16 周五 20:00',full:'2026-10-16 20:00',dur:90,mode:['text','voice'],pmode:'head',price:99,cap:5,enrolled:5,deadline:'10-15 20:00',status:'live',anchor:'live',
@@ -730,6 +727,11 @@ DB.metrics={
  health:[['纠纷率','0.42%','健康'],['退款率','3.8%','健康'],['律师取消 / 缺席率','1.1%','关注'],['降价补偿发放率','100%','健康'],['改价后投诉率','0.2%','健康']],
  review:{direct:68.3,edit:27.1,discard:4.6},
 };
+/* 双维度字段归一（历史 mock 与新建发布统一：city 默认北京、specialty 取律师专长）
+   ——必须在全部 DB 数据定义之后执行（v4.2 曾错插在 lawyers 与 sessions/groups 定义之间，
+   DB.sessions 尚为 undefined 即 forEach 抛 TypeError，整段脚本中断=白屏；v4.3.1 修正位次） */
+DB.sessions.forEach(s=>{if(!s.city)s.city='北京';});
+DB.groups.forEach(g=>{if(!g.city)g.city='北京';if(!g.specialty)g.specialty=L(g.lawyer).spec;});
 /* ==================================================================
    用户端 App（V1：浏览/报名/发起拼团/房间/1对1/评价/我的）
    ================================================================== */
