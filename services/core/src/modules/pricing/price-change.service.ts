@@ -549,6 +549,25 @@ export class PriceChangeService {
   }
 
   // ===========================================================================
+  // H4 导出面（M2-W2 T8）：补偿发放率分母（comp_snapshots 计数=应补偿真源，#39 收口后口径）
+  // ===========================================================================
+
+  /**
+   * 窗口内补偿快照行数（H4 §7.2「降价补偿发放率=points_txns(补偿)÷应补偿用户数」的
+   * 应发分母——分母真源=V44 comp_snapshots（含 granted=true 零分行，零发放=合法行；
+   * granted=false 行=M2+ 异步路径/回归检出面，同样计入应发）。owner=pricing 域内
+   * 直查（ops 侧 H4 禁跨 schema join——检测件各域自持的 patrol 先例同款导出形态）。
+   * 窗口=[from 00:00, to+1d 00:00) 上海日界（与 H4 指标日表口径对齐）。
+   */
+  async countCompSnapshotsBetween(from: Date, toExclusive: Date): Promise<number> {
+    const res = await this.pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM pricing.comp_snapshots WHERE created_at >= $1 AND created_at < $2`,
+      [from, toExclusive],
+    );
+    return res.rows[0]?.n ?? 0;
+  }
+
+  // ===========================================================================
   // 内部件
   // ===========================================================================
 

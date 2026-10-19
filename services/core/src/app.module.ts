@@ -27,6 +27,7 @@ import { ReminderModule } from './modules/notify/reminder.module';
 import { SettlementModule } from './modules/settlement/settlement.module';
 import { PatrolModule } from './modules/ops/patrol.module';
 import { TicketModule } from './modules/ops/ticket.module';
+import { MetricsModule } from './modules/ops/metrics.module';
 import { ArtifactsModule } from './infrastructure/artifacts/artifacts.module';
 import { HealthController } from './health.controller';
 
@@ -62,6 +63,7 @@ import { HealthController } from './health.controller';
     SettlementModule, // F3 分账结算（settlement schema owner，M1-W3 Task 8；分账触发状态机 R-01 唯一解冻节点/HOLD 冻结期/违约扣减 R-04/缺席 70-30 R-03/进件前置 R-07；下游 H4/F4 备付/I1=M2 联调，G1 欠款消费位=M2）
     TicketModule, // H3 纠纷工单（ops schema owner，M2-W2 T1：tickets 七类/SLA 24h-48h 配置化/OPEN→PROCESSING→RESOLVED|REJECTED 守卫流转/ticket_actions 审计行；建单面=ReconciliationDiffFound+RefundFailed relay 消费+人工 API（幂等键=category+ref ⚠W2-9）；处置回调 pricing approve 真链（d4=W2 T3 接线位）；TICKET_RESOLVED 既有 topic 出箱（F3 HOLD 释放消费在位）；R-04 工单源=TicketGateRegistration 生产注册进 F3 闸（修复环 I-1：闸只认未结 dispute，I-2）
     PatrolModule, // H4 资损巡检首轮（ops schema owner，M1-W4 Task 1；架构 §7.2 五类不变量分钟级 RISK_PATROL job：检测 SQL 各域自持+ops 侧聚合，违例台账=patrol-findings 两表 dedup 入账；告警=供应商位 mock）
+    MetricsModule, // H4 指标管道（ops schema owner，M2-W2 T8：V46 events_consumed 去重+metrics_daily 日表——事件流聚合「消费即聚合」无独立 T+1 job；20 源 topic relay 消费幂等 R-03；查询面 GET /admin/dashboard/metrics？group=core|health；巡检=PatrolModule 既有零改动）
     ArtifactsModule, // I3 文件与存证（横切基座非业务模块，⚠W1-4：platform schema owner+infrastructure/artifacts 代码位；M2-W1 T2：putArtifact 统一入口 hash 幂等+WORM/加密 bucket 策略+录音上链 mock+RETENTION_PURGE 日扫+/admin/artifacts 调取面双签门。平级挂本表的原因=Scheduler/IdentityAuth 均依赖 Infrastructure，并入基座即成环——见 artifacts.module 头注）
   ],
   controllers: [HealthController],

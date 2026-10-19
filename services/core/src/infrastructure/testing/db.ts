@@ -60,6 +60,8 @@ export const TEST_DB_TABLES = [
   'ops.patrol_findings',
   'ops.tickets',
   'ops.ticket_actions',
+  'ops.events_consumed',
+  'ops.metrics_daily',
   'agent_assist.specialty_configs',
   'agent_assist.knowledge_docs',
   'agent_assist.knowledge_chunks',

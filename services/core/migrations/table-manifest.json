@@ -52,6 +52,8 @@
     "notify.notifications": "V4__notify.sql",
     "notify.verify_code_sends": "V4__notify.sql",
     "ops.audit_logs": "V32__ops.sql",
+    "ops.events_consumed": "V46__ops.sql",
+    "ops.metrics_daily": "V46__ops.sql",
     "ops.patrol_findings": "V34__ops.sql",
     "ops.patrol_runs": "V34__ops.sql",
     "ops.risk_records": "V8__ops.sql",
