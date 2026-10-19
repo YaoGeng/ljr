@@ -697,6 +697,31 @@ export class SessionService {
   }
 
   /**
+   * D3 attendance-stats 查询面的 trade 侧窄面（M2-W2 T2 纯读导出位，加法）：[from,to) 窗内
+   * 该律师的场次 id 清单（slot_start 锚、左闭右开——窗口语义=上海日界由 D3 调用方计算后传
+   * 时刻）。D3 按 room→session 映射在 fulfillment 域内聚合律师到场行（禁跨 schema join，
+   * 架构 §3.2——本面只交付 id 清单）。
+   */
+  async sessionIdsOfLawyerBetween(lawyerId: number, from: Date, to: Date): Promise<number[]> {
+    const lid = assertPositiveInt(lawyerId, 'lawyer_id');
+    if (
+      !(from instanceof Date) ||
+      !(to instanceof Date) ||
+      Number.isNaN(from.getTime()) ||
+      Number.isNaN(to.getTime())
+    ) {
+      throw new AppError(ErrorCode.InvalidArgument, 'from/to 须为有效 Date（上海日界窗口）');
+    }
+    const res = await this.pool.query<{ id: string }>(
+      `SELECT id FROM trade.sessions
+        WHERE lawyer_id = $1 AND slot_start >= $2 AND slot_start < $3
+        ORDER BY id`,
+      [lid, from, to],
+    );
+    return res.rows.map((r) => Number(r.id));
+  }
+
+  /**
    * C6 消费位（M1-W3 T9，R-W2-9 在团判定换装的一翼）：该律师有无进行中场次（终态集外，
    * TERMINAL_STATUSES_SQL 同口径）。只读面（池连接）；C6 改价引擎在团判定 =
    * 本方法 OR GroupBuyService.hasActiveGroupBuys（禁跨 schema join，导出服务查询面）。

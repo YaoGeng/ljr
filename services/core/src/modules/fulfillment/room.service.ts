@@ -9,9 +9,11 @@
  *   （OPEN，grace_end=scheduled_start+5min **应用层锚定**——R-01 开房延迟不吞宽限，与 job
  *   实际触发时刻无关）+ 同事务预写 GRACE_END job（due=grace_end，refType='room'）与
  *   REMIND_GRACE_END job（due=grace_end−1min，M2-W1 T4——D2 宽限结束前 1min 房间提醒
- *   定时器，同锚约定时刻）+ RoomOpened 出箱；失败（适配器异常）→ CANCELLED 行直插
- *   （初始态承载，open_fail_reason 截 64）+ RoomOpenFailed 出箱——**不发出任何信用事件**
- *   （G1 桩验证），无 GRACE_END/REMIND_GRACE_END 预写。
+ *   定时器，同锚约定时刻）与 ABSENT_15M/NO_SHOW_CLOSE 两 job（due=grace_end+15min 同锚，
+ *   M2-W2 T2 增量缝——executor=D3，附录 A.2 裁定）+ RoomOpened 出箱；失败（适配器异常）
+ *   → CANCELLED 行直插（初始态承载，open_fail_reason 截 64）+ RoomOpenFailed 出箱——
+ *   **不发出任何信用事件**（G1 桩验证），无 GRACE_END/REMIND_GRACE_END/ABSENT_15M/
+ *   NO_SHOW_CLOSE 预写。
  *
  * 宽限结束（GRACE_END 执行器）：出箱 GracePeriodEnded **即止**——判定=D3（W2 事件消费，
  * 附录 A.2 裁决；D1 §9 禁止跳过 D3 直接判缺席/改 room 状态）。
@@ -60,6 +62,7 @@ import {
   GRACE_PERIOD_MS,
   OPEN_FAIL_REASON_MAX,
   REMIND_GRACE_END_LEAD_MS,
+  ABSENT_AFTER_MS,
   assertPositiveInt,
   assertRoomMode,
   centsToMoney,
@@ -178,6 +181,24 @@ export class RoomService {
       refType: 'room',
       refId: roomId,
       dueAt: new Date(graceEnd.getTime() - REMIND_GRACE_END_LEAD_MS),
+    });
+    // ABSENT_15M + NO_SHOW_CLOSE 同事务预写（M2-W2 T2 增量缝，附录 A.2 裁定——W1 房间仅预写
+    // GRACE_END/REMIND_GRACE_END，本批补 D3 两 job）：due=grace_end+15min 同锚约定时刻。
+    // producer=D1 目录语义（开房成功即预写），executor=D3（attendance.executors）——
+    // ABSENT_15M=job2 判定（期间进入者 LATE/仍未进入 ABSENT）；NO_SHOW_CLOSE=无人到场关闭
+    // （recheck 锚=room 状态+attendances 判定结果，job1 全员缺席已被处理时幂等无操作）。
+    const absentDue = new Date(graceEnd.getTime() + ABSENT_AFTER_MS);
+    await this.scheduler.registerJob(uow, {
+      jobType: 'ABSENT_15M',
+      refType: 'room',
+      refId: roomId,
+      dueAt: absentDue,
+    });
+    await this.scheduler.registerJob(uow, {
+      jobType: 'NO_SHOW_CLOSE',
+      refType: 'room',
+      refId: roomId,
+      dueAt: absentDue,
     });
     await this.outbox.recordOutbox(uow, {
       type: ROOM_OPENED_TOPIC,

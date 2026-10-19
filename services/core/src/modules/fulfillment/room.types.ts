@@ -25,6 +25,16 @@ export const GRACE_PERIOD_MS = 5 * 60_000;
  */
 export const REMIND_GRACE_END_LEAD_MS = 60_000;
 
+/**
+ * D3 宽限后缺席判定窗口 15 分钟（毫秒，D3 §2/R-01「超宽限 ≤15min=LATE」）：ABSENT_15M 与
+ * NO_SHOW_CLOSE 两 job 的 due=grace_end+本值（D1 开房成功同事务预写，M2-W2 T2 增量缝——
+ * 附录 A.2：同锚约定时刻，判定时点不随触发漂移）。常量落 D1 侧的原因同上=预写方持有偏移
+ * （D3 job2 以本值构造判定锚 deadline=grace_end+本值——presence 序列重放到 deadline 判
+ * 末位事件：末位 join（含恰在 deadline 进入）=LATE、末位 leave/无事件=ABSENT，修复环 I-1
+ * 口径；first_join_at 列仅观测不参与判据）。
+ */
+export const ABSENT_AFTER_MS = 15 * 60_000;
+
 /** open_fail_reason 列宽（V35 varchar(64)；超长截断——错误码审计口径非 PII） */
 export const OPEN_FAIL_REASON_MAX = 64;
 

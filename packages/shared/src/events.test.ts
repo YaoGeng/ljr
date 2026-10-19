@@ -113,6 +113,8 @@ import {
   TICKET_CATEGORIES,
   TicketCategory,
   TicketCreatedPayload,
+  ROOM_IN_SERVICE_TOPIC,
+  RoomInServicePayload,
 } from './events';
 
 describe('A1 身份事件契约（M1-W2）：topic 命名 + 载荷形状（PII 禁入载荷）', () => {
@@ -801,5 +803,13 @@ describe('M2-W2 H3 工单事件契约（T1）：TicketCreated 生产 + 七类词
     ]);
     const all: TicketCategory[] = [...TICKET_CATEGORIES];
     expect(all).toHaveLength(7);
+  });
+});
+
+describe('M2-W2 D3 到场判定事件契约（T2）：RoomInService 生产（附录 A.1 冻结形状）；AttendanceAdjudicated/SessionCancelled 既有契约不重定义（shared 定型=M1 消费面在用）', () => {
+  it('RoomInService：topic=fulfillment.room.in_service，{room_id, session_id}（→H4 房间时点口径、H2 监控位）', () => {
+    expect(ROOM_IN_SERVICE_TOPIC).toBe('fulfillment.room.in_service');
+    const payload: RoomInServicePayload = { room_id: 311, session_id: 911 };
+    expect(payload).toEqual({ room_id: 311, session_id: 911 });
   });
 });

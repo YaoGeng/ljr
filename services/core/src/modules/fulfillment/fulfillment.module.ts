@@ -1,8 +1,9 @@
 /**
  * Fulfillment 履约域模块（架构 §3.2 fulfillment schema owner；D1 房间生命周期（room.*，M2-W1 T1）
- * + D5 会话与消息（conversation.*，M2-W1 T3）同目录追加——⚠W1-2：开发期落 core 单进程，独立
- * rtc-im 服务剥离=V2 演进；可剥离纪律=他域仅经导出接口/事件消费）。施工规格：
- * docs/modules/D-履约/D1-房间生命周期.md、docs/modules/D-履约/D5-会话与消息.md（§1-§10）。
+ * + D5 会话与消息（conversation.*，M2-W1 T3）+ D3 到场与缺席判定（attendance.*，M2-W2 T2）
+ * 同目录追加——⚠W1-2：开发期落 core 单进程，独立 rtc-im 服务剥离=V2 演进；可剥离纪律=他域
+ * 仅经导出接口/事件消费）。施工规格：docs/modules/D-履约/D1-房间生命周期.md、
+ * docs/modules/D-履约/D5-会话与消息.md、docs/modules/D-履约/D3-到场与缺席判定.md（§1-§10）。
  *
  * 可剥离纪律（沿 trade/payment 形态）：导出面只暴露应用服务（RoomService/ConversationService）
  * +事件契约（shared/events）+HTTP/WSS 契约——状态机/执行器/RTC 适配器/网关为模块内部件，
@@ -41,6 +42,11 @@ import { ConversationGateway } from './conversation.gateway';
 import { ConversationHub } from './conversation.hub';
 import { ConversationService } from './conversation.service';
 import { WSS_AUTH_TIMEOUT_MS, DEFAULT_WSS_AUTH_TIMEOUT_MS } from './conversation.gateway';
+import { AttendanceController } from './attendance.controller';
+import { AttendanceConsumer } from './attendance.consumer';
+import { AttendanceJobExecutors } from './attendance.executors';
+import { AttendanceService } from './attendance.service';
+import { ATTENDANCE_CONFIG, attendanceConfigFromEnv } from './attendance.config';
 
 @Module({
   imports: [
@@ -53,7 +59,7 @@ import { WSS_AUTH_TIMEOUT_MS, DEFAULT_WSS_AUTH_TIMEOUT_MS } from './conversation
     WordDictModule, // H5：checkRisk 同步判定（D5 发送链 R-01 单入口）
     ArtifactsModule, // I3：冷存 putArtifact 统一入口（COLD_ARCHIVE 日扫写入面）
   ],
-  controllers: [RoomController, ConversationController],
+  controllers: [RoomController, ConversationController, AttendanceController],
   providers: [
     // RTC 通道适配器（供应商位：mock=W1；声网=M3-W1 换装只改工厂；测试可 override 注失败形态）
     MockRtcProvider,
@@ -73,6 +79,12 @@ import { WSS_AUTH_TIMEOUT_MS, DEFAULT_WSS_AUTH_TIMEOUT_MS } from './conversation
     ConversationJobExecutors,
     // WSS 鉴权超时（⚠W1-6 默认 10s；测试 override 缩短覆盖同一分支）
     { provide: WSS_AUTH_TIMEOUT_MS, useValue: DEFAULT_WSS_AUTH_TIMEOUT_MS },
+    // D3 到场与缺席判定（M2-W2 T2）：应用服务 + presence/GracePeriodEnded 消费端 +
+    // ABSENT_15M/NO_SHOW_CLOSE 执行器 + 容忍窗口配置（D3 §11 配置项默认 60s）
+    AttendanceService,
+    AttendanceConsumer,
+    AttendanceJobExecutors,
+    { provide: ATTENDANCE_CONFIG, useFactory: attendanceConfigFromEnv },
   ],
   // 可剥离纪律：只导出应用服务（内部件不外泄）；ConversationService=D2 房间内提醒
   // （postInternalMessage 系统消息写入面，T4 消费）与 W3 E1（agent 写入接线位）的导出面

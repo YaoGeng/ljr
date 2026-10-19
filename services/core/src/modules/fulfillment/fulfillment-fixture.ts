@@ -56,3 +56,54 @@ export async function roomConversationMessagesRaw(
     mention: r.mention,
   }));
 }
+
+// ---- M2-W2 T2 扩展：D3 到场与缺席判定 spec 的直读锚（attendances 行/room 会话 id） ----
+
+/** 房间全部到场判定行（user_id 升序；D3 判定/presence 幂等断言锚） */
+export async function attendanceRowsRaw(
+  pool: Pool,
+  roomId: number,
+): Promise<
+  ReadonlyArray<{
+    readonly id: number;
+    readonly user_id: number;
+    readonly role: string;
+    readonly first_join_at: Date | null;
+    readonly last_seen_at: Date | null;
+    readonly status: string;
+    readonly adjudicated_at: Date | null;
+  }>
+> {
+  const res = await pool.query<{
+    id: string;
+    user_id: string;
+    role: string;
+    first_join_at: Date | null;
+    last_seen_at: Date | null;
+    status: string;
+    adjudicated_at: Date | null;
+  }>(
+    `SELECT id, user_id, role, first_join_at, last_seen_at, status, adjudicated_at
+       FROM fulfillment.attendances WHERE room_id = $1 ORDER BY user_id`,
+    [roomId],
+  );
+  return res.rows.map((r) => ({
+    id: Number(r.id),
+    user_id: Number(r.user_id),
+    role: r.role,
+    first_join_at: r.first_join_at,
+    last_seen_at: r.last_seen_at,
+    status: r.status,
+    adjudicated_at: r.adjudicated_at,
+  }));
+}
+
+/** 房间的 room 会话 id（presence 序列重放的会话锚；无会话=null） */
+export async function roomConversationIdRaw(pool: Pool, roomId: number): Promise<number | null> {
+  const res = await pool.query<{ id: string }>(
+    `SELECT id FROM fulfillment.conversations WHERE type = 'room' AND ref_id = $1`,
+    [roomId],
+  );
+  const row = res.rows[0];
+  return row === undefined ? null : Number(row.id);
+}

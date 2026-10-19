@@ -634,6 +634,40 @@ export class EnrollmentService {
   }
 
   // ===========================================================================
+  // 导出查询面（跨域消费：D3 confirm-arrival，M2-W2 T2 纯加法）
+  // ===========================================================================
+
+  /**
+   * 报名解析窄面（D3 confirm-arrival 的 enrollment→user+session 事实源，M2-W2 T2 纯读加法）：
+   * {ref_type, ref_id, user_id, pay_status}——D3 校验 session 型+PAID 后定位房间写 attendances
+   * （幂等键=enrollment，D2 §5）。同 schema 只读（trade 域内）；null=报名不存在。
+   */
+  async resolveEnrollment(enrollmentId: number): Promise<{
+    enrollment_id: number;
+    ref_type: 'session' | 'groupbuy';
+    ref_id: number;
+    user_id: number;
+    pay_status: string;
+  } | null> {
+    const id = assertPositiveInt(enrollmentId, 'enrollment_id');
+    const res = await this.pool.query<{
+      ref_type: 'session' | 'groupbuy';
+      ref_id: string;
+      user_id: string;
+      pay_status: string;
+    }>(`SELECT ref_type, ref_id, user_id, pay_status FROM trade.enrollments WHERE id = $1`, [id]);
+    const row = res.rows[0];
+    if (!row) return null;
+    return {
+      enrollment_id: id,
+      ref_type: row.ref_type,
+      ref_id: Number(row.ref_id),
+      user_id: Number(row.user_id),
+      pay_status: row.pay_status,
+    };
+  }
+
+  // ===========================================================================
   // C6 消费位（M1-W3 T9）：该律师的活跃 PAID 报名（补偿对象=已支付且未完成服务用户，R-05/D17）
   // ===========================================================================
 

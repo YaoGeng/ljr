@@ -865,3 +865,16 @@ export interface TicketCreatedPayload {
   /** 优先级（1-5，缺省 3；PRD 未定义档位语义=占位值） */
   readonly priority: number;
 }
+
+/** 房间进入服务（D3 §6 生产，M2-W2 T2 → H4 房间时点口径、H2 监控位；附录 A.1 冻结形状）。
+ *  触发=grace_end 判定「律师在场且 ≥1 用户在场」→ room OPEN→IN_SERVICE（守卫+STL）同事务出箱；
+ *  载荷最小集 {room_id, session_id}（消费方按需回查，禁 PII——同段载荷铁律）。
+ *  AttendanceAdjudicated/SessionCancelled 既有契约本批不重定义（shared 已定型=M1 消费面
+ *  （G1/F3）在用形状；D3 §6 文档形 {room_id,user_id,role,status} 与 shared 冲突时以 shared
+ *  既有为准——adjudication_id=attendances 行 id，禁双写漂移，任务裁定口径）。 */
+export const ROOM_IN_SERVICE_TOPIC = 'fulfillment.room.in_service';
+
+export interface RoomInServicePayload {
+  readonly room_id: number;
+  readonly session_id: number;
+}

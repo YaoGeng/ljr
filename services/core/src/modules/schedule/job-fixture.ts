@@ -151,3 +151,34 @@ export async function seedPendingJobRaw(
   );
   return Number(res.rows[0]!.id);
 }
+
+// ---- M2-W2 T2 扩展：D3（fulfillment 域）spec 的 job 流控回拨/静默 ----
+
+/** 某房间 ref 的指定类型 PENDING job 批量回拨到期（ABSENT_15M/NO_SHOW_CLOSE 等 due=未来锚的
+ *  确定性触发——同 backdateJobDue 的多类型批形态；D3 预写 due=grace_end+15min 天然未来） */
+export async function backdateRoomJobsDue(
+  pool: Pool,
+  jobTypes: readonly string[],
+  roomId: number,
+): Promise<void> {
+  await pool.query(
+    `UPDATE schedule.schedule_jobs SET due_at = now() - interval '1 minute'
+      WHERE job_type = ANY($1::varchar[]) AND ref_id = $2 AND status = 'PENDING'`,
+    [jobTypes, roomId],
+  );
+}
+
+/** 指定类型 PENDING job 批量终态化（消费域 spec 静音未装配执行器的 job 类型——REMIND 系
+ *  executor=notify 域，D3 spec 应用未装载时防 NO_EXECUTOR 噪音；亦用于模拟 job 未达） */
+export async function cancelPendingJobsByType(
+  pool: Pool,
+  jobTypes: readonly string[],
+  refId?: number,
+): Promise<void> {
+  await pool.query(
+    `UPDATE schedule.schedule_jobs SET status = 'CANCELLED'
+      WHERE job_type = ANY($1::varchar[]) AND status = 'PENDING'
+        AND ($2::bigint IS NULL OR ref_id = $2)`,
+    [jobTypes, refId ?? null],
+  );
+}
