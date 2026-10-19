@@ -15,9 +15,9 @@ import {
   LAWYER_AUDIT_PASSED_TOPIC,
   PAYMENT_CALLBACK_INBOXED_TOPIC,
   POINTS_EXPIRED_TOPIC,
+  COUPON_GRANTED_TOPIC,
   POINTS_GRANTED_TOPIC,
   POINTS_REDEEMED_TOPIC,
-  PRICE_COUPON_INSTRUCTED_TOPIC,
   PRICE_VERSION_CREATED_TOPIC,
   REAL_NAME_VERIFIED_TOPIC,
   REFUND_COMPLETED_TOPIC,
@@ -54,7 +54,11 @@ import { RuleCenterService } from '../ops/rule-center.service';
 import { CREDIT_RULES_KEY } from '../credit/credit.types';
 import { SchedulerService, SCHEDULE_JOB_FIRED_TOPIC } from '../schedule/scheduler.service';
 import { TimeTableModule } from '../schedule/time-table.module';
-import { backdatePriceHistorySince } from '../pricing/price-change.fixture';
+import {
+  backdatePriceHistorySince,
+  seedCompSnapshotRaw,
+  seedPriceHistoryRaw,
+} from '../pricing/price-change.fixture';
 import { travelHoldCreated } from '../settlement/settlement-fixture';
 import { SettlementModule } from '../settlement/settlement.module';
 import {
@@ -111,8 +115,11 @@ import { LawyerAdminModule } from '../ops/lawyer-admin.module';
  * CREATED/SESSION_FULL/GROUP_BUY_PUBLISHED/GROUP_BUY_REACHED/ENROLLMENT_PAID/SETTLEMENT_
  * HELD/SETTLEMENT_RELEASED/SPLIT_SETTLED/POINTS_GRANTED/POINTS_REDEEMED/POINTS_EXPIRED/
  * PRICE_VERSION_CREATED（消费方=H4 等 M2）+ schedule.job.fired（执行器内联承接）；
- * W4 增量：PRICE_COUPON_INSTRUCTED（F4 ②券面=M2 消费）、CREDIT_EVENT_EMITTED/RESTRICTION_
- * ISSUED（H4 限制令执行点消费=M2——段 12 C6 审批经 G1 信用消费级联产生）。
+ * W4 增量：CREDIT_EVENT_EMITTED/RESTRICTION_ISSUED（H4 限制令执行点消费=M2——段 12 C6
+ * 审批经 G1 信用消费级联产生）。
+ * M2-W2 T6 迁移：PRICE_COUPON_INSTRUCTED noop 退役（真消费方 CouponInstructionConsumer
+ * 已随 BenefitsModule 在位，原 TODO「落位时移除」兑现）；其发放级联新产 benefits.coupon.
+ * granted（I1/H4 消费=联调后置）→ noop 承接。
  *
  * 时间锚定：全部动态计算（slot_start/deadline 相对 Date.now()；无硬编码日期）。账号：admin/
  * 律师/用户×3 五账号全经 A1 真 /auth 链注册（虚构手机号，TRUNCATE 清场隔离）。
@@ -338,8 +345,11 @@ describe('M1-W4 链 1 正式验收（w3-smoke 冻结链重建 + C6 ⑤面覆盖�
     // TODO(D1/D2/D4): 生产执行域消费者落位注册同 topic 时移除（w1-smoke 同款纪律）
     relay.registerHandler(SCHEDULE_JOB_FIRED_TOPIC, noop);
     // W4 增量三条（段 12 C6 审批级联面；w3-smoke 链内不产出，段 12 起产出）
-    // TODO(F4-②): PRICE_COUPON_INSTRUCTED 券面消费方落位时移除（M2）
-    relay.registerHandler(PRICE_COUPON_INSTRUCTED_TOPIC, noop);
+    // M2-W2 T6：PRICE_COUPON_INSTRUCTED noop 退役——真消费方 CouponInstructionConsumer 已随
+    // BenefitsModule 在位（扇出注册不覆盖，noop 冗余故移除）；其发放级联新产 CouponGranted
+    // （I1 通知/H4 管道消费=联调后置）
+    // TODO(I1/H4): COUPON_GRANTED 消费方落位时移除
+    relay.registerHandler(COUPON_GRANTED_TOPIC, noop);
     // TODO(H4): CREDIT_EVENT_EMITTED/RESTRICTION_ISSUED 消费方落位时移除
     relay.registerHandler(CREDIT_EVENT_EMITTED_TOPIC, noop);
     relay.registerHandler(RESTRICTION_ISSUED_TOPIC, noop);
@@ -1205,8 +1215,10 @@ describe('M1-W4 链 1 正式验收（w3-smoke 冻结链重建 + C6 ⑤面覆盖�
     // noop + POINTS_GRANTED×2 补偿 noop——每轮 dead=0）
     await drainRelay();
 
-    // ⑤面候选窗时间注入（owner 侧 fixture）：created_at 回拨 25h（>⑤类 24h 默认窗）——真链改价行
-    // 入巡检候选集；补偿已发=不变量满足（回拨仅模拟 24h SLA 窗已过，travelHoldCreated 同款先例）
+    // ⑤面候选窗时间注入（owner 侧 fixture）：created_at 回拨 25h（>⑤类 24h 默认窗）——模拟
+    // 24h SLA 窗已过（travelHoldCreated 同款先例）。M2-W2 T6 #39 后候选判定改对照 comp_snapshots
+    // 快照：本行快照 granted=true（段 12 补偿直发同事务落位）→ 零候选零违例（见段 13 逐类注）；
+    // 真阳性形态由段 14 granted=false 快照注入承载
     await backdatePriceHistorySince(pool, historyId, 25 * HOUR_MS);
 
     // =======================================================================
@@ -1236,7 +1248,11 @@ describe('M1-W4 链 1 正式验收（w3-smoke 冻结链重建 + C6 ⑤面覆盖�
     expect(cc.STALE_LOCK?.checked).toBe(2); // S1 LOCKED + G1 PENDING_PAYMENT 两把活跃锁（未来段位不误报）
     expect(cc.SCHED_BACKLOG?.checked).toBe(1); // 聚合面恒 1：在册 PENDING job 全未来=零逾期
     expect(cc.SPLIT_UNCONFIRMED?.checked).toBe(0); // mock 同步确认：SPLIT/REFUND 指令均 CONFIRMED
-    expect(cc.COMPENSATION_UNPAID?.checked).toBe(1); // 回拨行入候选→F4 授予流水核对通过（全路径实证）
+    // M2-W2 T6 #39 口径迁移：巡检⑤对照源=comp_snapshots 快照（旧「pricing_histories 推算应发」
+    // 形态退役）——真链改价行经 approve 已落 granted=true 快照（段 12 补偿直发同事务），回拨
+    // created_at 后**零候选**（checked=0）：无快照/granted=true 均不检出，零已支付合法行零假阳
+    // 即 #39 收口语义；「已发清零」全路径实证由段 14 快照形态用例承载（granted=false 真未发检出）
+    expect(cc.COMPENSATION_UNPAID?.checked).toBe(0); // granted=true 快照在册=已发，非候选（#39 收口后口径）
 
     // 收口：巡检后 outbox 无新残留 + 死信仍 0（巡检只读不产事件；C6 段级联全绿）
     const deadFinal = await pool.query<{ n: number }>(
@@ -1247,5 +1263,33 @@ describe('M1-W4 链 1 正式验收（w3-smoke 冻结链重建 + C6 ⑤面覆盖�
       `SELECT count(*)::int AS n FROM platform.outbox WHERE status <> 'SENT'`,
     );
     expect(unsent.rows[0]?.n).toBe(0);
+
+    // =======================================================================
+    // 段 14（M2-W2 T6 #39 口径迁移增补）：巡检⑤快照形态真阳性实证——granted=false 快照行
+    // ×生效超 24h → 候选检出 1（COMPENSATION_DISPATCH 异步路径/回归 Bug 的检出锚）；
+    // 故障注入经 pricing 域 fixture（seedPriceHistoryRaw+seedCompSnapshotRaw，owner 直插），
+    // 其余四类复跑零新违例（链状态未变，dedup 锚外无新 finding）
+    // =======================================================================
+    const snapHistoryId = await seedPriceHistoryRaw(pool, {
+      lawyerId: 929911,
+      createdAtAgoMs: 25 * HOUR_MS,
+    });
+    await seedCompSnapshotRaw(pool, {
+      priceChangeId: snapHistoryId,
+      userId: 462001,
+      points: 500,
+      granted: false,
+    });
+    const patrolSummary2 = await patrol.runOnce();
+    expect(patrolSummary2.status).toBe('DONE');
+    expect(patrolSummary2.checkedCounts.COMPENSATION_UNPAID?.checked).toBe(1); // 快照 granted=false 入候选
+    expect(patrolSummary2.checkedCounts.COMPENSATION_UNPAID?.findings).toBe(1); // F4 流水核对未命中 → 真未发违例
+    expect(patrolSummary2.checkedCounts.COMPENSATION_UNPAID?.inserted).toBe(1); // 违例入账（dedup 锚=kind+ref）
+    expect(patrolSummary2.checkedCounts.PAID_NOT_REFUNDED?.findings).toBe(0); // 其余四类不受故障注入连坐
+    expect(patrolSummary2.checkedCounts.STALE_LOCK?.findings).toBe(0);
+    expect(patrolSummary2.checkedCounts.SCHED_BACKLOG?.findings).toBe(0);
+    expect(patrolSummary2.checkedCounts.SPLIT_UNCONFIRMED?.findings).toBe(0);
+    expect(patrolSink.alerts).toHaveLength(1); // CRITICAL 恰一条（dev 供应商位内存记录）
+    expect(patrolSink.alerts[0]).toMatchObject({ kind: 'COMPENSATION_UNPAID' });
   });
 });
