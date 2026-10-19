@@ -17,20 +17,27 @@
  *   - PAID→CONVERTED_OUT（M2-W2 T4，C4 §3）：律师确认/认领转化的参与者迁移出标记——迁移
  *     事务=旧行置 CONVERTED_OUT + 新建 session 型行（prev_enrollment_id 回链+快照复制）；
  *     审计链铁律=迁移靠新建行承载，旧行仅 pay_status 位翻转（ref_type/ref_id/快照列禁
- *     UPDATE）。CONVERTED_OUT 机终态无出边：原单退款完成（如 24h 转化窗退款）的收敛走
- *     后继行（enrollment.service advanceToRefunded 迁移链重定向），旧行不复活。
+ *     UPDATE）。CONVERTED_OUT 机终态无出边：原单退款完成（如 24h 转化窗退款）的收敛走后继
+ *     行（enrollment.service advanceToRefunded 迁移链重定向），旧行不复活。
+ *   - PAID→RESCHEDULED_OUT（M2-W2 T5，C5 §3/§9）：律师确认改期的迁移出标记——确认事务=
+ *     旧行置 RESCHEDULED_OUT + 新建 session 型行（快照复制 R-03+prev_enrollment_id 回链+
+ *     reschedule_used=true）。同款审计链铁律（旧行仅 pay_status 位翻转，业务列禁 UPDATE）；
+ *     机终态无出边（退款完成收敛走后继行 advanceToRefunded 迁移链重定向，CONVERTED_OUT
+ *     同构）；未支付行不可改期（R-01 锚=已支付报名），不增 PENDING 入边。
  */
 import { createStateMachine } from '../../infrastructure/state-machine/state-machine';
 
-export type EnrollmentPayStatus = 'PENDING' | 'PAID' | 'REFUNDED' | 'CONVERTED_OUT';
+export type EnrollmentPayStatus =
+  'PENDING' | 'PAID' | 'REFUNDED' | 'CONVERTED_OUT' | 'RESCHEDULED_OUT';
 
 export const ENROLLMENT_MACHINE = createStateMachine<EnrollmentPayStatus>({
   entityType: 'enrollment',
-  states: ['PENDING', 'PAID', 'REFUNDED', 'CONVERTED_OUT'],
+  states: ['PENDING', 'PAID', 'REFUNDED', 'CONVERTED_OUT', 'RESCHEDULED_OUT'],
   transitions: [
     { from: 'PENDING', to: 'PAID' },
     { from: 'PENDING', to: 'REFUNDED' },
     { from: 'PAID', to: 'REFUNDED' },
     { from: 'PAID', to: 'CONVERTED_OUT' }, // M2-W2 T4：C4 迁移出标记（头注）
+    { from: 'PAID', to: 'RESCHEDULED_OUT' }, // M2-W2 T5：C5 改期迁移出标记（头注）
   ],
 });

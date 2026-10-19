@@ -902,3 +902,28 @@ export interface GroupBuyConvertedPayload {
   /** 被迁移参与者（原 groupbuy PAID 报名的 user_id；空数组=零参与转化） */
   readonly migrated_users: readonly number[];
 }
+
+/** 改期申请（C5 §6 生产，M2-W2 T5 → I1 通知律师（联调后置）、H4 管道；附录 A.1 冻结形状）。
+ *  申请事务=PENDING 行落库+RESCHEDULE_CONFIRM_TIMEOUT job 预写（due=requested_at+12h）+
+ *  本事件出箱同事务；user_id=报名属主（幂等键=enrollment：已有 PENDING 请求幂等返回）。 */
+export const RESCHEDULE_REQUESTED_TOPIC = 'trade.reschedule.requested';
+
+export interface RescheduleRequestedPayload {
+  readonly request_id: number;
+  readonly enrollment_id: number;
+  readonly user_id: number;
+  readonly target_session_id: number;
+}
+
+/** 改期确认（C5 §6 生产，M2-W2 T5 → D2 提醒重投消费（防御复核）、I1 通知用户（联调后置）、
+ *  H4 管道；附录 A.1 冻结形状）。确认事务=目标空位守卫+旧报名 RESCHEDULED_OUT+新建行
+ *  （快照复制 R-03+prev 回链）+目标 joined+1+本事件出箱同事务；session_id=目标场次
+ *  （target_session_id——D2 消费按此复核迁移链）。 */
+export const RESCHEDULE_CONFIRMED_TOPIC = 'trade.reschedule.confirmed';
+
+export interface RescheduleConfirmedPayload {
+  readonly old_enrollment_id: number;
+  readonly new_enrollment_id: number;
+  readonly session_id: number;
+  readonly user_id: number;
+}

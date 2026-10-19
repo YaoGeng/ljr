@@ -118,6 +118,12 @@ export const ErrorCode = {
   NotPending: 'E_NOT_PENDING',
   /** C4 转化状态不符：拼团不在可转化源态（PUBLISHED/REACHED/PENDING_LAWYER）不可认领转化（C4 §5 409 NOT_CONVERTIBLE；M2-W2） */
   NotConvertible: 'E_NOT_CONVERTIBLE',
+  /** C5 目标场次无空位：目标非同律师/非 CREATED（报名中）/已满员（C5 §5 409 NO_SEAT；M2-W2） */
+  NoSeat: 'E_NO_SEAT',
+  /** C5 R-02 免费改期一次已用：该报名 reschedule_used=true 第二次申请（C5 §5 409 USED；M2-W2） */
+  RescheduleUsed: 'E_RESCHEDULE_USED',
+  /** C5 R-04 改期请求已过期：12h 确认窗已过（EXPIRED）不可确认（C5 §5 409 EXPIRED；M2-W2） */
+  RescheduleExpired: 'E_RESCHEDULE_EXPIRED',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -343,6 +349,18 @@ const ERROR_CODE_META: Readonly<Record<ErrorCode, ErrorCodeMeta>> = {
     httpStatus: 409,
     defaultMessage:
       '拼团不在可认领转化源态（PUBLISHED/REACHED/PENDING_LAWYER），不可转化（NOT_CONVERTIBLE）',
+  },
+  [ErrorCode.NoSeat]: {
+    httpStatus: 409,
+    defaultMessage: '目标场次无空位或不可改期进入（须同律师、报名中、joined<capacity）',
+  },
+  [ErrorCode.RescheduleUsed]: {
+    httpStatus: 409,
+    defaultMessage: '该报名的免费改期一次已使用（R-02），不可再次改期',
+  },
+  [ErrorCode.RescheduleExpired]: {
+    httpStatus: 409,
+    defaultMessage: '改期请求已过 12h 确认窗（EXPIRED），原报名不受影响（R-04）',
   },
 };
 

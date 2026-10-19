@@ -5,7 +5,8 @@ import { ENROLLMENT_MACHINE, type EnrollmentPayStatus } from './enrollment.machi
 /**
  * C3 enrollment pay_status 状态机迁移矩阵（简报「经 StateTransitionGuard+STL
  * （entity_type='enrollment'）全矩阵用例」；§3 词汇 PENDING|PAID|REFUNDED 三态——
- * R-W3-O 裁决不加第四态；M2-W2 T4（C4）增第四态 CONVERTED_OUT=迁移出标记：
+ * R-W3-O 裁决不加第四态；M2-W2 T4（C4）增第四态 CONVERTED_OUT=迁移出标记；
+ * M2-W2 T5（C5）增第五态 RESCHEDULED_OUT=改期迁移出标记：
  *   - PENDING：报名下单初始态（下单事务即插行：快照+积分冻结+F1 单同事务）；
  *   - PENDING→PAID：支付成功回调（成团守卫事务：先席位计数后报名 PAID，§4/§9 顺序铁律）；
  *   - PENDING→REFUNDED：满员/终态自动退款分支（回调遇 FULL/FAILED/EXPIRED 等，R-01 未成团
@@ -16,6 +17,11 @@ import { ENROLLMENT_MACHINE, type EnrollmentPayStatus } from './enrollment.machi
  *     session 型报名行（prev_enrollment_id 回链+快照复制），旧行置 CONVERTED_OUT（C4 §3；
  *     审计链铁律=迁移靠新建行，旧行仅状态位翻转，ref_type/ref_id/快照列禁 UPDATE）。
  *     CONVERTED_OUT 机终态无出边（退款完成收敛走后继行——advanceToRefunded 迁移链重定向）。
+ *   - PAID→RESCHEDULED_OUT（M2-W2 T5）：C5 律师确认改期的迁移出标记——确认事务同款
+ *     新建行铁律（新行快照复制 R-03+prev 回链+reschedule_used=true），旧行仅 pay_status
+ *     位翻转（C5 §9「禁止：改期更新原行内容」）。机终态无出边（退款完成收敛走后继行，
+ *     CONVERTED_OUT 同构）；未支付（PENDING）行不可改期（R-01 锚=已支付报名），不增
+ *     PENDING→RESCHEDULED_OUT 入边。
  */
 
 const LEGAL: ReadonlyArray<readonly [EnrollmentPayStatus, EnrollmentPayStatus, string]> = [
@@ -23,6 +29,7 @@ const LEGAL: ReadonlyArray<readonly [EnrollmentPayStatus, EnrollmentPayStatus, s
   ['PENDING', 'REFUNDED', '满员/终态自动退款分支（R-01 未成团自动退款；F2 受理+STL 痕）'],
   ['PAID', 'REFUNDED', '退款完成收敛（RefundCompleted 消费；流标批量/部分退款）'],
   ['PAID', 'CONVERTED_OUT', 'C4 确认/认领转化迁移出（M2-W2 T4；新建行回链，旧行置标记）'],
+  ['PAID', 'RESCHEDULED_OUT', 'C5 改期确认迁移出（M2-W2 T5；新建行回链，旧行置标记）'],
 ];
 
 const ILLEGAL: ReadonlyArray<readonly [EnrollmentPayStatus, EnrollmentPayStatus]> = [
@@ -37,16 +44,23 @@ const ILLEGAL: ReadonlyArray<readonly [EnrollmentPayStatus, EnrollmentPayStatus]
   ['CONVERTED_OUT', 'REFUNDED'],
   ['CONVERTED_OUT', 'CONVERTED_OUT'],
   ['PENDING', 'CONVERTED_OUT'], // 未支付行不迁移（晚到回调走既有自动退款分支）
+  ['RESCHEDULED_OUT', 'PENDING'], // 改期迁移出标记无出边（收敛走后继行，同 CONVERTED_OUT）
+  ['RESCHEDULED_OUT', 'PAID'],
+  ['RESCHEDULED_OUT', 'REFUNDED'],
+  ['RESCHEDULED_OUT', 'CONVERTED_OUT'],
+  ['RESCHEDULED_OUT', 'RESCHEDULED_OUT'],
+  ['PENDING', 'RESCHEDULED_OUT'], // 未支付行不可改期（R-01 锚=已支付报名）
 ];
 
-describe('C3 enrollment 状态机（entity_type=enrollment，四态迁移矩阵全用例钉住）', () => {
-  it('entity_type 与状态全集=PENDING|PAID|REFUNDED 三态 + CONVERTED_OUT 迁移出标记（M2-W2 T4）', () => {
+describe('C3 enrollment 状态机（entity_type=enrollment，五态迁移矩阵全用例钉住）', () => {
+  it('entity_type 与状态全集=PENDING|PAID|REFUNDED 三态 + CONVERTED_OUT/RESCHEDULED_OUT 迁移出标记（M2-W2 T4/T5）', () => {
     expect(ENROLLMENT_MACHINE.def.entityType).toBe('enrollment');
     expect([...ENROLLMENT_MACHINE.def.states]).toEqual([
       'PENDING',
       'PAID',
       'REFUNDED',
       'CONVERTED_OUT',
+      'RESCHEDULED_OUT',
     ]);
   });
 

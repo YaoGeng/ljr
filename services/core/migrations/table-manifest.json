@@ -78,6 +78,7 @@
     "settlement.settlements": "V27__settlement.sql",
     "trade.enrollments": "V26__trade.sql",
     "trade.group_buys": "V24__trade.sql",
+    "trade.reschedule_requests": "V42__trade.sql",
     "trade.sessions": "V23__trade.sql"
   }
 }

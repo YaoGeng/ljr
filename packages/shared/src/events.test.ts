@@ -118,7 +118,11 @@ import {
   GROUP_BUY_LAWYER_CONFIRMED_TOPIC,
   GroupBuyLawyerConfirmedPayload,
   GROUP_BUY_CONVERTED_TOPIC,
+  RESCHEDULE_REQUESTED_TOPIC,
+  RESCHEDULE_CONFIRMED_TOPIC,
   GroupBuyConvertedPayload,
+  RescheduleRequestedPayload,
+  RescheduleConfirmedPayload,
 } from './events';
 
 describe('A1 身份事件契约（M1-W2）：topic 命名 + 载荷形状（PII 禁入载荷）', () => {
@@ -851,5 +855,39 @@ describe('M2-W2 C4 律师响应与转化事件契约（T4）：LawyerConfirmed/G
       migrated_users: [],
     };
     expect(empty.migrated_users).toEqual([]);
+  });
+});
+
+describe('M2-W2 C5 改期事件契约（T5）：RescheduleRequested/RescheduleConfirmed 生产（附录 A.1 冻结形状）', () => {
+  it('RescheduleRequested：topic=trade.reschedule.requested，{request_id, enrollment_id, user_id, target_session_id}（→I1 通知律师、H4）', () => {
+    expect(RESCHEDULE_REQUESTED_TOPIC).toBe('trade.reschedule.requested');
+    const payload: RescheduleRequestedPayload = {
+      request_id: 51,
+      enrollment_id: 701,
+      user_id: 6201,
+      target_session_id: 915,
+    };
+    expect(payload).toEqual({
+      request_id: 51,
+      enrollment_id: 701,
+      user_id: 6201,
+      target_session_id: 915,
+    });
+  });
+
+  it('RescheduleConfirmed：topic=trade.reschedule.confirmed，{old_enrollment_id, new_enrollment_id, session_id, user_id}（→D2 提醒重投消费、I1 通知用户、H4）', () => {
+    expect(RESCHEDULE_CONFIRMED_TOPIC).toBe('trade.reschedule.confirmed');
+    const payload: RescheduleConfirmedPayload = {
+      old_enrollment_id: 701,
+      new_enrollment_id: 702,
+      session_id: 915,
+      user_id: 6201,
+    };
+    expect(payload).toEqual({
+      old_enrollment_id: 701,
+      new_enrollment_id: 702,
+      session_id: 915,
+      user_id: 6201,
+    });
   });
 });

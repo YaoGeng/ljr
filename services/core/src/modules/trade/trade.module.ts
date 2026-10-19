@@ -1,8 +1,9 @@
 /**
  * Trade 交易域模块（架构 §3.2 trade schema owner；C1/C2/C3 同域，本任务落 C1=B2C 开团
  * （session.*）+ C2=C2B 发起拼团（group-buy.*）+ C3=报名与支付成团（enrollment.*，M1-W3 T7）
- * + C4=C2B 律师响应与双向转化（group-buy-response.*，M2-W2 T4），文件前缀平级）。施工规格：
- * docs/modules/C-交易/C1-B2C开团、C2-C2B发起拼团、C3-报名与支付成团、C4-C2B律师响应与双向转化（§1-§10）。
+ * + C4=C2B 律师响应与双向转化（group-buy-response.*，M2-W2 T4）+ C5=改期（reschedule.*，
+ * M2-W2 T5），文件前缀平级）。施工规格：
+ * docs/modules/C-交易/C1-B2C开团、C2-C2B发起拼团、C3-报名与支付成团、C4-C2B律师响应与双向转化、C5-改期（§1-§10）。
  *
  * 可剥离纪律（沿 F1 形态）：导出面只暴露应用服务（SessionService / GroupBuyService /
  * EnrollmentService）+ 事件契约（shared/events）+ HTTP 契约——状态机/缓存/执行器/终态 provider/
@@ -55,6 +56,11 @@ import { EnrollmentPatrolService } from './enrollment.patrol';
 import { EnrollmentQueryService } from './enrollment.query';
 import { SessionRefundSource } from './enrollment.refund-source';
 import { EnrollmentService } from './enrollment.service';
+import { NotifyModule } from '../notify/notify.module';
+import { TRADE_RESCHEDULE_CONFIG, tradeRescheduleConfigFromEnv } from './reschedule.config';
+import { RescheduleController } from './reschedule.controller';
+import { RescheduleJobExecutors } from './reschedule.executors';
+import { RescheduleService } from './reschedule.service';
 
 @Module({
   imports: [
@@ -68,12 +74,14 @@ import { EnrollmentService } from './enrollment.service';
     IdentityAuthModule,
     LawyerQualificationModule,
     RealnameConsentModule, // A2：C3 实名闸口 isRealnameVerified（R-06；叶子无循环）
+    NotifyModule, // I1：C5 超时回退 EXPIRED 通知用户（registerForEvent 事务内登记；叶子模块无循环——price-change C6 同款先例）
   ],
   controllers: [
     SessionController,
     GroupBuyController,
     GroupBuyResponseController,
     EnrollmentController,
+    RescheduleController,
   ],
   providers: [
     // 配置装配（LJR_TRADE_* env > 代码默认；⚠04§8-3 截止缺省 24h、§4 确认窗 12h 在此配置化）
@@ -94,6 +102,14 @@ import { EnrollmentService } from './enrollment.service';
     EnrollmentConsumer,
     // H4 资损巡检①类候选检测件（M1-W4 T1：trade 侧自持 SQL，ops 巡检聚合消费——跨域经导出服务）
     EnrollmentPatrolService,
+    // C5 改期（M2-W2 T5）：申请-撤回-律师确认（应用服务+REST 面）+超时执行器装配
+    // （RESCHEDULE_CONFIRM_TIMEOUT；12h/2h 配置化 reschedule.config）
+    {
+      provide: TRADE_RESCHEDULE_CONFIG,
+      useFactory: () => tradeRescheduleConfigFromEnv(process.env),
+    },
+    RescheduleService,
+    RescheduleJobExecutors,
     // ENROLL_DEADLINE 执行器（按 ref_type 分流 session/groupbuy）+ C2B_CONFIRM_TIMEOUT 执行器
     // 经 onModuleInit 注册到 I2 执行器注册表（producer/executor=trade）
     SessionJobExecutors,

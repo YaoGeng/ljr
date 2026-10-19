@@ -613,10 +613,11 @@ export class EnrollmentService {
 
   /**
    * 退款完成收敛（RefundCompleted 消费）：PAID→REFUNDED（STL）；PENDING→REFUNDED 兜底；已终态
-   * 短路。**迁移链重定向（M2-W2 T4）**：目标行为 CONVERTED_OUT（C4 确认/认领转化迁移出的旧行
-   * ——原单退款完成的载荷锚仍是原报名的 F1 幂等键 enroll/e{id}/pay）时，收敛对象重定向到后继
-   * session 型行（prev_enrollment_id 回链，enrollment.machine 头注）：后继 PAID→REFUNDED（STL
-   * entity=后继 id），旧行保持 CONVERTED_OUT 不复活。后继已 REFUNDED=幂等短路；无后继=数据
+   * 短路。**迁移链重定向（M2-W2 T4；T5 扩 RESCHEDULED_OUT）**：目标行为 CONVERTED_OUT（C4
+   * 确认/认领转化迁移出的旧行）或 RESCHEDULED_OUT（C5 改期确认迁移出的旧行——原单退款完成
+   * 的载荷锚仍是原报名的 F1 幂等键 enroll/e{id}/pay）时，收敛对象重定向到后继 session 型行
+   * （prev_enrollment_id 回链，enrollment.machine 头注）：后继 PAID→REFUNDED（STL
+   * entity=后继 id），旧行保持迁移出标记不复活。后继已 REFUNDED=幂等短路；无后继=数据
    * 漂移显性化（InternalError 进重试轨道，不静默）。
    */
   async advanceToRefunded(enrollmentId: number, reason: string): Promise<{ advanced: boolean }> {
@@ -625,12 +626,12 @@ export class EnrollmentService {
       const current = await this.lockEnrollment(uow, id);
       if (!current || current.pay_status === 'REFUNDED') return; // 幂等短路
       let target = current;
-      if (current.pay_status === 'CONVERTED_OUT') {
+      if (current.pay_status === 'CONVERTED_OUT' || current.pay_status === 'RESCHEDULED_OUT') {
         const successor = await this.lockLatestSuccessor(uow, id);
         if (!successor) {
           throw new AppError(
             ErrorCode.InternalError,
-            `报名 ${id} 已 CONVERTED_OUT 但迁移链解析不到后继行（不应触达）`,
+            `报名 ${id} 已 ${current.pay_status} 但迁移链解析不到后继行（不应触达）`,
           );
         }
         if (successor.pay_status === 'REFUNDED') return; // 后继已收敛：幂等短路
@@ -952,8 +953,9 @@ export class EnrollmentService {
   }
 
   /**
-   * 迁移链后继行（M2-W2 T4）：prev_enrollment_id=id 的最新行（FOR UPDATE 行锁串行化并发收敛）。
-   * C4 迁移事务同事务建行——CONVERTED_OUT 旧行恒有后继；null=漂移（调用方显性化）。
+   * 迁移链后继行（M2-W2 T4；T5 扩 C5 改期迁移）：prev_enrollment_id=id 的最新行（FOR UPDATE
+   * 行锁串行化并发收敛）。C4/C5 迁移事务同事务建行——CONVERTED_OUT/RESCHEDULED_OUT 旧行恒有
+   * 后继；null=漂移（调用方显性化）。
    */
   private async lockLatestSuccessor(
     uow: SqlExecutor,

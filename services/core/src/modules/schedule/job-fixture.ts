@@ -59,6 +59,36 @@ export async function countActiveLocks(pool: Pool, refType: string): Promise<num
   return res.rows[0]!.n;
 }
 
+// ---- M2-W2 T5 扩展：C5 改期 spec 的 job 断言锚（RESCHEDULE_CONFIRM_TIMEOUT 状态/作废、
+//      REMIND×4 场次锚集合不变性——「提醒重投零操作」的断言面；owner 直写纪律同上） ----
+
+/** 某 ref 的最新 job 行状态（无行=undefined——jobType 含 RESCHEDULE_CONFIRM_TIMEOUT|REMIND_* 等） */
+export async function jobStatusRaw(
+  pool: Pool,
+  jobType: string,
+  refType: string,
+  refId: number,
+): Promise<string | undefined> {
+  const res = await pool.query<{ status: string }>(
+    `SELECT status FROM schedule.schedule_jobs
+      WHERE job_type = $1 AND ref_type = $2 AND ref_id = $3
+      ORDER BY id DESC LIMIT 1`,
+    [jobType, refType, refId],
+  );
+  return res.rows[0]?.status;
+}
+
+/** 某场次锚 REMIND 系列 job 的 "job_type:status" 快照（集合逐字比对=零作废零预写断言锚） */
+export async function remindJobSnapshotRaw(pool: Pool, sessionId: number): Promise<string[]> {
+  const res = await pool.query<{ job_type: string; status: string }>(
+    `SELECT job_type, status FROM schedule.schedule_jobs
+      WHERE job_type LIKE 'REMIND%' AND ref_type = 'session' AND ref_id = $1
+      ORDER BY job_type`,
+    [sessionId],
+  );
+  return res.rows.map((r) => `${r.job_type}:${r.status}`);
+}
+
 // ---- F3=R8/T8 消费域断言扩展（M1-W3 T8；同头注纪律：owner=schedule 唯一合法直读点） ----
 
 /** job 行列表（按类型；在册/重注册/终态断言用——读写经 I2 API，本夹具只读） */
