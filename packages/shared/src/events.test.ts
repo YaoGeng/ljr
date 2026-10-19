@@ -109,6 +109,10 @@ import {
   RecordingArchivedPayload,
   ARTIFACT_PURGED_TOPIC,
   ArtifactPurgedPayload,
+  TICKET_CREATED_TOPIC,
+  TICKET_CATEGORIES,
+  TicketCategory,
+  TicketCreatedPayload,
 } from './events';
 
 describe('A1 身份事件契约（M1-W2）：topic 命名 + 载荷形状（PII 禁入载荷）', () => {
@@ -750,5 +754,52 @@ describe('M2-W1 通信与房间事件契约（T0 冻结）：D1/D5/D2/I3 生产 
     expect(ARTIFACT_PURGED_TOPIC).toBe('platform.artifact.purged');
     const payload: ArtifactPurgedPayload = { artifact_id: 901, kind: 'cold_message' };
     expect(payload.kind).toBe('cold_message');
+  });
+});
+
+describe('M2-W2 H3 工单事件契约（T1）：TicketCreated 生产 + 七类词汇锚（附录 A.1 冻结形状）', () => {
+  it('TicketCreated：topic=ops.ticket.created，{ticket_id, category, ref_type?, ref_id?, sla_due(ISO), priority}（→H4 管道、I1 分派通知位）', () => {
+    expect(TICKET_CREATED_TOPIC).toBe('ops.ticket.created');
+    const payload: TicketCreatedPayload = {
+      ticket_id: 11,
+      category: 'reconciliation',
+      ref_type: 'recon_period',
+      ref_id: 20261016,
+      sla_due: '2026-10-17T10:00:00.000Z',
+      priority: 3,
+    };
+    expect(payload).toEqual({
+      ticket_id: 11,
+      category: 'reconciliation',
+      ref_type: 'recon_period',
+      ref_id: 20261016,
+      sla_due: '2026-10-17T10:00:00.000Z',
+      priority: 3,
+    });
+  });
+
+  it('TicketCreated：人工工单 ref_* 缺省形态（无幂等锚 ⚠W2-9）', () => {
+    const payload: TicketCreatedPayload = {
+      ticket_id: 12,
+      category: 'dispute',
+      sla_due: '2026-10-21T10:00:00.000Z',
+      priority: 3,
+    };
+    expect(payload.ref_type).toBeUndefined();
+    expect(payload.ref_id).toBeUndefined();
+  });
+
+  it('TICKET_CATEGORIES：七值全集（H3 §2 工单类型，DDL ck 同源锚）', () => {
+    expect([...TICKET_CATEGORIES]).toEqual([
+      'dispute',
+      'refund_review',
+      'price_change',
+      'cancel_lt24h',
+      'reconciliation',
+      'dead_letter',
+      'export_recording',
+    ]);
+    const all: TicketCategory[] = [...TICKET_CATEGORIES];
+    expect(all).toHaveLength(7);
   });
 });

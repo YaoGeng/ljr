@@ -826,3 +826,42 @@ export interface ArtifactPurgedPayload {
   readonly artifact_id: number;
   readonly kind: 'recording' | 'export' | 'credential' | 'cold_message' | 'recon_file';
 }
+
+// ---------------------------------------------------------------------------
+// M2-W2 判定与违约批（T0 契约冻结，执行计划附录 A.1）：本段按任务逐条追加——T1 落
+// ops.ticket.created（H3）；T2/T4/T5/T6 的 topic 随各自任务在本段追加（生产/消费方注记
+// 见附录 A.1 表）。载荷铁律延续：禁明文内容/凭据（PII 红线）。
+// ---------------------------------------------------------------------------
+
+/** 工单类型词汇（H3 §2/§3 七值全集；ops 侧 DDL ck 与服务层枚举的契约锚）。
+ *  dispute=用户申诉纠纷 / refund_review=退款审核 / price_change=改价审批 /
+ *  cancel_lt24h=律师 <24h 取消审批 / reconciliation=对账差异 / dead_letter=死信 /
+ *  export_recording=录制调取。 */
+export const TICKET_CATEGORIES = [
+  'dispute',
+  'refund_review',
+  'price_change',
+  'cancel_lt24h',
+  'reconciliation',
+  'dead_letter',
+  'export_recording',
+] as const;
+
+export type TicketCategory = (typeof TICKET_CATEGORIES)[number];
+
+/** 工单创建（H3 §6 生产，M2-W2 T1 → H4 指标管道、I1 分派通知位（联调后置））。
+ *  SLA 口径（H3 §2）：sla_due 锚=建单时刻（DB 钟），reconciliation=24h 硬 / 其余=48h 软；
+ *  ref_* 缺省=人工工单无幂等锚（⚠W2-9：事件工单幂等键=category+ref，DB 部分唯一兜底）。 */
+export const TICKET_CREATED_TOPIC = 'ops.ticket.created';
+
+export interface TicketCreatedPayload {
+  readonly ticket_id: number;
+  readonly category: TicketCategory;
+  /** 关联实体类型（session/recon_period/refund/pricing_history 等开放词汇；人工工单缺省） */
+  readonly ref_type?: string;
+  readonly ref_id?: number;
+  /** SLA 到期时刻（ISO 8601 UTC） */
+  readonly sla_due: string;
+  /** 优先级（1-5，缺省 3；PRD 未定义档位语义=占位值） */
+  readonly priority: number;
+}

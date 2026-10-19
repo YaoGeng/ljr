@@ -41,7 +41,10 @@ import { SettlementJobExecutors } from './settlement.executors';
     // SETTLE_HOLD_RELEASE 执行器经 onModuleInit 注册到 I2 执行器注册表（producer/executor=F3）
     SettlementJobExecutors,
   ],
-  // 可剥离纪律：只导出应用服务（内部件不外泄）
-  exports: [SettlementService],
+  // 可剥离纪律：只导出应用服务（内部件不外泄）——**唯一例外=OpenTicketGate**（M2-W2 T1 修复
+  // 环 I-1，评审裁决）：gate 是 H3 工单源的注册缝（settlement.gate 注释逐字「H3=M2 经
+  // registerSource 换装」），导出供 TicketModule onModuleInit 注册（TicketGateRegistration），
+  // 闸本体与 F3 行为零改动
+  exports: [SettlementService, OpenTicketGate],
 })
 export class SettlementModule {}
