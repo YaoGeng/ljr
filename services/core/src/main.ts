@@ -10,6 +10,7 @@ import { NotifyDispatchWorker } from './modules/notify/notify-dispatch.worker';
 import { SchedulerWorker } from './modules/schedule/scheduler.worker';
 import { SlotLockService } from './modules/schedule/slot-lock.service';
 import { PointsJobExecutors } from './modules/benefits/points.executors';
+import { ReserveJobExecutors } from './modules/benefits/reserve.executors';
 import { PatrolService } from './modules/ops/patrol.service';
 import { ArtifactsJobExecutors } from './infrastructure/artifacts/artifacts.executors';
 import { ConversationJobExecutors } from './modules/fulfillment/conversation.executors';
@@ -58,6 +59,22 @@ async function bootstrap(): Promise<void> {
       app
         .get<TraceLogger>(TRACE_LOGGER)
         .error(`POINTS_EXPIRE 引导注册失败（每日过期扫不可用，待进程重启再引导）：${String(e)}`);
+    });
+
+  // F4 RESERVE_RECONCILE 日终备付对平 job 引导（M2-W2 T6；目录第 26 项）：幂等注册首个次日
+  // 扫期（上海 04:00——03:00 过期扫之后，在册 PENDING 已存在则跳过），后续由执行器 DONE 前
+  // 自投（ADR-0003 周期 job 自续口径，POINTS_EXPIRE/RISK_PATROL 同款）。引导失败必须留痕
+  // （一次性动作无 interval 自愈窗口——对平停摆只能等进程重启再引导，R-05 资损面检出随之
+  // 延后不丢账：差异对平为幂等只读比较，恢复后首轮即补检）。
+  app
+    .get(ReserveJobExecutors)
+    .ensureDailyJobScheduled()
+    .catch((e: unknown) => {
+      app
+        .get<TraceLogger>(TRACE_LOGGER)
+        .error(
+          `RESERVE_RECONCILE 引导注册失败（日终备付对平不可用，待进程重启再引导）：${String(e)}`,
+        );
     });
 
   // H4 资损巡检周期 job 引导（M1-W4 Task 1）：幂等注册首个 RISK_PATROL（分钟级，在册 PENDING

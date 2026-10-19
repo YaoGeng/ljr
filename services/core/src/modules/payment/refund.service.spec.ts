@@ -10,6 +10,7 @@ import { StateTransitionGuardService } from '../../infrastructure/state-machine/
 import { StateTransitionLogService } from '../../infrastructure/state-machine/state-transition-log.service';
 import { BenefitsConfig, POINTS_TTL_DAYS_DEFAULT } from '../benefits/benefits.config';
 import { PointsService } from '../benefits/points.service';
+import { ReserveService } from '../benefits/reserve.service';
 import {
   getPointsBalance,
   listRefundRestoreTxns,
@@ -120,7 +121,7 @@ describe('F2 退款受理（需 PG）', () => {
       cfg,
     );
     const benefitsConfig: BenefitsConfig = { pointsTtlDays: POINTS_TTL_DAYS_DEFAULT };
-    points = new PointsService(poolSvc, outbox, benefitsConfig);
+    points = new PointsService(poolSvc, outbox, new ReserveService(outbox), benefitsConfig);
     svc = new RefundService(poolSvc, outbox, guard, gateway, points);
   });
 

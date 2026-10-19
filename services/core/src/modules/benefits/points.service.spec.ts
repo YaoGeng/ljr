@@ -17,6 +17,7 @@ import { OutboxService } from '../../infrastructure/outbox/outbox.service';
 import type { SqlExecutor } from '../../infrastructure/sql';
 import { PgPoolService } from '../../infrastructure/sql';
 import { BENEFITS_CONFIG } from './benefits.config';
+import { ReserveService } from './reserve.service';
 import { PointsService } from './points.service';
 
 /**
@@ -103,6 +104,7 @@ describe('F4 ①切片积分服务（授予/冻结核销解冻/退款还原/过�
         PgPoolService,
         OutboxService,
         { provide: BENEFITS_CONFIG, useValue: { pointsTtlDays: 180 } },
+        ReserveService,
         PointsService,
       ],
     }).compile();

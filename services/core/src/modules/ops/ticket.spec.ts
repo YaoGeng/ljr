@@ -7,6 +7,8 @@ import type { Pool } from 'pg';
 import {
   ErrorCode,
   RECONCILIATION_DIFF_FOUND_TOPIC,
+  ABSENCE_SHARE_DANGLING_TOPIC,
+  RESERVE_DIFF_FOUND_TOPIC,
   REFUND_FAILED_TOPIC,
   TICKET_CREATED_TOPIC,
   TICKET_RESOLVED_TOPIC,
@@ -32,7 +34,11 @@ import { travelHoldCreated } from '../settlement/settlement-fixture';
 import { OpenTicketGate } from '../settlement/settlement.gate';
 import { SettlementModule } from '../settlement/settlement.module';
 import { SettlementService } from '../settlement/settlement.service';
-import { createReconciliationDiffFoundHandler } from './ticket.consumer';
+import {
+  createAbsenceShareDanglingHandler,
+  createReconciliationDiffFoundHandler,
+  createReserveDiffFoundHandler,
+} from './ticket.consumer';
 import { TicketService } from './ticket.service';
 import { TicketModule } from './ticket.module';
 import { TICKET_MACHINE } from './ticket.machine';
@@ -560,6 +566,97 @@ describe('H3 纠纷工单与退款审核（R-01~R-04 + §9/§10，需 PG）', ()
       code: ErrorCode.InvalidArgument,
     });
     expect(await tickets.listTickets({ category: 'reconciliation' })).toHaveLength(0);
+  });
+
+  it('M2-W2 T6 ReserveDiffFound：备付对平差异 → reconciliation 工单（title 区分「备付对平差异」+priority=1+24h 硬 SLA）；同期重放幂等（一期一工单）；diff=0 载荷拒绝', async () => {
+    const handler = createReserveDiffFoundHandler(tickets);
+    const evt: RelayEvent = {
+      id: 2,
+      eventId: 'evt-f4-reserve',
+      topic: RESERVE_DIFF_FOUND_TOPIC,
+      payload: {
+        period: '2026-10-19',
+        points_outstanding_cents: 1200,
+        reserve_net_cents: 1150,
+        diff_cents: 50,
+      },
+      retryCount: 0,
+    };
+    await handler(evt, {} as never);
+    const list = await tickets.listTickets({ category: 'reconciliation' });
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({
+      ref_type: 'reserve_period',
+      ref_id: 20261019,
+      title: '备付对平差异：2026-10-19',
+      status: 'OPEN',
+      priority: 1,
+    });
+    expect(list[0]!.detail).toContain('"diff_cents":50');
+    // SLA=24h 硬（reconciliation 类目配置同①）
+    expect(await slaGapMs(list[0]!.id)).toBeGreaterThan(DAY_MS - SLA_TOLERANCE_MS);
+    // 同期重放：幂等键=category+(reserve_period, yyyymmdd) 短路
+    await handler(evt, {} as never);
+    expect(await tickets.listTickets({ category: 'reconciliation' })).toHaveLength(1);
+    // diff=0（平衡误报载荷）→ 拒绝不建单
+    await expect(
+      handler(
+        {
+          id: 3,
+          eventId: 'evt-f4-reserve-0',
+          topic: RESERVE_DIFF_FOUND_TOPIC,
+          payload: {
+            period: '2026-10-20',
+            points_outstanding_cents: 100,
+            reserve_net_cents: 100,
+            diff_cents: 0,
+          },
+          retryCount: 0,
+        },
+        {} as never,
+      ),
+    ).rejects.toMatchObject({ code: ErrorCode.InvalidArgument });
+    expect(await tickets.listTickets({ category: 'reconciliation' })).toHaveLength(1);
+  });
+
+  it('M2-W2 T6 修复环 I-3 AbsenceShareDangling：分成悬空 → reconciliation 工单（title 区分「分成悬空」+24h 硬 SLA）；同场重放幂等（一场一工单）；载荷非法拒绝', async () => {
+    const handler = createAbsenceShareDanglingHandler(tickets);
+    const evt: RelayEvent = {
+      id: 4,
+      eventId: 'evt-f4-dangling',
+      topic: ABSENCE_SHARE_DANGLING_TOPIC,
+      payload: { session_id: 501, absent_users: 2, attending_users: 1 },
+      retryCount: 0,
+    };
+    await handler(evt, {} as never);
+    const list = await tickets.listTickets({ category: 'reconciliation' });
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({
+      ref_type: 'absence_session',
+      ref_id: 501,
+      title: '分成悬空：session=501',
+      status: 'OPEN',
+      priority: 1,
+    });
+    expect(list[0]!.detail).toContain('"absent_users":2');
+    expect(await slaGapMs(list[0]!.id)).toBeGreaterThan(DAY_MS - SLA_TOLERANCE_MS);
+    // 同场重放：幂等键=category+(absence_session, session_id) 短路
+    await handler(evt, {} as never);
+    expect(await tickets.listTickets({ category: 'reconciliation' })).toHaveLength(1);
+    // 载荷非法（attending_users=0）→ 拒绝不建单
+    await expect(
+      handler(
+        {
+          id: 5,
+          eventId: 'evt-f4-dangling-bad',
+          topic: ABSENCE_SHARE_DANGLING_TOPIC,
+          payload: { session_id: 502, absent_users: 1, attending_users: 0 },
+          retryCount: 0,
+        },
+        {} as never,
+      ),
+    ).rejects.toMatchObject({ code: ErrorCode.InvalidArgument });
+    expect(await tickets.listTickets({ category: 'reconciliation' })).toHaveLength(1);
   });
 
   it('§10-1 SLA 统计正确：open/overdue 计数 + 分类计数（超时率口径留 H4）；列表行携带 sla_overdue 布尔', async () => {

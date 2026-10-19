@@ -30,6 +30,17 @@ export function orderSourceRef(paymentOrderId: number): string {
   return `order:${paymentOrderId}`;
 }
 
+/**
+ * ABSENCE_SHARE 授予幂等引用（②全量，任务裁定——报告注明）：ref=absence:{session_id}。
+ * 裁定依据：分成由「该场次全部判定完成」时点单次 splitAbsenceShare（池=Σ缺席用户 paid×30%
+ * 一次取整+余数归首名，R-04 总额口径）驱动，所有到场受益人的幂等键共享场次锚——
+ * (user_id, ABSENCE_SHARE, absence:{sid}) 的 uq 半边天然按受益人区分，事件重放/崩溃
+ * 重投均经该键短路不双计。
+ */
+export function absenceSourceRef(sessionId: number): string {
+  return `absence:${sessionId}`;
+}
+
 // ---------------------------------------------------------------------------
 // 入参（snake_case 契约词汇）
 // ---------------------------------------------------------------------------

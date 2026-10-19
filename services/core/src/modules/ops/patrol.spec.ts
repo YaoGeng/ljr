@@ -9,7 +9,7 @@ import { BenefitsModule } from '../benefits/points.module';
 import { seedCompensationGrantRef } from '../benefits/points-fixture';
 import { PaymentModule } from '../payment/payment.module';
 import { seedPaymentOrderRaw, seedRefundRaw, seedSplitLedgerRaw } from '../payment/order-fixture';
-import { seedPriceHistoryRaw } from '../pricing/price-change.fixture';
+import { seedCompSnapshotRaw, seedPriceHistoryRaw } from '../pricing/price-change.fixture';
 import { PricingChangeModule } from '../pricing/price-change.module';
 import {
   countJobLogsByResult,
@@ -423,14 +423,22 @@ describe('巡检④ SPLIT_UNCONFIRMED（故障注入 + CONFIRMED 清零）', () 
 });
 
 // ---------------------------------------------------------------------------
-// ⑤ COMPENSATION_UNPAID：补偿应发未发 >24h
+// ⑤ COMPENSATION_UNPAID：补偿应发未发 >24h（M2-W2 T6 #39 收口：对照 V44 comp_snapshots——
+// granted=false 快照行=真未发；granted=true=已发；快照零行=无补偿对象零假阳——原「零已支付
+// 合法行检出 CRITICAL」假阳形态回归收口，04 §8 #39）
 // ---------------------------------------------------------------------------
 
-describe('巡检⑤ COMPENSATION_UNPAID（故障注入 + 已发清零 + 非候选排除）', () => {
-  it('EFFECTED DOWN 在团超 24h 零补偿流水 → CRITICAL 入账 + sink 告警', async () => {
+describe('巡检⑤ COMPENSATION_UNPAID（#39 快照对照：真未发 + 已发清零 + 零快照零假阳回归）', () => {
+  it('EFFECTED DOWN 在团超 24h 存在 granted=false 快照行 → CRITICAL 入账 + sink 告警', async () => {
     const historyId = await seedPriceHistoryRaw(pool, {
       lawyerId: 321,
       createdAtAgoMs: AGO_30H,
+    });
+    await seedCompSnapshotRaw(pool, {
+      priceChangeId: historyId,
+      userId: 421,
+      points: 1500,
+      granted: false,
     });
 
     await patrol.runOnce();
@@ -446,12 +454,20 @@ describe('巡检⑤ COMPENSATION_UNPAID（故障注入 + 已发清零 + 非候�
     expect(sink.alerts).toHaveLength(1);
   });
 
-  it('已有 COMPENSATION 授予流水（ref=price_change:{id}）→ 不检出；UP 方向非候选', async () => {
+  it('granted=true 快照（已发）→ 不检出；**快照零行（零已支付合法行）→ 不检出（原假阳回归）**；UP 方向非候选', async () => {
     const paidId = await seedPriceHistoryRaw(pool, {
       lawyerId: 322,
       createdAtAgoMs: AGO_30H,
     });
-    await seedCompensationGrantRef(pool, 421, `price_change:${paidId}`);
+    await seedCompSnapshotRaw(pool, {
+      priceChangeId: paidId,
+      userId: 422,
+      points: 1500,
+      granted: true,
+    });
+    // 原假阳形态：EFFECTED DOWN 在团超窗但零快照行（生效时点无已支付补偿对象——V44 前的
+    // 「pricing_histories 推算应发」形态必检出 CRITICAL，#39 收口后零检出）
+    await seedPriceHistoryRaw(pool, { lawyerId: 324, createdAtAgoMs: AGO_30H });
     await seedPriceHistoryRaw(pool, { lawyerId: 323, direction: 'UP', createdAtAgoMs: AGO_30H });
 
     await patrol.runOnce();
@@ -494,10 +510,17 @@ describe('清零断言（最小正常夹具）', () => {
       status: 'CONFIRMED',
       createdAtAgoMs: AGO_30H,
     });
-    // ⑤：EFFECTED DOWN 在团超窗龄且已发补偿（候选入集→核对通过→零违例的全路径）
+    // ⑤：EFFECTED DOWN 在团超窗龄——granted=false 快照行 + 已发授予流水（候选入集→F4 流水
+    // 核对通过→零违例的全路径，#39 收口后 belt-and-braces 双闸）
     const historyId = await seedPriceHistoryRaw(pool, {
       lawyerId: 331,
       createdAtAgoMs: AGO_30H,
+    });
+    await seedCompSnapshotRaw(pool, {
+      priceChangeId: historyId,
+      userId: 431,
+      points: 1500,
+      granted: false,
     });
     await seedCompensationGrantRef(pool, 431, `price_change:${historyId}`);
 

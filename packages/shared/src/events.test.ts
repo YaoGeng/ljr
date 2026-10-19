@@ -123,6 +123,12 @@ import {
   GroupBuyConvertedPayload,
   RescheduleRequestedPayload,
   RescheduleConfirmedPayload,
+  COUPON_GRANTED_TOPIC,
+  CouponGrantedPayload,
+  RESERVE_DIFF_FOUND_TOPIC,
+  ReserveDiffFoundPayload,
+  ABSENCE_SHARE_DANGLING_TOPIC,
+  AbsenceShareDanglingPayload,
 } from './events';
 
 describe('A1 身份事件契约（M1-W2）：topic 命名 + 载荷形状（PII 禁入载荷）', () => {
@@ -889,5 +895,53 @@ describe('M2-W2 C5 改期事件契约（T5）：RescheduleRequested/RescheduleCo
       session_id: 915,
       user_id: 6201,
     });
+  });
+});
+
+describe('M2-W2 F4 权益事件契约（T6）：CouponGranted 生产 + ReserveDiffFound 生产（对平差异→H3 工单）', () => {
+  it('CouponGranted：topic=benefits.coupon.granted，{grant_id, user_id, coupon_id, face_value, expires_at}（附录 A.1 冻结形状；→I1 通知、H4）', () => {
+    expect(COUPON_GRANTED_TOPIC).toBe('benefits.coupon.granted');
+    const payload: CouponGrantedPayload = {
+      grant_id: 11,
+      user_id: 6301,
+      coupon_id: 1,
+      face_value: '50.00',
+      expires_at: '2027-01-17T03:00:00.000Z',
+    };
+    expect(payload).toEqual({
+      grant_id: 11,
+      user_id: 6301,
+      coupon_id: 1,
+      face_value: '50.00',
+      expires_at: '2027-01-17T03:00:00.000Z',
+    });
+  });
+
+  it('ReserveDiffFound：topic=benefits.reserve.diff_found，{period, points_outstanding_cents, reserve_net_cents, diff_cents}（→H3 reconciliation 工单；A.1 外任务增量，载荷禁 PII 延续）', () => {
+    expect(RESERVE_DIFF_FOUND_TOPIC).toBe('benefits.reserve.diff_found');
+    const payload: ReserveDiffFoundPayload = {
+      period: '2026-10-19',
+      points_outstanding_cents: 1200,
+      reserve_net_cents: 1150,
+      diff_cents: 50,
+    };
+    expect(payload).toEqual({
+      period: '2026-10-19',
+      points_outstanding_cents: 1200,
+      reserve_net_cents: 1150,
+      diff_cents: 50,
+    });
+  });
+});
+
+describe('M2-W2 F4 权益事件契约（T6 修复环 I-3）：AbsenceShareDangling 生产（分成悬空→H3 工单）', () => {
+  it('AbsenceShareDangling：topic=benefits.absence.share_dangling，{session_id, absent_users, attending_users}（→H3 reconciliation 工单 title 区分「分成悬空」）', () => {
+    expect(ABSENCE_SHARE_DANGLING_TOPIC).toBe('benefits.absence.share_dangling');
+    const payload: AbsenceShareDanglingPayload = {
+      session_id: 915,
+      absent_users: 2,
+      attending_users: 3,
+    };
+    expect(payload).toEqual({ session_id: 915, absent_users: 2, attending_users: 3 });
   });
 });

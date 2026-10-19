@@ -10,8 +10,9 @@
  * I2 文档 §4 表行回写=T6 收尾，不在该任务内）；M2-W1 T4 追加 REMIND_GRACE_END（D2 宽限
  * 结束前 1min 房间消息定时器——D2 §2「宽限结束前 1min 消息」需要独立定时器：producer=D1
  * 开房成功同事务预写 due=grace_end−1min、executor=D2 房间内提醒，recheckAnchor 与
- * GRACE_END 同锚）。本注册表取并集 = 25 种——全集是「程序化一致性检查的准入门」，多收
- * 无害、漏收断路。
+ * GRACE_END 同锚）；M2-W2 T6 追加 RESERVE_RECONCILE（附录 A.2 增量第 26 项：F4 日终备付
+ * 对平——R-05 1:1 不变量检查，不平→告警+H3 reconciliation 工单）。本注册表取并集 =
+ * 26 种——全集是「程序化一致性检查的准入门」，多收无害、漏收断路。
  *
  * 排除声明（I2 §2）：RESTRICTION_EXPIRE 不建 job——G1 限制令采用惰性失效（查询时比对 until，G1 §3）。
  *
@@ -43,6 +44,7 @@ export const SCHEDULE_JOB_TYPES = [
   'RULE_EFFECTIVE',
   'RISK_PATROL',
   'COLD_ARCHIVE',
+  'RESERVE_RECONCILE',
 ] as const;
 
 export type ScheduleJobType = (typeof SCHEDULE_JOB_TYPES)[number];
@@ -212,6 +214,15 @@ export const SCHEDULE_JOB_CATALOG: Readonly<Record<ScheduleJobType, ScheduleJobD
       'D5 会话与消息（>90d 消息按会话转 I3 cold_message + 同事务热删；写 artifacts 经 I3 PUT_ARTIFACT 统一入口）',
     recheckAnchor:
       'messages 冷存水位（last_archived_created_at——扫描时刻，进程内+job detail 承载）', // 附录 A.2 唯一目录增量（M2-W1 T3）
+  },
+  RESERVE_RECONCILE: {
+    jobType: 'RESERVE_RECONCILE',
+    producer:
+      'F4 权益（main.ts 引导首个 + 执行器自投下一周期，日终上海 04:00——03:00 POINTS_EXPIRE 过期扫后再对平）', // 附录 A.2 增量第 26 项（M2-W2 T6）
+    executor:
+      'F4 权益（日终备付对平：未兑付积分余额 Σ(balance+frozen) vs reserve_ledgers 净额 Σamount×100，不平→告警日志+ReserveDiffFound 出箱→H3 reconciliation 工单（24h 硬 SLA）；附带核对悬空分成——修复环 I-3：判定流静默 48h 场次应发未发→AbsenceShareDangling 出箱→H3 工单，不动 RISK_PATROL 五类面）',
+    recheckAnchor:
+      'reserve_ledgers 最近对平轮次（period=上海日；对平结果行=job DONE detail 承载，不建新 run 表——任务裁定）',
   },
 };
 

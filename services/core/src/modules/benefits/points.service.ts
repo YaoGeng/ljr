@@ -28,6 +28,11 @@
  *     consumed 抵消 expired_total，还原余额不被原时钟连坐（spec 用例钉死）。
  *
  * 全部过期比对走 DB 时钟（now()，credit 窗口判定同款先例）；测试以 SQL interval 夹具时间旅行。
+ *
+ * ②全量备付记账（M2-W2 T6，R-05 1:1）：正向入账（grant/refundRestore）→ACCRUE、核销
+ * （settle）→REDEEM_NET、过期扣减（expireUser/expireAll）→EXPIRE_NET——均与业务流水
+ * 同事务经 ReserveService.recordInTx 落 benefits.reserve_ledgers（符号/单位/period 口径
+ * 见 reserve.service 头注；deduplicated 短路路径不落台账行）。
  */
 import { Inject, Injectable } from '@nestjs/common';
 import {
@@ -44,6 +49,7 @@ import type { SqlExecutor } from '../../infrastructure/sql';
 import { PgPoolService } from '../../infrastructure/sql';
 import { OutboxService } from '../../infrastructure/outbox/outbox.service';
 import { BENEFITS_CONFIG, type BenefitsConfig } from './benefits.config';
+import { ReserveService } from './reserve.service';
 import {
   EXPIRING_SOON_LIMIT,
   EXPIRING_SOON_WINDOW_DAYS,
@@ -83,11 +89,23 @@ interface TxnRow {
 const LEDGER_GRANT_KINDS_SQL = `('COMPENSATION','ABSENCE_SHARE','REFUND_RESTORE')`;
 const LEDGER_CONSUME_KINDS_SQL = `('REDEEM','EXPIRE')`;
 
+/**
+ * 上海日 yyyymmdd（EXPIRE_NET 台账 ref 的人工下钻锚——纯信息位；台账行 period 的
+ * 事实源口径仍=DB 钟（reserve.service SQL），本键与 period 在上海日切瞬时可差一日，
+ * 不参与任何判定）。Asia/Shanghai 固定 +08:00 无夏令时。
+ */
+function shanghaiDayKey(now: Date): number {
+  const s = new Date(now.getTime() + 8 * 3_600_000);
+  return s.getUTCFullYear() * 10_000 + (s.getUTCMonth() + 1) * 100 + s.getUTCDate();
+}
+
 @Injectable()
 export class PointsService {
   constructor(
     private readonly pool: PgPoolService,
     private readonly outbox: OutboxService,
+    // 备付台账写入面（②全量：正向入账 ACCRUE/核销 REDEEM_NET/过期 EXPIRE_NET 同事务记账）
+    private readonly reserve: ReserveService,
     // Symbol token（纯 interface 无运行时类型）：module useFactory 装配，测试构造直传
     @Inject(BENEFITS_CONFIG) private readonly config: BenefitsConfig,
   ) {}
@@ -97,6 +115,20 @@ export class PointsService {
   // ===========================================================================
 
   async grant(input: GrantInput): Promise<PointsMutationResult> {
+    return this.pool.withTransaction((uow) => this.grantRun(uow, input));
+  }
+
+  /**
+   * grant 的同事务变体（M2-W2 T6 #39 收口）：C6 approve 生效事务内补偿直发——grant 与
+   * pricing 域补偿快照表（comp_snapshots）快照/granted 标记同事务化（freezeInTx/settleInTx
+   * 同形）。
+   */
+  async grantInTx(uow: SqlExecutor, input: GrantInput): Promise<PointsMutationResult> {
+    return this.grantRun(uow, input);
+  }
+
+  /** grant 共用体（校验单点；事务边界由调用形态承载——self-tx=池事务，InTx=调用方事务） */
+  private async grantRun(uow: SqlExecutor, input: GrantInput): Promise<PointsMutationResult> {
     assertPositiveInt(input.user_id, 'user_id');
     const points = assertPoints(input.points, 'points');
     if (!GRANT_KINDS.includes(input.kind as GrantKind)) {
@@ -106,7 +138,7 @@ export class PointsService {
       );
     }
     const ref = assertSourceRef(input.ref, 'ref');
-    return this.insertPositive(input.user_id, points, input.kind as GrantKind, ref);
+    return this.insertPositive(uow, input.user_id, points, input.kind as GrantKind, ref);
   }
 
   // ===========================================================================
@@ -117,64 +149,71 @@ export class PointsService {
     assertPositiveInt(input.user_id, 'user_id');
     const points = assertPoints(input.points, 'points');
     const ref = assertSourceRef(input.ref, 'ref');
-    return this.insertPositive(input.user_id, points, 'REFUND_RESTORE', ref);
+    return this.pool.withTransaction((uow) =>
+      this.insertPositive(uow, input.user_id, points, 'REFUND_RESTORE', ref),
+    );
   }
 
-  /** 正向入账共用体：流水 INSERT ON CONFLICT 幂等 → 余额行锁 UPDATE → PointsGranted 同事务出箱 */
+  /**
+   * 正向入账共用体：流水 INSERT ON CONFLICT 幂等 → 余额行锁 UPDATE → 备付 ACCRUE 同事务
+   * 记账（R-05 1:1：deduplicated 短路路径不落台账行）→ PointsGranted 同事务出箱。
+   */
   private async insertPositive(
+    uow: SqlExecutor,
     userId: number,
     points: number,
     kind: GrantKind | 'REFUND_RESTORE',
     ref: string,
   ): Promise<PointsMutationResult> {
-    return this.pool.withTransaction(async (uow) => {
-      const account = await this.lockAccount(uow, userId);
-      if (!account) {
-        // lockAccount 已 upsert，此处缺失即基座异常，显性化（TS 收窄用显式守卫）
-        throw new AppError(ErrorCode.InternalError, `账户 ${userId} upsert 后不可读（不应触达）`);
-      }
-      const inserted = await uow.query<TxnRow>(
-        `INSERT INTO benefits.points_txns (user_id, delta, kind, source_ref, expires_at)
-         VALUES ($1, $2, $3, $4, now() + make_interval(days => $5))
-         ON CONFLICT (user_id, kind, source_ref) DO NOTHING
-         RETURNING id, delta`,
-        [userId, points, kind, ref, this.config.pointsTtlDays],
+    const account = await this.lockAccount(uow, userId);
+    if (!account) {
+      // lockAccount 已 upsert，此处缺失即基座异常，显性化（TS 收窄用显式守卫）
+      throw new AppError(ErrorCode.InternalError, `账户 ${userId} upsert 后不可读（不应触达）`);
+    }
+    const inserted = await uow.query<TxnRow>(
+      `INSERT INTO benefits.points_txns (user_id, delta, kind, source_ref, expires_at)
+       VALUES ($1, $2, $3, $4, now() + make_interval(days => $5))
+       ON CONFLICT (user_id, kind, source_ref) DO NOTHING
+       RETURNING id, delta`,
+      [userId, points, kind, ref, this.config.pointsTtlDays],
+    );
+    if (inserted.rows.length === 0) {
+      // at-least-once 重放：读回比对载荷——同键同载荷短路（余额/事件不动），异载荷显性冲突
+      const existing = await uow.query<TxnRow>(
+        `SELECT id, delta FROM benefits.points_txns WHERE user_id = $1 AND kind = $2 AND source_ref = $3`,
+        [userId, kind, ref],
       );
-      if (inserted.rows.length === 0) {
-        // at-least-once 重放：读回比对载荷——同键同载荷短路（余额/事件不动），异载荷显性冲突
-        const existing = await uow.query<TxnRow>(
-          `SELECT id, delta FROM benefits.points_txns WHERE user_id = $1 AND kind = $2 AND source_ref = $3`,
-          [userId, kind, ref],
+      const row = existing.rows[0];
+      if (!row) throw new AppError(ErrorCode.InternalError, '幂等流水不可读（不应触达）');
+      if (row.delta !== points) {
+        throw new AppError(
+          ErrorCode.Conflict,
+          `幂等键 (${userId},${kind},${ref}) 已绑定 delta=${row.delta}（同键须同载荷重放）`,
         );
-        const row = existing.rows[0];
-        if (!row) throw new AppError(ErrorCode.InternalError, '幂等流水不可读（不应触达）');
-        if (row.delta !== points) {
-          throw new AppError(
-            ErrorCode.Conflict,
-            `幂等键 (${userId},${kind},${ref}) 已绑定 delta=${row.delta}（同键须同载荷重放）`,
-          );
-        }
-        return { deduplicated: true, balance: account.balance, frozen: account.frozen };
       }
+      return { deduplicated: true, balance: account.balance, frozen: account.frozen };
+    }
 
-      const updated = await uow.query<AccountRow>(
-        `UPDATE benefits.points_accounts SET balance = balance + $2, updated_at = now()
-          WHERE user_id = $1 RETURNING balance, frozen`,
-        [userId, points],
-      );
-      const after = updated.rows[0]!;
-      await this.outbox.recordOutbox(uow, {
-        type: POINTS_GRANTED_TOPIC,
-        payload: {
-          user_id: userId,
-          delta: points,
-          kind,
-          ref,
-          balance_after: after.balance,
-        } satisfies PointsGrantedPayload,
-      });
-      return { deduplicated: false, balance: after.balance, frozen: after.frozen };
+    const updated = await uow.query<AccountRow>(
+      `UPDATE benefits.points_accounts SET balance = balance + $2, updated_at = now()
+        WHERE user_id = $1 RETURNING balance, frozen`,
+      [userId, points],
+    );
+    const after = updated.rows[0]!;
+    // 备付 ACCRUE 逐笔记账（R-05：正向入账与台账同事务；ref 加 u{user} 后缀区分多受益人
+    // 场次——台账无 user 列，人工下钻锚，任务裁定见 reserve.service 头注）
+    await this.reserve.recordInTx(uow, 'ACCRUE', points, `${ref}:u${userId}`);
+    await this.outbox.recordOutbox(uow, {
+      type: POINTS_GRANTED_TOPIC,
+      payload: {
+        user_id: userId,
+        delta: points,
+        kind,
+        ref,
+        balance_after: after.balance,
+      } satisfies PointsGrantedPayload,
     });
+    return { deduplicated: false, balance: after.balance, frozen: after.frozen };
   }
 
   // ===========================================================================
@@ -335,6 +374,9 @@ export class PointsService {
         [input.user_id, points],
       );
       const after = updated.rows[0]!;
+      // 备付 REDEEM_NET 同事务减记（§4「核销同步减记」；幂等由 REDEEM 行 ON CONFLICT 短路
+      // 承载——deduplicated 路径不落台账行）
+      await this.reserve.recordInTx(uow, 'REDEEM_NET', points, ref);
       await this.outbox.recordOutbox(uow, {
         type: POINTS_REDEEMED_TOPIC,
         payload: {
@@ -512,6 +554,14 @@ export class PointsService {
       [userId, deduct],
     );
     const after = updated.rows[0]!;
+    // 备付 EXPIRE_NET 净减记（当日净过期额；⚠04§8-1 到期资金归属待决策→净额记账口径承载。
+    // 幂等：重算式扣减（unprocessed 已收敛→deduct=0 不达此处），无重复台账行）
+    await this.reserve.recordInTx(
+      uow,
+      'EXPIRE_NET',
+      deduct,
+      `expire:${shanghaiDayKey(new Date())}:u${userId}`,
+    );
     await this.outbox.recordOutbox(uow, {
       type: POINTS_EXPIRED_TOPIC,
       payload: {

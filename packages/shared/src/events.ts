@@ -927,3 +927,57 @@ export interface RescheduleConfirmedPayload {
   readonly session_id: number;
   readonly user_id: number;
 }
+
+/** 券发放（F4 §6 生产，M2-W2 T6 → I1 通知（联调后置）、H4 管道；附录 A.1 冻结形状）。
+ *  发放事务=coupon_grants ACTIVE 行落库（UNIQUE(source,source_ref)=C6 指令幂等兜底）+
+ *  本事件出箱同事务；face_value=发放时点券定义快照（Money 字符串；定义源=H7 配置
+ *  coupon.price_comp 现行版，无现行版回退 V43 seed 行——面额 PRD 未定义 ⚠待产品拍板）；
+ *  expires_at=granted_at+validity_days（ISO 8601 UTC 即时串）。 */
+export const COUPON_GRANTED_TOPIC = 'benefits.coupon.granted';
+
+export interface CouponGrantedPayload {
+  readonly grant_id: number;
+  readonly user_id: number;
+  readonly coupon_id: number;
+  /** 券面额快照（元；Money 字符串禁 float） */
+  readonly face_value: Money;
+  /** 到期时刻（ISO 8601 UTC） */
+  readonly expires_at: string;
+}
+
+/** 备付对平差异（F4 §8 生产，M2-W2 T6 → H3 工单消费（category=reconciliation，R-03 SLA
+ *  24h 硬）；**附录 A.1 之外的任务增量 topic**——控制者已裁定工单类目复用 reconciliation
+ *  +title 区分「备付对平差异」，但 ReconciliationDiffFound 载荷为 payment 对账形状
+ *  （channel/amount）且其消费幂等锚=recon_period，复用将混淆两期口径；经事件面接线是为
+ *  规避模块环（Benefits→Ticket→PricingChange→Benefits——ReconciliationDiffFound 先例
+ *  同为事件面建单）。period=对平轮次上海日（工单幂等锚=yyyymmdd 数值化）；三个金额口径
+ *  一律 int 分（points_outstanding=Σ账户 balance+frozen；reserve_net=Σ台账 amount×100；
+ *  diff=前者-后者，非零即不平）。 */
+export const RESERVE_DIFF_FOUND_TOPIC = 'benefits.reserve.diff_found';
+
+export interface ReserveDiffFoundPayload {
+  /** 对平轮次（YYYY-MM-DD，上海日） */
+  readonly period: string;
+  /** 未兑付积分余额（分；Σpoints_accounts.balance+frozen） */
+  readonly points_outstanding_cents: number;
+  /** 备付台账净额（分；Σreserve_ledgers.amount×100） */
+  readonly reserve_net_cents: number;
+  /** 差额（分；=points_outstanding-reserve_net，非零即不平） */
+  readonly diff_cents: number;
+}
+
+/** 缺席分成悬空（F4 §8 生产，M2-W2 T6 修复环 I-3 → H3 工单消费（category=reconciliation，
+ *  title 区分「分成悬空」）；**A.1 外任务增量 topic（控制者修复环裁定）**——RESERVE_RECONCILE
+ *  日终对平的附带核对：AttendanceAdjudicated 判定流静默超 48h 的场次、存在到场用户、
+ *  该场全部缺席判定在册，但 benefits 积分流水无对应 ABSENCE_SHARE 授予（absence:{session_id}
+ *  锚）→ 应发未发检出（判定完成门经事件留痕重放——不跨域读 fulfillment attendances）。
+ *  幂等锚=工单 (reconciliation, absence_session, session_id)——一场一工单；载荷禁 PII 延续。 */
+export const ABSENCE_SHARE_DANGLING_TOPIC = 'benefits.absence.share_dangling';
+
+export interface AbsenceShareDanglingPayload {
+  readonly session_id: number;
+  /** 判定为缺席的用户数（事件留痕去重） */
+  readonly absent_users: number;
+  /** 判定为到场/旁听的用户数（受领人非空——pool 有受领面） */
+  readonly attending_users: number;
+}

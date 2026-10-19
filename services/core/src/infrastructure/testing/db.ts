@@ -12,13 +12,15 @@ import { Pool } from 'pg';
 import { pgConfigFromEnv } from '../sql';
 
 /**
- * 全部基座/demo/notify/schedule/ops/agent_assist/identity/pricing/credit/payment/benefits/trade/fulfillment/settlement 测试表（TRUNCATE 清场清单，须与 V2~V42 迁移同步）。
+ * 全部基座/demo/notify/schedule/ops/agent_assist/identity/pricing/credit/payment/benefits/trade/fulfillment/settlement 测试表（TRUNCATE 清场清单，须与 V2~V44 迁移同步）。
  *
  * notify.notification_templates 不入清单：PRD §8.2 三档话术是 V4 迁移 seed 的参照数据
  * （R-01 全等断言的事实源），清场会把它一并抹掉——同 flyway 历史表不参与清场的道理。
  * 插入自定义模板 fixture 的 spec 必须自行清理（不得污染参照数据）。
  * settlement.fee_versions 同款不入清单：V27 种子 0% 费率版本是 R-06「0% 起步」参照数据；
  * 插入自定义费率版本的 spec 必须自行清理（不得污染参照数据）。
+ * benefits.coupons 同款不入清单（M2-W2 V43）：PRICE_COMP 券定义种子行（id=1，面额 50.00/
+ * 有效期 90 天 ⚠待产品拍板）是发券链的参照数据；插入自定义券定义的 spec 必须自行清理。
  */
 export const TEST_DB_TABLES = [
   'platform.outbox',
@@ -70,6 +72,9 @@ export const TEST_DB_TABLES = [
   'payment.refunds',
   'benefits.points_accounts',
   'benefits.points_txns',
+  'benefits.coupon_grants',
+  'benefits.reserve_ledgers',
+  'pricing.comp_snapshots',
   'trade.sessions',
   'trade.group_buys',
   'trade.enrollments',

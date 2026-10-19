@@ -18,6 +18,7 @@ import { StateTransitionGuardService } from '../../infrastructure/state-machine/
 import { StateTransitionLogService } from '../../infrastructure/state-machine/state-transition-log.service';
 import { BenefitsConfig, POINTS_TTL_DAYS_DEFAULT } from '../benefits/benefits.config';
 import { PointsService } from '../benefits/points.service';
+import { ReserveService } from '../benefits/reserve.service';
 import { listRefundRestoreTxns, seedPointsBalance } from '../benefits/points-fixture';
 import { ChannelRouter, MockChannelAdapter } from './payment.channels';
 import { PAYMENT_SWITCH_WINDOW_MS_DEFAULT, type PaymentConfig } from './payment.config';
@@ -166,7 +167,7 @@ describe('F2 批量退款消费端（需 PG）', () => {
       new PaymentAlertService(new MockPaymentAlertSink()),
       cfg,
     );
-    const points = new PointsService(poolSvc, outbox, {
+    const points = new PointsService(poolSvc, outbox, new ReserveService(outbox), {
       pointsTtlDays: POINTS_TTL_DAYS_DEFAULT,
     } satisfies BenefitsConfig);
     refunds = new RefundService(poolSvc, outbox, guard, gateway, points);

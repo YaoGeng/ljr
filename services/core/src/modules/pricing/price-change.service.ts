@@ -21,9 +21,10 @@
  * 信用/补偿分工：C6 只出箱 PriceChangeApproved（kind 三档，G1 消费扣分/停接）——恶意频繁
  * 改价 -20/严重停接亦 G1 侧规则（credit.rules），本模块不实现扣分。补偿（R-05/D17：分母=
  * paid_amount 全额 cash+points/100）：积分经 F4 grant（COMPENSATION 真链，幂等 ref=
- * price_change:{id}，仅 has_active_group 且 DOWN 生效路径）；券经指令事件出箱（F4 ②全量=
- * M2 消费）。补偿发放 24h SLA=approve 同步直发 + 巡检位 M2（EFFECTED DOWN 历史行对照
- * points_txns 对账，简报 T9「②补验」标注）。
+ * price_change:{id}，仅 has_active_group 且 DOWN 生效路径）；券经指令事件出箱（F4 ②=M2-W2
+ * 消费）。补偿发放 24h SLA=approve 生效事务内直发+comp_snapshots 快照同事务落位（#39 收口，
+ * M2-W2 T6：快照=「应发」持久事实源——含 granted=true 零分行；巡检⑤对照本表，快照零行=
+ * 无补偿对象零假阳，见 price-change.patrol 头注）。
  */
 import { Injectable, Logger } from '@nestjs/common';
 import {
@@ -90,15 +91,10 @@ interface HistoryInsertOut {
   readonly id: string;
 }
 
-/** approve 事务出参（提交后补偿直发/缓存失效的续燃上下文） */
+/** approve 事务出参（提交后缓存失效的续燃上下文；补偿直发已入生效事务——#39 收口） */
 interface ApproveEffectContext {
   readonly historyId: number;
   readonly lawyerId: number;
-  readonly kind: PriceChangeKind;
-  readonly hasActiveGroup: boolean;
-  readonly oldCents: number;
-  readonly newCents: number;
-  readonly recipients: readonly PaidActiveEnrollment[];
 }
 
 /** F-3 载荷比对用稳定序列化：键序归一（jsonb 读回键序与写入侧不保证一致，语义全等判定用） */
@@ -378,36 +374,39 @@ export class PriceChangeService {
             });
           }
         }
-        return {
-          historyId,
-          lawyerId,
-          kind,
-          hasActiveGroup: true,
-          oldCents,
-          newCents,
-          recipients,
-        };
+        if (kind === 'PRICE_DOWN_LE10' || kind === 'PRICE_DOWN_GT10') {
+          // #39 收口（M2-W2 T6）：补偿直发入生效事务——grant（grantInTx 真链，幂等 ref=
+          // price_change:{id}）与 comp_snapshots 快照/granted 标记同事务化（崩溃重放靠 grant
+          // 幂等+快照 UNIQUE 收敛；零发放对象也落 granted=true 零分行——巡检⑤对照快照零假阳）。
+          // requestChange 直效分支无在团 DOWN（R-01 在团降价恒审批档），快照唯一写点即此处。
+          const comps = computeCompensations(
+            recipients.map((r) => ({ user_id: r.user_id, paidCents: r.paid_full_cents })),
+            oldCents,
+            newCents,
+          );
+          const pointsByUser = new Map(comps.map((c) => [c.user_id, c.points]));
+          for (const r of recipients) {
+            const pts = pointsByUser.get(r.user_id) ?? 0; // 取整为 0=零发放合法行（points=0）
+            if (pts > 0) {
+              await this.points.grantInTx(uow, {
+                user_id: r.user_id,
+                points: pts,
+                kind: 'COMPENSATION',
+                ref: `price_change:${historyId}`,
+              });
+            }
+            await uow.query(
+              `INSERT INTO pricing.comp_snapshots (price_change_id, user_id, points, kind, granted)
+               VALUES ($1, $2, $3, 'COMPENSATION', true)
+               ON CONFLICT (price_change_id, user_id) DO NOTHING`,
+              [historyId, r.user_id, pts],
+            );
+          }
+        }
+        return { historyId, lawyerId };
       },
     );
 
-    if (ctx && (ctx.kind === 'PRICE_DOWN_LE10' || ctx.kind === 'PRICE_DOWN_GT10')) {
-      // 提交后补偿直发（F4 真链 grant COMPENSATION；幂等 ref=price_change:{id}，崩溃重放靠
-      // approve 幂等短路不会重发——grant 自身幂等兜底 at-least-once 重放）。24h SLA=同步直发
-      // +巡检位 M2（EFFECTED DOWN 历史行对照 points_txns 对账，简报 T9 ②补验标注）。
-      const comps = computeCompensations(
-        ctx.recipients.map((r) => ({ user_id: r.user_id, paidCents: r.paid_full_cents })),
-        ctx.oldCents,
-        ctx.newCents,
-      );
-      for (const c of comps) {
-        await this.points.grant({
-          user_id: c.user_id,
-          points: c.points,
-          kind: 'COMPENSATION',
-          ref: `price_change:${ctx.historyId}`,
-        });
-      }
-    }
     if (ctx) this.b3.invalidateCurrentCache(ctx.lawyerId);
 
     // 幂等重放/否决路径读回终态出参

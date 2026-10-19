@@ -11,12 +11,17 @@
  *   ③ 首个 job 引导=进程入口 main.ts 调 ensureDailyJobScheduled（幂等注册，SLOT_REAPER 同款）。
  *
  * 节拍口径：每日 03:00 Asia/Shanghai（上海日切后扫全量过期；refId=上海日 yyyymmdd 确定性键）。
+ *
+ * ②全量扩展（M2-W2 T6）：本日扫槽追加券到期 EXPIRED 周期半边（sweepExpired——ACTIVE 行
+ * expires_at<=now 守卫翻转；惰性半边在 CouponService.listMine 读路径）。共用裁定：I2 目录
+ * 零增量（附录 A.2 精神——券到期扫描不单列目录项），F4 日维护同槽，任务报告注明。
  */
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 import type { SqlExecutor } from '../../infrastructure/sql';
 import { PgPoolService } from '../../infrastructure/sql';
 import { ScheduleExecutorRegistry } from '../schedule/scheduler-executor.registry';
 import { SchedulerService } from '../schedule/scheduler.service';
+import { CouponService } from './coupon.service';
 import { PointsService } from './points.service';
 
 /** Asia/Shanghai 固定 +08:00（无夏令时） */
@@ -31,14 +36,24 @@ export interface EnsureDailyJobResult {
   readonly registered: boolean;
 }
 
-/** 下一日扫期（上海 03:00，严格晚于 now）：入参与 refId 同源（refId=该时刻的上海日 yyyymmdd） */
-export function nextDailyDueAt(now: Date): { dueAt: Date; refId: number } {
+/**
+ * 下一日扫期（上海 hourLocal 点，严格晚于 now）：入参与 refId 同源（refId=该时刻的上海日
+ * yyyymmdd）。hourLocal 缺省=3（POINTS_EXPIRE 节拍不变）；M2-W2 T6 起 RESERVE_RECONCILE
+ * 复用本形态取 04:00（纯加法参数——03:00 过期扫完成后再对平）。
+ */
+export function nextDailyDueAt(
+  now: Date,
+  hourLocal: number = DAILY_HOUR_LOCAL,
+): {
+  dueAt: Date;
+  refId: number;
+} {
   const shanghai = new Date(now.getTime() + SHANGHAI_OFFSET_MS);
   let dueLocalMs = Date.UTC(
     shanghai.getUTCFullYear(),
     shanghai.getUTCMonth(),
     shanghai.getUTCDate(),
-    DAILY_HOUR_LOCAL,
+    hourLocal,
     0,
     0,
   );
@@ -58,6 +73,9 @@ export class PointsJobExecutors implements OnModuleInit {
     private readonly scheduler: SchedulerService,
     private readonly pool: PgPoolService,
     private readonly points: PointsService,
+    // ②全量（M2-W2 T6）：券到期 EXPIRED 的周期半边共用本日扫槽（F4 日维护同槽——I2 目录
+    // 零增量裁定沿附录 A.2 精神，惰性半边在 CouponService.listMine；报告注明）
+    private readonly coupons: CouponService,
   ) {}
 
   onModuleInit(): void {
@@ -68,8 +86,10 @@ export class PointsJobExecutors implements OnModuleInit {
         // 自投下一日（独立事务先行，与扫描成败解耦——B2 评审修复②同款）
         const next = await this.ensureDailyJobScheduled();
         const result = await this.points.expireAll(uow);
+        const couponSweep = await this.coupons.sweepExpired(uow);
         return {
           ...result,
+          ...couponSweep,
           next_job_id: next.jobId,
           next_due_at: nextDailyDueAt(new Date()).dueAt.toISOString(),
         };

@@ -56,3 +56,27 @@ export async function backdatePriceHistorySince(
     [historyId, agoMs],
   );
 }
+
+/**
+ * 直插补偿应发快照行（owner=pricing 同域 SQL；M2-W2 T6 起——V44 comp_snapshots）。
+ * 巡检⑤类（#39 收口后）对照本表判定：granted=false>24h=真未发候选、granted=true=已发、
+ * 快照零行=无补偿对象非候选。故障注入（未发形态）/清零侧（已发形态）两用。
+ */
+export async function seedCompSnapshotRaw(
+  pool: Pool,
+  o: {
+    readonly priceChangeId: number;
+    readonly userId: number;
+    readonly points: number;
+    readonly granted: boolean;
+  },
+): Promise<number> {
+  const res = await pool.query<{ id: string }>(
+    `INSERT INTO pricing.comp_snapshots (price_change_id, user_id, points, kind, granted)
+     VALUES ($1, $2, $3, 'COMPENSATION', $4)
+     ON CONFLICT (price_change_id, user_id) DO NOTHING
+     RETURNING id`,
+    [o.priceChangeId, o.userId, o.points, o.granted],
+  );
+  return Number(res.rows[0]!.id);
+}

@@ -39,6 +39,8 @@ import {
   seedSessionRaw,
 } from '../trade/trade-fixture';
 import { PricingChangeModule } from './price-change.module';
+import { PriceChangePatrolService } from './price-change.patrol';
+import { seedCompSnapshotRaw, seedPriceHistoryRaw } from './price-change.fixture';
 
 /**
  * C6 改价与补偿 e2e（§4 引擎判定 + §5 接口契约 + §7 R-01~R-06 + §9 测试矩阵 + §10 验收清单；
@@ -67,9 +69,13 @@ const LAWYER_ISOLATED = 9408; // 在团判定负例（仅终态场次）
 const LAWYER_AGGR = 9409; // F-1 同用户多笔 PAID 聚合
 const LAWYER_DUP = 9410; // F-3 幂等键=lawyer+new_version（PENDING 面）
 const LAWYER_REV2 = 9411; // F-4 撤销 head 复核
+const LAWYER_SNAP = 9412; // #39 快照持久化（M2-W2 T6）
 const USER_A = 701;
 const USER_B = 702;
 const USER_C = 703;
+
+/** 巡检⑤窗口龄（>24h——#39 回归用例的候选窗注入） */
+const AGO_30H_MS = 30 * 3_600_000;
 
 const VALID_1V1 = {
   text: { per_round: '250.00' },
@@ -265,6 +271,7 @@ describe('C6 改价与补偿（§4/§5/§7/§9/§10，需 PG）', () => {
       LAWYER_AGGR,
       LAWYER_DUP,
       LAWYER_REV2,
+      LAWYER_SNAP,
     ]) {
       lawyerTokens.set(id, await mintToken(id, 'lawyer'));
     }
@@ -1048,5 +1055,88 @@ describe('C6 改价与补偿（§4/§5/§7/§9/§10，需 PG）', () => {
         [9409, 1, 2, '0.1', false, 'EFFECTED'],
       ),
     ).resolves.toMatchObject({ rowCount: 1 }); // 合法行可插（对照组）
+  });
+
+  // ---------- #39 收口（M2-W2 T6）：补偿「应发」快照持久化 + 巡检⑤对照改快照 ----------
+
+  it('#39 快照持久化：approve DOWN 生效事务内 comp_snapshots 全量落位——零发放对象也落 granted=true 零分行；grant 同事务（余额与快照原子）；approve 重放幂等不双计', async () => {
+    const USER_TINY = 704;
+    await seedVersion(LAWYER_SNAP, '100.00');
+    // 两受影响用户：USER_A paid=99.98 元（9998 分）+ USER_TINY paid=0.02 元（2 分），Σpaid=10000 分
+    await seedSession(LAWYER_SNAP, 'CREATED', USER_A, {
+      cash: '99.98',
+      points: 0,
+      unitPrice: '100.00',
+    });
+    await seedSession(LAWYER_SNAP, 'CREATED', USER_TINY, {
+      cash: '0.02',
+      points: 0,
+      unitPrice: '100.00',
+    });
+
+    const res = await postChange(LAWYER_SNAP, {
+      base_version: 1,
+      per_head: '80.00',
+      one_on_one_prices: VALID_1V1,
+    });
+    const historyId = res.body.history_id as number;
+    const ok = await approve(historyId, { approved: true, approval_id: 8803 });
+    expect(ok.body.result).toBe('EFFECTED');
+
+    // 快照=recipients 全量（零发放 USER_TINY 也落行，granted=true——「零欠付即无未决」）
+    const snaps = await pool.query<{
+      user_id: string;
+      points: number;
+      kind: string;
+      granted: boolean;
+    }>(
+      `SELECT user_id::text AS user_id, points, kind, granted FROM pricing.comp_snapshots
+        WHERE price_change_id = $1 ORDER BY user_id`,
+      [historyId],
+    );
+    expect(snaps.rows).toEqual([
+      { user_id: String(USER_A), points: 1999, kind: 'COMPENSATION', granted: true },
+      { user_id: String(USER_TINY), points: 0, kind: 'COMPENSATION', granted: true },
+    ]);
+    // grant 与快照同事务：>0 用户入账 1999（2000×9998/10000 floor）；零发放用户无积分入账
+    // （断言走 F4 导出面 getMine——跨域不直读 benefits 表）
+    expect(await balanceOf(USER_A)).toBe(1999);
+    expect(await balanceOf(USER_TINY)).toBe(0);
+
+    // approve 幂等重放：终态短路——快照/余额/事件零新副作用
+    const replay = await approve(historyId, { approved: true, approval_id: 8804 });
+    expect(replay.body).toMatchObject({ result: 'EFFECTED' });
+    const snaps2 = await pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM pricing.comp_snapshots WHERE price_change_id = $1`,
+      [historyId],
+    );
+    expect(snaps2.rows[0]!.n).toBe(2);
+    expect(await balanceOf(USER_A)).toBe(1999);
+  });
+
+  it('#39 巡检⑤零假阳回归：EFFECTED DOWN 在团超窗但快照零行（生效时点无补偿对象）→ 零候选；granted=false 行 → 候选检出', async () => {
+    const patrolService = app.get(PriceChangePatrolService);
+    // 原假阳形态：零已支付行（无 recipients → 无快照）——「pricing_histories 推算应发」旧形态
+    // 必检出 CRITICAL，收口后零候选
+    const bareId = await seedPriceHistoryRaw(pool, {
+      lawyerId: 9413,
+      createdAtAgoMs: AGO_30H_MS,
+    });
+    await expect(
+      patrolService.findUnpaidCompensationCandidates({ windowMs: 24 * 3_600_000 }),
+    ).resolves.toHaveLength(0);
+
+    // 真未发：granted=false 快照行 → 候选（COMPENSATION_DISPATCH 异步路径/回归 Bug 检出锚）
+    await seedCompSnapshotRaw(pool, {
+      priceChangeId: bareId,
+      userId: 705,
+      points: 100,
+      granted: false,
+    });
+    const candidates = await patrolService.findUnpaidCompensationCandidates({
+      windowMs: 24 * 3_600_000,
+    });
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({ historyId: bareId, lawyerId: 9413 });
   });
 });

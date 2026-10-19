@@ -128,6 +128,19 @@ export async function countJobLogsByResult(
   return res.rows[0]!.n;
 }
 
+/** 最近一条指定类型执行日志（result+detail——executor DONE detail 断言锚；M2-W2 T6 修复环 I-2） */
+export async function lastJobLogOf(
+  pool: Pool,
+  jobType: string,
+): Promise<{ result: string; detail: string | null } | null> {
+  const res = await pool.query<{ result: string; detail: string | null }>(
+    `SELECT result, detail FROM schedule.schedule_job_log
+      WHERE job_type = $1 ORDER BY id DESC LIMIT 1`,
+    [jobType],
+  );
+  return res.rows[0] ?? null;
+}
+
 // ---- M1-W4 T1 扩展：H4 资损巡检故障注入（活跃锁直插 + PENDING job 直插回拨） ----
 
 /** 直插一把占用锁（活跃三态可指定；slotStartAgoMs/ttlAtAgoMs 回拨段位/TTL 时刻——巡检②类窗口锚） */
