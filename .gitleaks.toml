@@ -12,9 +12,10 @@
 useDefault = true
 
 [allowlist]
-description = "① dev 占位口令 ljr-dev-only（docker/dev compose 兜底、docker/dev/.env.example 示例与 docs 文档性提及等已申报的非密钥占位符；源码/测试已清理，真凭据由 scripts/db/start.mjs 生成进 .secrets/dev.env——gitignored）；② 示例环境文件仅两条精确路径：根 .env.example（M0-7 凭据注入约定样张）与 docker/dev/.env.example（dev 口令）——不做任意深度匹配，嵌套 .env.example 不豁免（含真密钥即被默认规则捕获）。真实 .env/.secrets/ 已 gitignore、永不入库"
+description = "① dev 占位口令 ljr-dev-only（docker/dev compose 兜底、docker/dev/.env.example 示例与 docs 文档性提及等已申报的非密钥占位符；源码/测试已清理，真凭据由 scripts/db/start.mjs 生成进 .secrets/dev.env——gitignored）；② 示例环境文件仅两条精确路径：根 .env.example（M0-7 凭据注入约定样张）与 docker/dev/.env.example（dev 口令）——不做任意深度匹配，嵌套 .env.example 不豁免（含真密钥即被默认规则捕获）；③ 测试夹具虚构值 secret-xyz-9876（payment 进件 spec 的 mock license_key 兼日志脱敏断言金丝雀，generic-api-key 按 key+赋值模式误报；a741a7f 入库，全历史扫描须按字面值豁免而非 .gitleaksignore 行号指纹——行号已随文件演进 398→440 漂移）。真实 .env/.secrets/ 已 gitignore、永不入库"
 regexes = [
   '''ljr-dev-only''',
+  '''secret-xyz-9876''',
 ]
 paths = [
   '''^\.env\.example$''',
