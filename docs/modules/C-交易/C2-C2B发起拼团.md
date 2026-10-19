@@ -30,7 +30,7 @@ group_buys(
 PUBLISHED(拼团中) → REACHED(达 sub_min 锁人) → PENDING_LAWYER(12h) → CONFIRMED（生成履约 Session）
 PUBLISHED → EXPIRED(截止未成) → REFUNDED
 PENDING_LAWYER → REJECTED(拒绝/超时=自动拒) → REFUNDED
-PUBLISHED/REACHED → CONVERTED（C4 认领转化）
+PUBLISHED/REACHED/PENDING_LAWYER → CONVERTED（C4 认领转化；PENDING_LAWYER 直接转化=认领口径——M2-W2 T4 施工增量；CONFIRMED 不收（已生成 C2B Session，再转化语义未定义→列待澄清））
 守卫：发起人取消仅 PUBLISHED 且 joined<sub_min（有他人加入后不可单方取消，走协商/客服 ⚠未定义——列待澄清）。
 
 ## 5. 接口契约

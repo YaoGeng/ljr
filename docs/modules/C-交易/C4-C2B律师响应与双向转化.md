@@ -46,10 +46,10 @@
 - 禁止：UPDATE 已有 enrollment 行做迁移（审计链铁律）。
 
 ## 10. 验收清单
-- [ ] 超时自动拒绝 + G1 事件 + 全员退款（F2 桩）
-- [ ] 转化后旧行 CONVERTED_OUT/新行 prev 回链完整
-- [ ] 被迁移用户 24h 内退款成功、25h 被拒
-- [ ] 转化事务中段失败全回滚（注入）
+- [x] 超时自动拒绝 + G1 事件 + 全员退款（F2 桩）（**v1.x 勾账（M2-W2 T4）**：commit 39287c6，超时 executor 既有回归+reject API 显式路径同构（LAWYER_REJECTED timeout 双路）；G1 -5 真链已验；F2 全额退款消费=终审 I-1 登记（M1 遗留留位）列 M2-W3 批首项，巡检①类超 10min 告警兜底在位，task-4-report §6-5）
+- [x] 转化后旧行 CONVERTED_OUT/新行 prev 回链完整（证据：commit 39287c6——旧行仅 pay_status 翻转（业务 11 列逐字不动用例）+新行快照逐字复制+prev_enrollment_id 回链；group-buy-response.service.spec）
+- [x] 被迁移用户 24h 内退款成功、25h 被拒（证据：commit 39287c6——CONVERT_WINDOW 受理（SQL 侧单钟 now()-created_at<=24h）；25h 拒用例；修复环 M-1 双钟混用已消）
+- [x] 转化事务中段失败全回滚（注入）（证据：commit 39287c6——session 型 INSERT BEFORE 触发器真注入，七面零残留断言+清除后重试成功，非 mock）
 
 ## 11. 待澄清点
 - 无（B2C 转化场次的 capacity 由律师在 convert 时定，默认=sub_max）。
