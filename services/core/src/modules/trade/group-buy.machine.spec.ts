@@ -10,7 +10,9 @@ import {
  *   PUBLISHED→REACHED→PENDING_LAWYER→CONFIRMED（成团主链，C3 守卫推进/确认 C4=M2）；
  *   PUBLISHED→EXPIRED→REFUNDED（截止未成流标链，本模块执行器→EXPIRED、REFUNDED=F2=T6）；
  *   PENDING_LAWYER→REJECTED→REFUNDED（拒绝链，超时自动拒=本模块执行器、显式拒/退款=C4/F2=M2/T6）；
- *   PUBLISHED/REACHED→CONVERTED（C4 认领转化=M2）。
+ *   PUBLISHED/REACHED→CONVERTED（C4 认领转化=M2）+ PENDING_LAWYER→CONVERTED（M2-W2 T4 增边：
+ *   执行计划 T4 行裁定「PENDING_LAWYER 可直接转化=认领」——12h 确认窗内的高需求拼团可直接
+ *   认领转化，不必先确认再处置；C2 §4 文档原文仅 PUBLISHED/REACHED，增量建议随勾账回写）。
  * 全部迁移经 StateTransitionGuard+STL（entity_type='group_buy'）——本件钉机器定义，
  * 守卫留痕归 DB spec（group-buy.service.spec）。
  */
@@ -35,7 +37,7 @@ describe('C2 拼团状态机（§4 全迁移矩阵，纯机器件）', () => {
     ]);
   });
 
-  it('声明迁移恰 9 条：成团主链 3 边 + 流标链 2 边 + 拒绝链 2 边 + 转化 2 边（§4 逐字）', () => {
+  it('声明迁移恰 10 条：成团主链 3 边 + 流标链 2 边 + 拒绝链 2 边 + 转化 3 边（§4 逐字 + M2-W2 T4 增边）', () => {
     const edges = GROUP_BUY_MACHINE.def.transitions.map((t) => `${t.from}→${t.to}`);
     expect(edges).toEqual([
       'PUBLISHED→REACHED',
@@ -47,10 +49,11 @@ describe('C2 拼团状态机（§4 全迁移矩阵，纯机器件）', () => {
       'REJECTED→REFUNDED',
       'PUBLISHED→CONVERTED',
       'REACHED→CONVERTED',
+      'PENDING_LAWYER→CONVERTED',
     ]);
   });
 
-  it('全迁移矩阵：9 条声明边放行，其余 8×8 全组合（含自环与终态出边）一律拒绝', () => {
+  it('全迁移矩阵：10 条声明边放行，其余 8×8 全组合（含自环与终态出边）一律拒绝', () => {
     const states = GROUP_BUY_MACHINE.def.states;
     const expected = new Set<string>([
       'PUBLISHED→REACHED',
@@ -62,6 +65,7 @@ describe('C2 拼团状态机（§4 全迁移矩阵，纯机器件）', () => {
       'REJECTED→REFUNDED',
       'PUBLISHED→CONVERTED',
       'REACHED→CONVERTED',
+      'PENDING_LAWYER→CONVERTED',
     ]);
     for (const from of states as readonly GroupBuyStatus[]) {
       for (const to of states as readonly GroupBuyStatus[]) {

@@ -878,3 +878,27 @@ export interface RoomInServicePayload {
   readonly room_id: number;
   readonly session_id: number;
 }
+
+/** 律师确认拼团（C4 §6 生产，M2-W2 T4 → I1 通知（联调后置）、H4 管道；附录 A.1 冻结形状）。
+ *  确认事务=PENDING_LAWYER→CONFIRMED + 同事务生成 mode='C2B' 履约 Session + 参与者报名行
+ *  迁移（新建行+prev 回链+旧行 CONVERTED_OUT）；session_id=该履约 Session（R-04 rooms 锚）。 */
+export const GROUP_BUY_LAWYER_CONFIRMED_TOPIC = 'trade.group_buy.lawyer_confirmed';
+
+export interface GroupBuyLawyerConfirmedPayload {
+  readonly gb_id: number;
+  readonly session_id: number;
+  readonly lawyer_id: number;
+}
+
+/** 认领转化 C2B→B2C（C4 §6 生产，M2-W2 T4 → I1 24h 窗通知（联调后置）、F2 CONVERT_WINDOW
+ *  受理（R-03 用户 24h 退款窗）、H4 管道；附录 A.1 冻结形状）。capacity=转化后 B2C 场次容量
+ *  （默认=sub_max）；migrated_users=被迁移参与者 user_id 清单（快照价迁移，R-02）。 */
+export const GROUP_BUY_CONVERTED_TOPIC = 'trade.group_buy.converted';
+
+export interface GroupBuyConvertedPayload {
+  readonly gb_id: number;
+  readonly session_id: number;
+  readonly capacity: number;
+  /** 被迁移参与者（原 groupbuy PAID 报名的 user_id；空数组=零参与转化） */
+  readonly migrated_users: readonly number[];
+}

@@ -112,6 +112,12 @@ export const ErrorCode = {
   KindPolicy: 'E_KIND_POLICY',
   /** D5 同步风控拦截：H5 checkRisk 判 BLOCK，消息拒绝发送不广播（D5 §4/§5 403 BLOCKED_BY_RISK，R-01 先拦后播；M2-W1） */
   BlockedByRisk: 'E_BLOCKED_BY_RISK',
+  /** C4 确认状态不符：拼团非 PENDING_LAWYER（未达待确认态）不可确认（C4 §5 409 NOT_REACHED；M2-W2） */
+  NotReached: 'E_NOT_REACHED',
+  /** C4 拒绝状态不符：拼团非 PENDING_LAWYER 不可拒绝（C4 §5 409 NOT_PENDING；M2-W2） */
+  NotPending: 'E_NOT_PENDING',
+  /** C4 转化状态不符：拼团不在可转化源态（PUBLISHED/REACHED/PENDING_LAWYER）不可认领转化（C4 §5 409 NOT_CONVERTIBLE；M2-W2） */
+  NotConvertible: 'E_NOT_CONVERTIBLE',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -324,6 +330,19 @@ const ERROR_CODE_META: Readonly<Record<ErrorCode, ErrorCodeMeta>> = {
   [ErrorCode.BlockedByRisk]: {
     httpStatus: 403,
     defaultMessage: '消息命中风控拦截词，已被拒绝发送（BLOCKED_BY_RISK）',
+  },
+  [ErrorCode.NotReached]: {
+    httpStatus: 409,
+    defaultMessage: '拼团未达律师待确认态（PENDING_LAWYER），不可确认（NOT_REACHED）',
+  },
+  [ErrorCode.NotPending]: {
+    httpStatus: 409,
+    defaultMessage: '拼团未达律师待确认态（PENDING_LAWYER），不可拒绝（NOT_PENDING）',
+  },
+  [ErrorCode.NotConvertible]: {
+    httpStatus: 409,
+    defaultMessage:
+      '拼团不在可认领转化源态（PUBLISHED/REACHED/PENDING_LAWYER），不可转化（NOT_CONVERTIBLE）',
   },
 };
 

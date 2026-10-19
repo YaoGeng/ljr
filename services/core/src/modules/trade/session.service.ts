@@ -136,6 +136,14 @@ function rate4(numerator: number, denominator: number): number {
   return Math.round((numerator / denominator) * 10_000) / 10_000;
 }
 
+/** 非负整数计数字段（C4 迁移 initial_joined：0=零参与转化合法，无 CAPACITY_MIN 下限） */
+function assertNonNegativeCount(v: unknown, field: string): number {
+  if (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || !Number.isSafeInteger(v)) {
+    throw new AppError(ErrorCode.InvalidArgument, `${field} 须为非负整数：${JSON.stringify(v)}`);
+  }
+  return v;
+}
+
 @Injectable()
 export class SessionService {
   constructor(
@@ -523,17 +531,29 @@ export class SessionService {
    * 报告注明。价格形态：C2B=每人固定分摊 → price_mode='per_head'、unit_price=share_price 快照、
    * session_total=share_price×capacity（整数分无浮点）。enroll_deadline 缺省=slot_start 前 N 小时
    * （⚠04§8-3 同源口径；已确认场次该列仅作形式承载，报名面不开放）。
+   *
+   * M2-W2 T4（C4 接线）加法二件：
+   *   - initial_joined：迁移参与者的初始席位数（C4 确认事务=capacity/joined 同为参与者数——
+   *     满员闭环使 ENROLL_DEADLINE 流标 job 对已确认场次天然 no-op，且 remaining=0 对外
+   *     表达「报名面不开放」；joined 写点仍收敛在本创建方法内，不产生独立 UPDATE）；
+   *   - uow：调用方业务事务句柄——传入时行创建/预写/出箱与 C4 确认事务（GroupBuy 推进+
+   *     enrollment 迁移）同事务原子（§8 迁移事务原子）；缺省=自持事务（既有形态）。
    */
-  async createC2BFulfillment(input: {
-    readonly group_buy_id: number;
-    readonly lawyer_id: number;
-    readonly slot_start: Date;
-    /** R-02 分摊额快照（C2 发布时固化；Money 字符串禁 float） */
-    readonly share_price: Money;
-    readonly capacity: number;
-    readonly room_mode: SessionRoomMode;
-    readonly enroll_deadline?: Date;
-  }): Promise<SessionView> {
+  async createC2BFulfillment(
+    input: {
+      readonly group_buy_id: number;
+      readonly lawyer_id: number;
+      readonly slot_start: Date;
+      /** R-02 分摊额快照（C2 发布时固化；Money 字符串禁 float） */
+      readonly share_price: Money;
+      readonly capacity: number;
+      readonly room_mode: SessionRoomMode;
+      readonly enroll_deadline?: Date;
+      /** 初始已占席位（C4 迁移参与者数；缺省 0=既有形态） */
+      readonly initial_joined?: number;
+    },
+    uow?: SqlExecutor,
+  ): Promise<SessionView> {
     // group_buy_id 形态校验（回链责任在 C4/M2 的 enrollment 行——架构 §4.1「新建 enrollment 行」，
     // 本方法只承载 Session 行；SessionCreatedPayload 契约 §6 逐字无 group_buy_id，不扩载荷）
     assertPositiveInt(input.group_buy_id, 'group_buy_id');
@@ -548,6 +568,13 @@ export class SessionService {
     const shareCents = moneyToCents(input.share_price); // 形态/越界校验内聚（Money 字符串禁 float）
     const capacity = assertCapacity(input.capacity);
     const roomMode = assertRoomMode(input.room_mode);
+    const initialJoined = assertNonNegativeCount(input.initial_joined ?? 0, 'initial_joined');
+    if (initialJoined > capacity) {
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `initial_joined 超出 capacity（${initialJoined}/${capacity}）`,
+      );
+    }
     const totalCents = shareCents * capacity;
     this.assertColumnBounds(shareCents, totalCents);
     const deadline =
@@ -563,14 +590,14 @@ export class SessionService {
       );
     }
 
-    return this.pool.withTransaction(async (uow) => {
+    const run = async (exec: SqlExecutor): Promise<SessionView> => {
       // 双维度列（序 11.5 V33）：specialty/city 不显式物化——C4=M2 接线位随拼团任务带出，
       // 先落 V33 列默认（labor_arbitration/北京），本批单城单垂直下与 B2C 同值
-      const inserted = await uow.query<SessionRow>(
+      const inserted = await exec.query<SessionRow>(
         `INSERT INTO trade.sessions
            (lawyer_id, mode, slot_start, price_mode, unit_price, session_total,
             capacity, joined, enroll_deadline, room_mode, status)
-         VALUES ($1, 'C2B', $2, 'per_head', $3, $4, $5, 0, $6, $7, 'CREATED')
+         VALUES ($1, 'C2B', $2, 'per_head', $3, $4, $5, $8, $6, $7, 'CREATED')
          RETURNING ${SESSION_COLS}`,
         [
           lawyerId,
@@ -580,6 +607,7 @@ export class SessionService {
           capacity,
           deadline,
           roomMode,
+          initialJoined,
         ],
       );
       const row = inserted.rows[0]!;
@@ -587,21 +615,21 @@ export class SessionService {
 
       // I2 job 预写（与 B2C 创建同构：REMIND×4 锚 slot_start、ENROLL_DEADLINE 锚 deadline、
       // ROOM_OPEN 锚 slot_start——executor=D1/D2 均已随 M2-W1 T1/T4 装配）
-      await this.scheduler.registerJob(uow, {
+      await this.scheduler.registerJob(exec, {
         jobType: 'ENROLL_DEADLINE',
         refType: 'session',
         refId: sessionId,
         dueAt: deadline,
       });
       for (const [jobType, offsetMs] of REMIND_OFFSETS_MS) {
-        await this.scheduler.registerJob(uow, {
+        await this.scheduler.registerJob(exec, {
           jobType,
           refType: 'session',
           refId: sessionId,
           dueAt: new Date(slotStart.getTime() - offsetMs),
         });
       }
-      await this.scheduler.registerJob(uow, {
+      await this.scheduler.registerJob(exec, {
         jobType: 'ROOM_OPEN',
         refType: 'session',
         refId: sessionId,
@@ -609,7 +637,7 @@ export class SessionService {
       });
 
       // §6：SessionCreated 与创建同事务出箱（业务回滚则事件不出）
-      await this.outbox.recordOutbox(uow, {
+      await this.outbox.recordOutbox(exec, {
         type: SESSION_CREATED_TOPIC,
         payload: {
           id: sessionId,
@@ -619,7 +647,168 @@ export class SessionService {
         } satisfies SessionCreatedPayload,
       });
       return toView(row);
-    });
+    };
+    return uow ? run(uow) : this.pool.withTransaction(run);
+  }
+
+  // ===========================================================================
+  // C4 认领转化 Session 创建（mode='B2C'；M2-W2 T4——转化事务的 trade.sessions 唯一写点）
+  // ===========================================================================
+
+  /**
+   * 认领转化生成的 B2C 场次（C4 §2「高需求 C2B → B2C 场次」；R-W3-K 单点纪律的 B2C 面）：
+   * GroupBuy→CONVERTED 同事务创建 mode='B2C' 开放场次——joined=迁移参与者数（占席），
+   * capacity=律师转化容量（默认 sub_max，§11），价格=显式覆盖（per_head）或 B3 现值解算
+   * （C4 侧完成，本方法只承载行）；specialty/city 从拼团任务物化带出（双维度延续）。
+   *
+   * 与 B2C create() 的差异（不经 create() 的理由，报告注明）：create() 携带 B2 幂等键
+   * （lawyer+slot_start）/G1 BAN_PUBLISH 闸/价格解算等新开团语义——转化场次是既有拼团的
+   * 迁移承接，幂等锚=group_buy（C4 侧 CONVERTED 状态短路），不重复走新开团闸。
+   *
+   * **锁承接**：转化=groupbuy 锁终态（CONVERTED「不再需要占用锁」）→ 调用方先释放 groupbuy
+   * 锁后经本方法对同段 lockSlot（refType='session'）——同事务内释放后重占，slot 唯一防线
+   * 连续不破。B2C 创建即锁 LOCKED 不计数（R-W3-F），无滥用路径。
+   *
+   * **ENROLL_DEADLINE 条件预写**：截止已过（临期转化）不注册该 job——避免过期 job 立即
+   * misfire 流标掉已迁移参与者的场次（C1 create 用 400 拒绝临期创建承载同一不变量，本路径
+   * 是迁移承接而非新开团，选择保留场次+不开放报名：C3 30s 截止闸自然拦新单）。
+   */
+  async createConvertedB2C(
+    input: {
+      readonly group_buy_id: number;
+      readonly lawyer_id: number;
+      readonly slot_start: Date;
+      readonly specialty: string;
+      readonly city: string;
+      readonly price_mode: PriceMode;
+      readonly unit_price: Money;
+      readonly session_total: Money;
+      readonly capacity: number;
+      /** 迁移参与者数（占席；< capacity=开放新加入按 B2C 价） */
+      readonly initial_joined: number;
+      readonly enroll_deadline?: Date;
+      readonly room_mode: SessionRoomMode;
+    },
+    uow?: SqlExecutor,
+  ): Promise<SessionView> {
+    assertPositiveInt(input.group_buy_id, 'group_buy_id');
+    const lawyerId = assertPositiveInt(input.lawyer_id, 'lawyer_id');
+    if (!(input.slot_start instanceof Date) || Number.isNaN(input.slot_start.getTime())) {
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `slot_start 须为有效时刻：${String(input.slot_start)}`,
+      );
+    }
+    const slotStart = input.slot_start;
+    const capacity = assertCapacity(input.capacity);
+    const initialJoined = assertNonNegativeCount(input.initial_joined, 'initial_joined');
+    if (initialJoined > capacity) {
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `initial_joined 超出 capacity（${initialJoined}/${capacity}）`,
+      );
+    }
+    const unitCents = moneyToCents(input.unit_price);
+    const totalCents = moneyToCents(input.session_total);
+    this.assertColumnBounds(unitCents, totalCents);
+    if (input.specialty.length === 0 || input.specialty.length > 32) {
+      throw new AppError(ErrorCode.InvalidArgument, 'specialty 须为 1-32 字符（列宽）');
+    }
+    if (input.city.length === 0 || input.city.length > 32) {
+      throw new AppError(ErrorCode.InvalidArgument, 'city 须为 1-32 字符（列宽）');
+    }
+    // 报名截止缺省=slot_start 前 N 小时（⚠04§8-3 同源口径；临期转化=已过值保留，头注条件预写）
+    const deadline =
+      input.enroll_deadline ??
+      new Date(slotStart.getTime() - this.config.enrollDeadlineHours * HOUR_MS);
+    if (Number.isNaN(deadline.getTime())) {
+      throw new AppError(ErrorCode.InvalidArgument, 'enroll_deadline 须为有效时刻');
+    }
+    if (deadline.getTime() >= slotStart.getTime()) {
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        'enroll_deadline 须早于 slot_start（截止先于开始）',
+      );
+    }
+    const roomMode = assertRoomMode(input.room_mode);
+
+    const run = async (exec: SqlExecutor): Promise<SessionView> => {
+      const inserted = await exec.query<SessionRow>(
+        `INSERT INTO trade.sessions
+           (lawyer_id, mode, specialty, city, slot_start, price_mode, unit_price, session_total,
+            capacity, joined, enroll_deadline, room_mode, status)
+         VALUES ($1, 'B2C', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'CREATED')
+         RETURNING ${SESSION_COLS}`,
+        [
+          lawyerId,
+          input.specialty,
+          input.city,
+          slotStart,
+          input.price_mode,
+          input.unit_price,
+          input.session_total,
+          capacity,
+          initialJoined,
+          deadline,
+          roomMode,
+        ],
+      );
+      const row = inserted.rows[0]!;
+      const sessionId = Number(row.id);
+
+      // 锁承接（头注）：同段 groupbuy 锁已由调用方在本事务释放——B2C 场次接管占用
+      const locked = await this.locks.lockSlot(exec, {
+        lawyerId,
+        slotStart,
+        initiatorUserId: lawyerId, // B2C 创建即锁：发起人=律师本人（create 同口径）
+        refType: 'session',
+        refId: sessionId,
+      });
+      if (!locked.ok) {
+        // SLOT_TAKEN=事务毒化整回滚（零残留）；SLOT_ABUSE_LIMIT=B2C LOCKED 不计数（R-W3-F）
+        // 的防御位（不可达，机制用例归 B2 spec）
+        throw new AppError(
+          ErrorCode.SlotTaken,
+          `转化场次锁承接失败：律师 ${lawyerId} 在 ${slotStart.toISOString()} 的时段占用异常（${locked.reason}）`,
+        );
+      }
+
+      // I2 job 预写（与 B2C 创建同构；ENROLL_DEADLINE 条件预写=头注临期口径）
+      if (deadline.getTime() > Date.now()) {
+        await this.scheduler.registerJob(exec, {
+          jobType: 'ENROLL_DEADLINE',
+          refType: 'session',
+          refId: sessionId,
+          dueAt: deadline,
+        });
+      }
+      for (const [jobType, offsetMs] of REMIND_OFFSETS_MS) {
+        await this.scheduler.registerJob(exec, {
+          jobType,
+          refType: 'session',
+          refId: sessionId,
+          dueAt: new Date(slotStart.getTime() - offsetMs),
+        });
+      }
+      await this.scheduler.registerJob(exec, {
+        jobType: 'ROOM_OPEN',
+        refType: 'session',
+        refId: sessionId,
+        dueAt: slotStart,
+      });
+
+      await this.outbox.recordOutbox(exec, {
+        type: SESSION_CREATED_TOPIC,
+        payload: {
+          id: sessionId,
+          lawyer_id: lawyerId,
+          slot_start: slotStart.toISOString(),
+          enroll_deadline: deadline.toISOString(),
+        } satisfies SessionCreatedPayload,
+      });
+      return toView(row);
+    };
+    return uow ? run(uow) : this.pool.withTransaction(run);
   }
 
   // ===========================================================================
@@ -645,6 +834,11 @@ export class SessionService {
    * 非终态即可开含 CREATED/FULL——依赖 ENROLL_DEADLINE 截止 job 先行流标兜底（enroll_deadline
    * 恒早于 slot_start，C1 创建校验钉住），slot_start 时刻 CREATED 理论不可达；FULL→CONFIRMED
    * 推进生产者=W2 D 域批定型。收紧面（如仅 CONFIRMED+ 可开）随 W2 复核，本批不改。
+   *
+   * **M2-W2 T4 修复环 M-2 注记**：上述「slot_start 时刻 CREATED 理论不可达」假设已被临期
+   * 转化路径打破——createConvertedB2C 对缺省截止已过的转化**条件预写**（不注册 ENROLL_DEADLINE
+   * job），合法产生「截止已过、无流标 job、CREATED 持续至 slot_start」的迁移承接场次（迁移
+   * 参与者在册，绝不容流标）——本面非终态即放行正是该形态的开房前提，口径以本注记为准。
    */
   async sessionOpenable(exec: SqlExecutor, sessionId: number): Promise<boolean> {
     const status = await this.statusOf(exec, assertPositiveInt(sessionId, 'session_id'));
@@ -671,6 +865,11 @@ export class SessionService {
    * ——本半边在流标 job 终态化之前先行拦截（R-03 幽灵提醒禁令）。成团链（FULL/CONFIRMED/OPEN/
    * IN_SERVICE）不受截止窗影响恒可提醒；sessionOpenable 本身**不收紧**（T1 评审 Minor-3 禁令，
    * 开房链口径不动）——本面为 D2 专用独立导出。
+   *
+   * **M2-W2 T4 修复环 M-2 注记**：临期转化路径（createConvertedB2C 条件预写）合法产生「截止
+   * 已过、无 ENROLL_DEADLINE job」的 CREATED 迁移承接场次——本防御半边对这类场次的 REMIND
+   * 回查恒 false（迁移参与者的临期转化场次收不到 D2 提醒；开房不受影响——sessionOpenable
+   * 不含本半边）。行为面维持现状（D2 幽灵提醒禁令优先），提醒缺口随 D2/I1 联调（W3+）裁定。
    */
   async sessionRemindable(exec: SqlExecutor, sessionId: number): Promise<boolean> {
     const res = await exec.query<{ status: string; enroll_deadline: Date }>(

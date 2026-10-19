@@ -1,8 +1,8 @@
 /**
  * Trade 交易域模块（架构 §3.2 trade schema owner；C1/C2/C3 同域，本任务落 C1=B2C 开团
- * （session.*）+ C2=C2B 发起拼团（group-buy.*）+ C3=报名与支付成团（enrollment.*，M1-W3 T7），
- * 文件前缀平级）。施工规格：
- * docs/modules/C-交易/C1-B2C开团、C2-C2B发起拼团、C3-报名与支付成团（§1-§10）。
+ * （session.*）+ C2=C2B 发起拼团（group-buy.*）+ C3=报名与支付成团（enrollment.*，M1-W3 T7）
+ * + C4=C2B 律师响应与双向转化（group-buy-response.*，M2-W2 T4），文件前缀平级）。施工规格：
+ * docs/modules/C-交易/C1-B2C开团、C2-C2B发起拼团、C3-报名与支付成团、C4-C2B律师响应与双向转化（§1-§10）。
  *
  * 可剥离纪律（沿 F1 形态）：导出面只暴露应用服务（SessionService / GroupBuyService /
  * EnrollmentService）+ 事件契约（shared/events）+ HTTP 契约——状态机/缓存/执行器/终态 provider/
@@ -45,6 +45,8 @@ import { TRADE_GROUP_BUY_CONFIG, tradeGroupBuyConfigFromEnv } from './group-buy.
 import { GroupBuyListCache } from './group-buy.cache';
 import { GroupBuyController } from './group-buy.controller';
 import { GroupBuyJobExecutors } from './group-buy.executors';
+import { GroupBuyResponseController } from './group-buy-response.controller';
+import { GroupBuyResponseService } from './group-buy-response.service';
 import { GroupBuyService } from './group-buy.service';
 import { GroupBuyTerminalProvider } from './group-buy.terminal-provider';
 import { EnrollmentConsumer } from './enrollment.consumer';
@@ -67,7 +69,12 @@ import { EnrollmentService } from './enrollment.service';
     LawyerQualificationModule,
     RealnameConsentModule, // A2：C3 实名闸口 isRealnameVerified（R-06；叶子无循环）
   ],
-  controllers: [SessionController, GroupBuyController, EnrollmentController],
+  controllers: [
+    SessionController,
+    GroupBuyController,
+    GroupBuyResponseController,
+    EnrollmentController,
+  ],
   providers: [
     // 配置装配（LJR_TRADE_* env > 代码默认；⚠04§8-3 截止缺省 24h、§4 确认窗 12h 在此配置化）
     { provide: TRADE_SESSION_CONFIG, useFactory: () => tradeSessionConfigFromEnv(process.env) },
@@ -76,6 +83,9 @@ import { EnrollmentService } from './enrollment.service';
     SessionService,
     GroupBuyListCache,
     GroupBuyService,
+    // C4 C2B 律师响应与双向转化（M2-W2 T4）：接单大厅/confirm/reject/convert/response-stats
+    // （应用服务+REST 面；Session 建面经 SessionService 单点，enrollment 迁移=trade 域内批量新建）
+    GroupBuyResponseService,
     // C3 报名与支付成团（T7）：查询件（C2 cancel 计数缝）/应用服务/退款源（R-W3-M onModuleInit
     // 注册 'session'）/消费者（回调成团守卫+SessionFailed·GroupBuyExpired 扫场+RefundCompleted 收敛）
     EnrollmentQueryService,
@@ -93,6 +103,12 @@ import { EnrollmentService } from './enrollment.service';
     GroupBuyTerminalProvider,
   ],
   // 可剥离纪律：只导出应用服务（内部件不外泄）
-  exports: [SessionService, GroupBuyService, EnrollmentService, EnrollmentPatrolService],
+  exports: [
+    SessionService,
+    GroupBuyService,
+    GroupBuyResponseService,
+    EnrollmentService,
+    EnrollmentPatrolService,
+  ],
 })
 export class TradeModule {}

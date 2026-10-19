@@ -13,7 +13,11 @@
  *   - PENDING_LAWYER→REJECTED：拒绝/超时=自动拒——超时=本模块 C2B_CONFIRM_TIMEOUT 执行器
  *     （via_timeout=true 出箱）；C4 显式拒=M2（via_timeout=false）；
  *   - EXPIRED/REJECTED→REFUNDED：退款完成（F2=T6 推进；本批只声明边）；
- *   - PUBLISHED/REACHED→CONVERTED：C4 认领转化（C4=M2，只声明边）。
+ *   - PUBLISHED/REACHED→CONVERTED：C4 认领转化（C4=M2，只声明边）；
+ *   - PENDING_LAWYER→CONVERTED：M2-W2 T4 增边（执行计划 T4 行裁定「PENDING_LAWYER 可直接
+ *     转化=认领」）：12h 确认窗内的高需求拼团可直接认领转化，不必先确认再处置。C2 §4 文档
+ *     原文仅 PUBLISHED/REACHED 两边——本边为文档外受控增量（生产者=GroupBuyResponseService
+ *     convert），文档回写随 M2-W2 勾账。
  *
  * 终态两集（口径区分，同 C1 session.machine 先例）：
  *   - 锁终态 GROUP_BUY_TERMINAL_STATUSES（B2 reaper isTerminalBatch 同口径，「该 group_buy 不再
@@ -65,5 +69,6 @@ export const GROUP_BUY_MACHINE = createStateMachine<GroupBuyStatus>({
     { from: 'REJECTED', to: 'REFUNDED' },
     { from: 'PUBLISHED', to: 'CONVERTED' },
     { from: 'REACHED', to: 'CONVERTED' },
+    { from: 'PENDING_LAWYER', to: 'CONVERTED' }, // M2-W2 T4 增边（头注）
   ],
 });

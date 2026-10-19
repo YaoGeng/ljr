@@ -115,6 +115,10 @@ import {
   TicketCreatedPayload,
   ROOM_IN_SERVICE_TOPIC,
   RoomInServicePayload,
+  GROUP_BUY_LAWYER_CONFIRMED_TOPIC,
+  GroupBuyLawyerConfirmedPayload,
+  GROUP_BUY_CONVERTED_TOPIC,
+  GroupBuyConvertedPayload,
 } from './events';
 
 describe('A1 身份事件契约（M1-W2）：topic 命名 + 载荷形状（PII 禁入载荷）', () => {
@@ -811,5 +815,41 @@ describe('M2-W2 D3 到场判定事件契约（T2）：RoomInService 生产（附
     expect(ROOM_IN_SERVICE_TOPIC).toBe('fulfillment.room.in_service');
     const payload: RoomInServicePayload = { room_id: 311, session_id: 911 };
     expect(payload).toEqual({ room_id: 311, session_id: 911 });
+  });
+});
+
+describe('M2-W2 C4 律师响应与转化事件契约（T4）：LawyerConfirmed/GroupBuyConverted 生产（附录 A.1 冻结形状）', () => {
+  it('LawyerConfirmed：topic=trade.group_buy.lawyer_confirmed，{gb_id, session_id, lawyer_id}（→I1 通知、H4 管道）', () => {
+    expect(GROUP_BUY_LAWYER_CONFIRMED_TOPIC).toBe('trade.group_buy.lawyer_confirmed');
+    const payload: GroupBuyLawyerConfirmedPayload = {
+      gb_id: 41,
+      session_id: 907,
+      lawyer_id: 9101,
+    };
+    expect(payload).toEqual({ gb_id: 41, session_id: 907, lawyer_id: 9101 });
+  });
+
+  it('GroupBuyConverted：topic=trade.group_buy.converted，{gb_id, session_id, capacity, migrated_users[]}（→I1 24h 窗通知、F2 CONVERT_WINDOW 受理、H4）', () => {
+    expect(GROUP_BUY_CONVERTED_TOPIC).toBe('trade.group_buy.converted');
+    const payload: GroupBuyConvertedPayload = {
+      gb_id: 42,
+      session_id: 908,
+      capacity: 8,
+      migrated_users: [6101, 6102, 6103],
+    };
+    expect(payload).toEqual({
+      gb_id: 42,
+      session_id: 908,
+      capacity: 8,
+      migrated_users: [6101, 6102, 6103],
+    });
+    // 零参与转化：migrated_users 空数组合法形态（PUBLISHED 认领、发起人未支付窗口）
+    const empty: GroupBuyConvertedPayload = {
+      gb_id: 43,
+      session_id: 909,
+      capacity: 5,
+      migrated_users: [],
+    };
+    expect(empty.migrated_users).toEqual([]);
   });
 });

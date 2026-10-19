@@ -438,12 +438,15 @@ export class EnrollmentService {
         capacity = upd.rows[0]!.capacity;
       } else {
         // groupbuy 无计数列（V24 头注⑥）：group_buys 行锁=计数串行化锚（读-迁移-计数原子）；
-        // 先于 REACHED 锁人的已报名者支付照常入团（REACHED 只拒新加入，不拒已受理者的回调）
+        // 先于 REACHED 锁人的已报名者支付照常入团（REACHED 只拒新加入，不拒已受理者的回调）。
+        // **CONFIRMED 不在放行链（M2-W2 T4 修复环 C-1）**：确认时参与者集合已冻结（迁移行已建，
+        // capacity=joined=迁移数=满员无座）——晚到付款若放行将产生「已付款无座位无退款」孤儿行；
+        // 移除后晚到回调走下方自动退款分支（refundIfRejected），与 C2B 满员口径唯一一致。
         const gb = await this.lockGroupBuy(uow, current.ref_id);
         if (!gb) throw new AppError(ErrorCode.NotFound, `拼团任务不存在：${current.ref_id}`);
-        const CHAIN = ['PUBLISHED', 'REACHED', 'PENDING_LAWYER', 'CONFIRMED'];
+        const CHAIN = ['PUBLISHED', 'REACHED', 'PENDING_LAWYER'];
         if (!CHAIN.includes(gb.status)) {
-          return { processed: false, refund: true, enrollment_id: id }; // 终态（EXPIRED/REJECTED/REFUNDED/CONVERTED）
+          return { processed: false, refund: true, enrollment_id: id }; // 终态（EXPIRED/REJECTED/REFUNDED/CONVERTED）+ CONFIRMED（参与者已冻结，C-1）
         }
         subMin = gb.sub_min;
       }
@@ -608,15 +611,34 @@ export class EnrollmentService {
     return { swept, failed };
   }
 
-  /** 退款完成收敛（RefundCompleted 消费）：PAID→REFUNDED（STL）；PENDING→REFUNDED 兜底；已终态短路 */
+  /**
+   * 退款完成收敛（RefundCompleted 消费）：PAID→REFUNDED（STL）；PENDING→REFUNDED 兜底；已终态
+   * 短路。**迁移链重定向（M2-W2 T4）**：目标行为 CONVERTED_OUT（C4 确认/认领转化迁移出的旧行
+   * ——原单退款完成的载荷锚仍是原报名的 F1 幂等键 enroll/e{id}/pay）时，收敛对象重定向到后继
+   * session 型行（prev_enrollment_id 回链，enrollment.machine 头注）：后继 PAID→REFUNDED（STL
+   * entity=后继 id），旧行保持 CONVERTED_OUT 不复活。后继已 REFUNDED=幂等短路；无后继=数据
+   * 漂移显性化（InternalError 进重试轨道，不静默）。
+   */
   async advanceToRefunded(enrollmentId: number, reason: string): Promise<{ advanced: boolean }> {
     const id = assertPositiveInt(enrollmentId, 'enrollment_id');
     await this.pool.withTransaction(async (uow) => {
       const current = await this.lockEnrollment(uow, id);
       if (!current || current.pay_status === 'REFUNDED') return; // 幂等短路
+      let target = current;
+      if (current.pay_status === 'CONVERTED_OUT') {
+        const successor = await this.lockLatestSuccessor(uow, id);
+        if (!successor) {
+          throw new AppError(
+            ErrorCode.InternalError,
+            `报名 ${id} 已 CONVERTED_OUT 但迁移链解析不到后继行（不应触达）`,
+          );
+        }
+        if (successor.pay_status === 'REFUNDED') return; // 后继已收敛：幂等短路
+        target = successor;
+      }
       await this.guard.assertTransition(ENROLLMENT_MACHINE, {
-        entityId: id,
-        from: current.pay_status,
+        entityId: target.id,
+        from: target.pay_status,
         to: 'REFUNDED',
         reason: reason.slice(0, 200),
         uow,
@@ -624,10 +646,10 @@ export class EnrollmentService {
       const updated = await uow.query<EnrollmentRow>(
         `UPDATE trade.enrollments SET pay_status = 'REFUNDED'
           WHERE id = $1 AND pay_status = $2 RETURNING id`,
-        [id, current.pay_status],
+        [target.id, target.pay_status],
       );
       if (updated.rows.length === 0) {
-        throw new AppError(ErrorCode.StateStaleEntity, `报名 ${id} 已被并发迁移`);
+        throw new AppError(ErrorCode.StateStaleEntity, `报名 ${target.id} 已被并发迁移`);
       }
     });
     return { advanced: true };
@@ -925,6 +947,22 @@ export class EnrollmentService {
     const res = await uow.query<EnrollmentRow>(
       `SELECT ${ENROLLMENT_COLS} FROM trade.enrollments WHERE id = $1 FOR UPDATE`,
       [assertPositiveInt(id, 'enrollment_id')],
+    );
+    return res.rows[0] ? toRowView(res.rows[0]) : null;
+  }
+
+  /**
+   * 迁移链后继行（M2-W2 T4）：prev_enrollment_id=id 的最新行（FOR UPDATE 行锁串行化并发收敛）。
+   * C4 迁移事务同事务建行——CONVERTED_OUT 旧行恒有后继；null=漂移（调用方显性化）。
+   */
+  private async lockLatestSuccessor(
+    uow: SqlExecutor,
+    prevId: number,
+  ): Promise<EnrollmentRowView | null> {
+    const res = await uow.query<EnrollmentRow>(
+      `SELECT ${ENROLLMENT_COLS} FROM trade.enrollments
+        WHERE prev_enrollment_id = $1 ORDER BY id DESC LIMIT 1 FOR UPDATE`,
+      [prevId],
     );
     return res.rows[0] ? toRowView(res.rows[0]) : null;
   }

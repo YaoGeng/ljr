@@ -155,8 +155,9 @@ export interface CreateGroupBuyInput {
 }
 
 /** 拼团行视图（DB 行读出口径：金额 Money 字符串/时间 ISO 字符串）。
- *  joined 桩=null：已加入数事实源=C3 enrollments（T7 落位经服务面取数，禁跨 schema join）——
- *  V24 头注⑥，SessionStatsView attendance_rate 同款先例，T7 接线转真。
+ *  joined：已加入数事实源=C3 enrollments PAID 计数（T7 落位经服务面取数，禁跨 schema join）
+ *  ——V24 头注⑥；M2-W2 T4 起接单大厅（listPendingForLawyer）接线转真（number），公开列表
+ *  （list）仍恒 null（桩维持，SessionStatsView attendance_rate 同款先例）。
  *  双维度列（序 11.5 V33）：specialty=发布入参；city=发布物化目标律师执业城市（缺省北京）。 */
 export interface GroupBuyView {
   readonly id: number;
@@ -173,8 +174,8 @@ export interface GroupBuyView {
   readonly status: GroupBuyStatus;
   readonly lawyer_confirm_by: string | null;
   readonly created_at: string;
-  /** 桩标注：C3 报名计数（T7 落位），本批恒 null */
-  readonly joined: null;
+  /** 已支付参与者计数（接单大厅=M2-W2 T4 接线；公开列表恒 null 桩维持） */
+  readonly joined: number | null;
 }
 
 /** POST /group-buys 出参（§5 逐字：{group_buy, share_price, payment_order}；share_price 顶层重述） */
