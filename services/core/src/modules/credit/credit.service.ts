@@ -254,6 +254,34 @@ export class CreditService {
     return result;
   }
 
+  // ---------- 导出查询面（跨域消费：D4 I-4 choice 单选持久锚，M2-W2 T3 修复环纯加法） ----------
+
+  /**
+   * 信用事件存在性（D4 refund50/credit 二选一的持久锚：emit 幂等键 (owner,action,ref_type,
+   * ref_id) 在册判定——credit 档入账后 refund50 拒，防跨 choice 翻单双得）。只读池连接。
+   */
+  async hasCreditEvent(input: {
+    readonly owner_type: OwnerType;
+    readonly owner_id: number;
+    readonly action: string;
+    readonly ref_type: string;
+    readonly ref_id: number;
+  }): Promise<boolean> {
+    this.assertOwner(input.owner_type, input.owner_id);
+    if (!isCreditAction(input.action)) {
+      throw new AppError(ErrorCode.InvalidArgument, `action 越行为词汇表：${String(input.action)}`);
+    }
+    const res = await this.pool.query<{ ok: boolean }>(
+      `SELECT EXISTS(
+         SELECT 1 FROM credit.credit_events
+          WHERE owner_type = $1 AND owner_id = $2 AND action = $3
+            AND ref_type = $4 AND ref_id = $5
+       ) AS ok`,
+      [input.owner_type, input.owner_id, input.action, input.ref_type, input.ref_id],
+    );
+    return res.rows[0]?.ok === true;
+  }
+
   // ---------- §5 GET /credit/mine（JWT 本人；score + recent_events + active restrictions） ----------
 
   async getMine(ownerType: OwnerType, ownerId: number): Promise<CreditMineView> {

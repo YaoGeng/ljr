@@ -1,14 +1,24 @@
 /**
- * F2 事件消费端（§6 消费 + R-W3-M 裁决 + 简报「事件消费面仅接 SessionFailed」）：
+ * F2 事件消费端（§6 消费 + R-W3-M 裁决 + M2-W2 T3 增量）：
  *   ① SessionFailed（trade.session.failed，C1 真生产）：流标批量全员退款——付款人清单经
  *      RefundSource 注册表（'session' 键；T6 假源/T7 trade 真源同形），逐单独立事务受理
  *      GROUP_FAIL 全额退款（幂等键=refund/po-{id}/group-fail 防重），部分失败收集后整体抛错
  *      进 relay 重试轨道 → 重入只补未受理单（§10 可重入续跑）。
- *   ② PaymentCallbackInboxed（payment.callback.inboxed，F1 既有出口不改其契约）：
+ *   ② SessionCancelled（fulfillment.session.cancelled，D4 生产=M2-W2 T3 新增消费）：取消
+ *      全额退款真链——载荷无金额（shared 契约），按「退款源清单全额」受理（user/lawyer 取消
+ *      的全退档 + platform 开房失败/全员缺席全退档统一承载）；幂等键=refund/po-{id}/
+ *      session-cancel（per enrollment：enrollments↔orders 1:1，幂等键=session+enrollment
+ *      的订单形态承载）；reason=CANCEL_RULE（§2 九值；platform 全员缺席的 NO_SHOW_ALL 与
+ *      开房失败在载荷上不可区分——统一 CANCEL_RULE，报告注记）。用户 <2h 退 50% 档=D4 判定
+ *      后直调 F2 受理面（cancel-user50 键），不经本消费（双路径边界见 D4 cancellation.service
+ *      头注）；同单 50% 已退后再全退=受理面守恒 400 直拒（不落退款单），消费端抛错进
+ *      relay 重试轨道——真实终点=重试耗尽 DEAD+死信表人工兜底（M-1 口径；资损面不静默
+ *      双退，复合路径用例钉住恰 1 单）。
+ *   ③ PaymentCallbackInboxed（payment.callback.inboxed，F1 既有出口不改其契约）：
  *      event=REFUND_SUCCESS → 按订单幂等键（biz 键去事件后缀）收敛退款单 DONE+还原+F1 单
  *      REFUNDING→REFUNDED（守卫推进）→ inbox CONSUMED；PAY_SUCCESS noop（C3=T7 消费位，
  *      不动 inbox——消费权归 C3）。
- *   其余发起方事件（GroupBuyExpired/LawyerRejected/SessionCancelled...）=M2 生产方桩接线位。
+ *   其余发起方事件（GroupBuyExpired/LawyerRejected...）=M2 生产方桩接线位。
  *
  * 事务形态（credit/firm-merchant 消费先例）：handler 不用 relay 认领事务的 uow——RefundService
  * 自持事务，崩溃窗口「已提交而 SENT 未标」→ 重投由幂等短路（at-least-once 语义内）。
@@ -21,8 +31,10 @@ import {
   ErrorCode,
   PAYMENT_CALLBACK_INBOXED_TOPIC,
   REFUND_SOURCE_REF_TYPE_SESSION,
+  SESSION_CANCELLED_TOPIC,
   SESSION_FAILED_TOPIC,
   type RefundSourceOrder,
+  type SessionCancelledPayload,
   type SessionFailedPayload,
 } from '@ljr/shared';
 import type { OutboxHandler, RelayEvent } from '../../infrastructure/outbox/outbox-relay.service';
@@ -127,6 +139,87 @@ export function createSessionFailedHandler(
 }
 
 /**
+ * 独立可测的 SessionCancelled 全额退款 handler（M2-W2 T3；D4 取消真链）：
+ * 载荷缺 id / cancelled_by 越域 → 抛错进重试轨道（不静默丢弃）；无退款源 → warn 跳过
+ * （SessionFailed 同口径）；逐单独立事务受理全额退款（幂等键=refund/po-{id}/session-cancel
+ * ——重放短路，断点续跑只补未受理单）。
+ */
+export function createSessionCancelledRefundHandler(
+  refunds: RefundService,
+  sources: RefundSourceRegistry,
+): OutboxHandler {
+  const logger = new Logger('RefundSessionCancel');
+  return async (event: RelayEvent): Promise<void> => {
+    if (event.topic !== SESSION_CANCELLED_TOPIC) {
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `取消退款消费器收到未注册 topic：${event.topic}`,
+      );
+    }
+    const payload = (event.payload ?? {}) as Partial<SessionCancelledPayload>;
+    if (!isPositiveInt(payload.session_id)) {
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `事件 ${event.topic} 载荷缺 session_id（进重试轨道，不静默丢弃）`,
+      );
+    }
+    if (
+      payload.cancelled_by !== 'user' &&
+      payload.cancelled_by !== 'lawyer' &&
+      payload.cancelled_by !== 'platform'
+    ) {
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `事件 ${event.topic} 载荷 cancelled_by 越域（user|lawyer|platform）：${String(payload.cancelled_by)}`,
+      );
+    }
+    const source = sources.resolve(REFUND_SOURCE_REF_TYPE_SESSION);
+    if (!source) {
+      logger.warn(
+        `SessionCancelled 取消退款跳过：未注册 'session' 退款源（session=${payload.session_id}，event_id=${event.eventId}）`,
+      );
+      return;
+    }
+    const listed = await source.listPaidPaymentOrders(payload.session_id);
+    const orders = listed.map((raw, i) => assertSourceOrder(raw, i));
+
+    const failures: { payment_order_id: number; message: string }[] = [];
+    for (const order of orders) {
+      try {
+        // 全额=CANCEL_RULE 档（载荷无金额——双路径边界见类注②）；守恒入口超限（如 50% 已退
+        // 后再全退的复合路径）=accept 入口 400 直拒（不落退款单——bookFailure/FAILED 不触达），
+        // 本 handler 收集上抛进 relay 重试轨道：真实终点=重试耗尽 DEAD+死信表人工兜底（M-1
+        // 口径——资损面不静默双退；重放由幂等键短路不双受理）
+        await refunds.accept({
+          order_id: order.payment_order_id,
+          user_id: order.user_id,
+          cash: order.cash_amount,
+          points: order.points_amount,
+          reason: 'CANCEL_RULE',
+          idempotency_key: `refund/po-${order.payment_order_id}/session-cancel`,
+        });
+      } catch (e) {
+        failures.push({
+          payment_order_id: order.payment_order_id,
+          message: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+    if (failures.length > 0) {
+      throw new AppError(
+        ErrorCode.OutboxHandlerFailed,
+        `SessionCancelled 取消退款部分失败（session=${payload.session_id}）：${failures
+          .map((f) => `po-${f.payment_order_id}: ${f.message}`)
+          .join('；')}`,
+      );
+    }
+    logger.log(
+      `SessionCancelled 取消退款受理完成：session=${payload.session_id} by=${payload.cancelled_by} 单数=${orders.length}`,
+    );
+  };
+}
+
+/**
  * 已知回调事件允许清单（评审 Minor-4）：REFUND_SUCCESS=本域收敛；PAY_SUCCESS=C3=T7 消费位。
  * 清单外值=通道/上游漂移信号 → warn 显性化（不抛防毒丸；M2 扩展事件时同步本清单）。
  */
@@ -195,10 +288,15 @@ export class RefundConsumer implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    // 同 topic 双 handler 扇出由 relay 承接；SessionFailed 独占 topic
+    // 同 topic 双 handler 扇出由 relay 承接；SessionFailed 独占 topic；
+    // SessionCancelled=G1/I1 消费并存（M1 在位），本域新增退款真链（M2-W2 T3）
     this.relay.registerHandler(
       SESSION_FAILED_TOPIC,
       createSessionFailedHandler(this.refunds, this.sources),
+    );
+    this.relay.registerHandler(
+      SESSION_CANCELLED_TOPIC,
+      createSessionCancelledRefundHandler(this.refunds, this.sources),
     );
     this.relay.registerHandler(
       PAYMENT_CALLBACK_INBOXED_TOPIC,

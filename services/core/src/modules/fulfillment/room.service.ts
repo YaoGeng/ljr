@@ -296,8 +296,10 @@ export class RoomService {
         );
       }
 
-      // RoomClosed 聚合锚（F3 结算构成最小集，W3 契约定型 import 不重定义）——归属校验前置
-      const anchor = await this.sessions.closeAnchorOf(id);
+      // RoomClosed 聚合锚（F3 结算构成最小集，W3 契约定型 import 不重定义）——归属校验前置；
+      // #42（M2-W2 T3）：聚合读（锚+paid 清单）传 exec=本事务句柄，与 close 写同快照（资金
+      // 聚合口径一致性；缺省池连接行为不变——exec 注入面为纯加法）
+      const anchor = await this.sessions.closeAnchorOf(id, exec);
       if (!anchor) {
         throw new AppError(ErrorCode.NotFound, `场次不存在：${id}（房间在而场次缺失=数据漂移）`);
       }
@@ -328,7 +330,7 @@ export class RoomService {
       if (updated.rows.length === 0) {
         throw new AppError(ErrorCode.StateStaleEntity, `房间 ${roomId} 已被并发迁移`);
       }
-      const agg = await this.aggregateGross(id);
+      const agg = await this.aggregateGross(id, exec);
       await this.outbox.recordOutbox(exec, {
         type: ROOM_CLOSED_TOPIC,
         payload: {
@@ -352,8 +354,9 @@ export class RoomService {
    * gross/payment_order_id 聚合：paid 清单经 F2 退款源注册表（'session' 键=R-W3-M 契约，
    * trade 真源 T7 落位）；gross=Σ(cash 分+points)（100 积分=1 元 → 1 积分=1 分，D19
    * paid_amount 全额口径）整数分全程无浮点；payment_order_id=首单（W3 单单绑定口径）。
+   * exec（#42 M2-W2 T3）：close 事务句柄——清单读与 close 写同快照；缺省池连接（既有形态）。
    */
-  private async aggregateGross(sessionId: number): Promise<GrossAggregation> {
+  private async aggregateGross(sessionId: number, exec?: SqlExecutor): Promise<GrossAggregation> {
     const source = this.refundSources.resolve(REFUND_SOURCE_REF_TYPE_SESSION);
     if (!source) {
       throw new AppError(
@@ -361,7 +364,7 @@ export class RoomService {
         `退款源 'session' 未注册（F2 RefundSourceRegistry）——close 的 gross 聚合链路未装配`,
       );
     }
-    const orders = await source.listPaidPaymentOrders(sessionId);
+    const orders = await source.listPaidPaymentOrders(sessionId, exec);
     if (orders.length === 0) {
       throw new AppError(
         ErrorCode.Conflict,

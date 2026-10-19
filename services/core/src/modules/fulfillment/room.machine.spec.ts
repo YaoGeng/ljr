@@ -3,11 +3,12 @@ import { ROOM_MACHINE, ROOM_TERMINAL_STATUSES } from './room.machine';
 import type { RoomStatus } from './room.types';
 
 /**
- * D1 房间状态机（§4 迁移矩阵 + M2-W1 T1 简报）：
+ * D1 房间状态机（§4 迁移矩阵 + M2-W1 T1 简报 + M2-W2 T3 D4 增量）：
  *   OPEN→IN_SERVICE→CLOSED 主链（IN_SERVICE 生产者=D3/W2，本批只声明迁移不接线）；
  *   OPEN→CANCELLED（开房失败行以 CANCELLED 直插=初始态承载，非本机边——platform 取消分支）；
- *   OPEN→CLOSED（close API：律师/任务结束关闭；§5 409 NOT_OPEN 仅当已终态——OPEN/IN_SERVICE
+ *   OPEN→CLOSED（close API：律师/任务端结束关闭；§5 409 NOT_OPEN 仅当已终态——OPEN/IN_SERVICE
  *   皆为合法关闭源态）；
+ *   IN_SERVICE→CANCELLED（M2-W2 T3 D4：迟到取消的进行中房间终止边——走退款轨道禁双轨）；
  *   CANCELLED/CLOSED 终态无出边。
  * 全部迁移经 StateTransitionGuard+STL（entity_type='room'）——本件钉机器定义，守卫留痕归
  * DB spec（room.spec）。
@@ -19,23 +20,25 @@ describe('D1 房间状态机（§4 迁移矩阵，纯机器件）', () => {
     expect([...ROOM_TERMINAL_STATUSES]).toEqual(['CLOSED', 'CANCELLED']);
   });
 
-  it('声明迁移恰 4 条：OPEN→IN_SERVICE、OPEN→CLOSED、OPEN→CANCELLED、IN_SERVICE→CLOSED', () => {
+  it('声明迁移恰 5 条：OPEN 三出边 + IN_SERVICE→CLOSED + IN_SERVICE→CANCELLED（D4 迟到取消）', () => {
     const edges = ROOM_MACHINE.def.transitions.map((t) => `${t.from}→${t.to}`);
     expect(edges).toEqual([
       'OPEN→IN_SERVICE',
       'OPEN→CLOSED',
       'OPEN→CANCELLED',
       'IN_SERVICE→CLOSED',
+      'IN_SERVICE→CANCELLED',
     ]);
   });
 
-  it('全迁移矩阵：4 条声明边放行，其余 4×4 全组合（含自环与终态出边）一律拒绝', () => {
+  it('全迁移矩阵：5 条声明边放行，其余 4×4 全组合（含自环与终态出边）一律拒绝', () => {
     const states = ROOM_MACHINE.def.states;
     const expected = new Set<string>([
       'OPEN→IN_SERVICE',
       'OPEN→CLOSED',
       'OPEN→CANCELLED',
       'IN_SERVICE→CLOSED',
+      'IN_SERVICE→CANCELLED',
     ]);
     for (const from of states as readonly RoomStatus[]) {
       for (const to of states as readonly RoomStatus[]) {

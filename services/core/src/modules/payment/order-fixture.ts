@@ -56,6 +56,40 @@ export async function listRefundsByOrderId(
   return res.rows;
 }
 
+/** 全量退款单行（M2-W2 T3：D4 取消 spec 的退款面断言锚——跨 reason/status 维度计数；
+ *  同头注纪律 owner=payment 唯一合法直读点） */
+export async function listAllRefundsRaw(pool: Pool): Promise<
+  ReadonlyArray<{
+    readonly payment_order_id: number;
+    readonly cash_amount: string;
+    readonly points_amount: number;
+    readonly reason: string;
+    readonly status: string;
+    readonly idempotency_key: string;
+  }>
+> {
+  const res = await pool.query<{
+    payment_order_id: string;
+    cash_amount: string;
+    points_amount: number;
+    reason: string;
+    status: string;
+    idempotency_key: string;
+  }>(
+    `SELECT payment_order_id::text AS payment_order_id, cash_amount::text AS cash_amount,
+            points_amount, reason, status, idempotency_key
+       FROM payment.refunds ORDER BY id`,
+  );
+  return res.rows.map((r) => ({
+    payment_order_id: Number(r.payment_order_id),
+    cash_amount: r.cash_amount,
+    points_amount: r.points_amount,
+    reason: r.reason,
+    status: r.status,
+    idempotency_key: r.idempotency_key,
+  }));
+}
+
 /** Inbox 行状态列表（按 channel_txn_no 前缀；回调消费标记 CONSUMED 断言用） */
 export async function listInboxStatusesByTxnNoPrefix(
   pool: Pool,

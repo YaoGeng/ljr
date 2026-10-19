@@ -180,7 +180,7 @@ describe('H3 工单 REST 契约（/admin/tickets，需 PG）', () => {
     expect(notFound.status).toBe(404);
   });
 
-  it('POST /admin/tickets/{id}/resolve：200 {status} + 终态重放 409 CLOSED + d4 接线位 400 + approved 缺失 400', async () => {
+  it('POST /admin/tickets/{id}/resolve：200 {status} + 终态重放 409 CLOSED + d4 接线位 400 + cancel_lt24h 缺 target 400（I-3）+ approved 缺失 400', async () => {
     const created = await request(app.getHttpServer())
       .post('/admin/tickets')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -195,21 +195,37 @@ describe('H3 工单 REST 契约（/admin/tickets，需 PG）', () => {
     expect(d4.status).toBe(400);
     expect(d4.body.code).toBe(ErrorCode.InvalidArgument);
 
+    // I-3（修复环）：cancel_lt24h=回调承载类——缺 target 纯记录处置 400（防「审批通过而
+    // 取消流未生效」漂移）；工单不落终态
+    const noTarget = await request(app.getHttpServer())
+      .post(`/admin/tickets/${ticketId}/resolve`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ approved: true, action_payload: { note: '同意退款' } });
+    expect(noTarget.status).toBe(400);
+    expect(noTarget.body.code).toBe(ErrorCode.InvalidArgument);
+
     const badBody = await request(app.getHttpServer())
       .post(`/admin/tickets/${ticketId}/resolve`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ action_payload: {} });
     expect(badBody.status).toBe(400);
 
-    const ok = await request(app.getHttpServer())
-      .post(`/admin/tickets/${ticketId}/resolve`)
+    // 纯记录处置面（非回调承载类目）：dispute 工单 200 + 终态重放 409 + 审计两行
+    const dispute = await request(app.getHttpServer())
+      .post('/admin/tickets')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ approved: true, action_payload: { note: '同意退款' } });
+      .send({ category: 'dispute', ref_type: 'session', ref_id: 45, title: 't', detail: 'd' });
+    const disputeId = dispute.body.ticket_id as number;
+
+    const ok = await request(app.getHttpServer())
+      .post(`/admin/tickets/${disputeId}/resolve`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ approved: true, action_payload: { note: '查实无误' } });
     expect(ok.status).toBe(200); // 动作端点 @HttpCode(200)（rule-admin 先例）
     expect(ok.body).toEqual({ status: 'RESOLVED' });
 
     const replay = await request(app.getHttpServer())
-      .post(`/admin/tickets/${ticketId}/resolve`)
+      .post(`/admin/tickets/${disputeId}/resolve`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ approved: true });
     expect(replay.status).toBe(409);
@@ -217,7 +233,7 @@ describe('H3 工单 REST 契约（/admin/tickets，需 PG）', () => {
 
     // 详情审计行（认领+处置两行，operator=admin claims userId）
     const detail = await request(app.getHttpServer())
-      .get(`/admin/tickets/${ticketId}`)
+      .get(`/admin/tickets/${disputeId}`)
       .set('Authorization', `Bearer ${adminToken}`);
     expect(detail.body.actions.map((a: { action: string }) => a.action)).toEqual([
       'start_processing',

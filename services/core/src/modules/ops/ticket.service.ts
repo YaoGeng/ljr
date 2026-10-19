@@ -389,6 +389,16 @@ export class TicketService {
         );
       }
 
+      // I-3（M2-W2 T3 修复环）：回调承载类工单（cancel_lt24h——审批通过即驱动 D4 取消流）
+      // 处置必须携带 action_payload.target——缺省将造成「工单 RESOLVED 而取消流未生效」的
+      // 静默漂移（D4 建单重放自愈为二道防线）；其余类目（dispute 等）纯记录处置不受限
+      if (row.category === 'cancel_lt24h' && actionPayload['target'] === undefined) {
+        throw new AppError(
+          ErrorCode.InvalidArgument,
+          `category=cancel_lt24h 为回调承载类工单：处置须携带 action_payload.target（{target:'d4', cancellation_id:<场次 id>}）——缺省将造成审批通过而取消流未生效`,
+        );
+      }
+
       // 回调目标路由（锁行+终态判定之后——修复环 M-1）：target + 发起方实体 id
       const target = actionPayload['target'];
       if (target !== undefined) {

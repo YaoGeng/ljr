@@ -403,7 +403,7 @@ describe('H3 纠纷工单与退款审核（R-01~R-04 + §9/§10，需 PG）', ()
   // R-02 退款审核（律师<24h 取消，PRD §8.6）：d4 回调接线位 + 决策透传面
   // ===========================================================================
 
-  it('R-02 退款审核工单：d4 回调=接线位显式 400（W2 T3 落 cancellations 后注册即通）；纯记录处置可达终态', async () => {
+  it('R-02 退款审核工单：cancel_lt24h=回调承载类——缺 target 400（I-3：防「审批通过而取消流未生效」）；d4 未注册 400；工单不落终态', async () => {
     const created = await tickets.createTicket({
       category: 'cancel_lt24h',
       refType: 'session',
@@ -411,6 +411,15 @@ describe('H3 纠纷工单与退款审核（R-01~R-04 + §9/§10，需 PG）', ()
       title: '律师 <24h 取消审批',
       detail: '全退-30+20% 违约金占比补偿（D4 矩阵）',
     });
+    // I-3（修复环）：缺 action_payload.target → 400（cancel_lt24h 的 RESOLVED 必须经回调
+    // 承载——纯记录处置面关闭，防工单已决而取消流未生效的静默漂移）
+    await expect(
+      tickets.resolveTicket({
+        ticketId: created.ticket.id,
+        operatorId: ADMIN,
+        approved: true,
+      }),
+    ).rejects.toMatchObject({ code: ErrorCode.InvalidArgument });
     // d4 目标未注册回调器：显式拒绝（resolve 意味着回调已生效——不静默跳过）
     await expect(
       tickets.resolveTicket({
@@ -420,15 +429,8 @@ describe('H3 纠纷工单与退款审核（R-01~R-04 + §9/§10，需 PG）', ()
         actionPayload: { target: 'd4', cancellation_id: 1 },
       }),
     ).rejects.toMatchObject({ code: ErrorCode.InvalidArgument });
-    // 工单仍 OPEN（回调失败不落终态）
+    // 两类 400 均不落终态（处置效果与迁移同事务回滚——工单仍 OPEN）
     expect((await tickets.getTicketDetail(created.ticket.id)).ticket.status).toBe('OPEN');
-    // 纯记录处置（无 target）：决策透传面就绪
-    const res = await tickets.resolveTicket({
-      ticketId: created.ticket.id,
-      operatorId: ADMIN,
-      approved: false,
-    });
-    expect(res.status).toBe('REJECTED');
   });
 
   // ===========================================================================

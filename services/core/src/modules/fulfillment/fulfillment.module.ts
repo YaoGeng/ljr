@@ -1,21 +1,25 @@
 /**
  * Fulfillment 履约域模块（架构 §3.2 fulfillment schema owner；D1 房间生命周期（room.*，M2-W1 T1）
  * + D5 会话与消息（conversation.*，M2-W1 T3）+ D3 到场与缺席判定（attendance.*，M2-W2 T2）
- * 同目录追加——⚠W1-2：开发期落 core 单进程，独立 rtc-im 服务剥离=V2 演进；可剥离纪律=他域
- * 仅经导出接口/事件消费）。施工规格：docs/modules/D-履约/D1-房间生命周期.md、
- * docs/modules/D-履约/D5-会话与消息.md、docs/modules/D-履约/D3-到场与缺席判定.md（§1-§10）。
+ * + D4 取消与违约处理（cancellation.*，M2-W2 T3）同目录追加——⚠W1-2：开发期落 core 单进程，
+ * 独立 rtc-im 服务剥离=V2 演进；可剥离纪律=他域仅经导出接口/事件消费）。施工规格：
+ * docs/modules/D-履约/D1-房间生命周期.md、docs/modules/D-履约/D5-会话与消息.md、
+ * docs/modules/D-履约/D3-到场与缺席判定.md、docs/modules/D-履约/D4-取消与违约处理.md（§1-§10）。
  *
- * 可剥离纪律（沿 trade/payment 形态）：导出面只暴露应用服务（RoomService/ConversationService）
- * +事件契约（shared/events）+HTTP/WSS 契约——状态机/执行器/RTC 适配器/网关为模块内部件，
- * 其他模块禁 import。
+ * 可剥离纪律（沿 trade/payment 形态）：导出面只暴露应用服务（RoomService/ConversationService/
+ * CancellationService）+事件契约（shared/events）+HTTP/WSS 契约——状态机/执行器/RTC 适配器/
+ * 网关为模块内部件，其他模块禁 import。
  *
  * 跨模块消费全部走导出服务（禁跨 schema join，架构 §3.2）：
  *   I2 SchedulerService（GRACE_END 同事务预写）+ ScheduleExecutorRegistry（ROOM_OPEN/GRACE_END/
- *     COLD_ARCHIVE 执行器 onModuleInit 注册）、C1 SessionService（快照/聚合锚导出面）、
- *   F2 RefundSourceRegistry（close 的 paid 清单，'session' 键=trade 真源注册）、
- *   A1 IdentityAuthModule（close 律师端 JWT/角色守卫件 + D5 WSS 首帧 auth 的 JwtService）、
+ *     COLD_ARCHIVE 执行器 onModuleInit 注册）、C1 SessionService（快照/聚合锚导出面），
+ *   F2 RefundSourceRegistry（close 的 paid 清单，'session' 键=trade 真源注册）+RefundService
+ *     （D4 <2h 部分退款直调受理面）、F3 SettlementService（D4 赔付指令 applyPenalty 面）、
+ *   A1 IdentityAuthModule（close 律师端 JWT/角色守卫件 + D5 WSS 首帧 auth 的 JwtService），
  *   H5 WordDictModule（checkRisk 同步判定面——D5 发送链消费，R-01 单入口）、
- *   H7 RuleCenterModule（GET /rooms/{id}/notice 薄代理取数面，禁跨 schema 直读）、
+ *   H7 RuleCenterModule（GET /rooms/{id}/notice 薄代理取数面，禁跨 schema 直读；D4 取消
+ *     矩阵 cancel.matrix 快照读同经此面）、H3 TicketModule（D4 <24h 审批工单+回调注册缝）、
+ *   G1 CreditService（D4 choice=credit 的 user_cancel_late 入账）、
  *   I3 ArtifactsModule（冷存 putArtifact 统一入口——横切基座先例，写 platform.artifacts
  *     经基座服务，禁直连基座表）。
  * RTC 通道=Symbol 令牌适配器（RTC_PROVIDER）：W1=MockRtcProvider 内存实现（声网 R11=M3-W1
@@ -31,6 +35,9 @@ import { PaymentModule } from '../payment/payment.module';
 import { IdentityAuthModule } from '../identity/identity-auth.module';
 import { RuleCenterModule } from '../ops/rule-center.module';
 import { WordDictModule } from '../ops/word-dict.module';
+import { SettlementModule } from '../settlement/settlement.module';
+import { TicketModule } from '../ops/ticket.module';
+import { CreditModule } from '../credit/credit.module';
 import { RoomController } from './room.controller';
 import { RoomJobExecutors } from './room.executors';
 import { RoomService } from './room.service';
@@ -47,6 +54,9 @@ import { AttendanceConsumer } from './attendance.consumer';
 import { AttendanceJobExecutors } from './attendance.executors';
 import { AttendanceService } from './attendance.service';
 import { ATTENDANCE_CONFIG, attendanceConfigFromEnv } from './attendance.config';
+import { CancellationController } from './cancellation.controller';
+import { CancellationConsumer } from './cancellation.consumer';
+import { CancellationService } from './cancellation.service';
 
 @Module({
   imports: [
@@ -58,8 +68,16 @@ import { ATTENDANCE_CONFIG, attendanceConfigFromEnv } from './attendance.config'
     RuleCenterModule, // H7：GET /rooms/{id}/notice 薄代理取数面（noticeContent 导出）
     WordDictModule, // H5：checkRisk 同步判定（D5 发送链 R-01 单入口）
     ArtifactsModule, // I3：冷存 putArtifact 统一入口（COLD_ARCHIVE 日扫写入面）
+    SettlementModule, // F3：applyPenalty 赔付指令面（D4=M2-W2 T3；依赖树不含 fulfillment 无环）
+    TicketModule, // H3：cancel_lt24h 工单创建面 + 处置回调注册缝（target='d4' 注册即通）
+    CreditModule, // G1：choice=credit 的 user_cancel_late 入账面（EMIT_CREDIT_EVENT）
   ],
-  controllers: [RoomController, ConversationController, AttendanceController],
+  controllers: [
+    RoomController,
+    ConversationController,
+    AttendanceController,
+    CancellationController,
+  ],
   providers: [
     // RTC 通道适配器（供应商位：mock=W1；声网=M3-W1 换装只改工厂；测试可 override 注失败形态）
     MockRtcProvider,
@@ -85,9 +103,14 @@ import { ATTENDANCE_CONFIG, attendanceConfigFromEnv } from './attendance.config'
     AttendanceConsumer,
     AttendanceJobExecutors,
     { provide: ATTENDANCE_CONFIG, useFactory: attendanceConfigFromEnv },
+    // D4 取消与违约（M2-W2 T3）：规则引擎（纯函数在 cancellation.engine）+ 应用服务 +
+    // AttendanceAdjudicated（lawyer absent）/RoomOpenFailed 消费端 + d4 审批回调注册
+    CancellationService,
+    CancellationConsumer,
   ],
   // 可剥离纪律：只导出应用服务（内部件不外泄）；ConversationService=D2 房间内提醒
-  // （postInternalMessage 系统消息写入面，T4 消费）与 W3 E1（agent 写入接线位）的导出面
-  exports: [RoomService, ConversationService],
+  // （postInternalMessage 系统消息写入面，T4 消费）与 W3 E1（agent 写入接线位）的导出面；
+  // CancellationService=D4 取消/赔付指令导出面（I1 通知消费=W2+ 接线位）
+  exports: [RoomService, ConversationService, CancellationService],
 })
 export class FulfillmentModule {}

@@ -345,10 +345,14 @@ export class SessionService {
   // 查询面（§5 GET /sessions、GET /sessions/{id}；列表仅 PASSED 律师 + 30s 缓存适配位）
   // ===========================================================================
 
-  /** GET /sessions/{id}：详情+剩余席位（capacity - joined） */
-  async getDetail(id: number): Promise<SessionDetailView> {
+  /**
+   * GET /sessions/{id}：详情+剩余席位（capacity - joined）。
+   * exec（可选，#42 M2-W2 T3 纯加法）：调用方业务事务句柄——传入时读与调用方事务同快照；
+   * 缺省池连接（既有消费端形态，行为不变）。
+   */
+  async getDetail(id: number, exec?: SqlExecutor): Promise<SessionDetailView> {
     const sessionId = assertPositiveInt(id, 'id');
-    const res = await this.pool.query<SessionRow>(
+    const res = await (exec ?? this.pool).query<SessionRow>(
       `SELECT ${SESSION_COLS} FROM trade.sessions WHERE id = $1`,
       [sessionId],
     );
@@ -650,6 +654,15 @@ export class SessionService {
   }
 
   /**
+   * 终态布尔面（M2-W2 T3 纯函数加法，D4 消费）：status ∈ 终态集（FAILED/CANCELLED/
+   * FINISHED/SETTLED）→ true。sessionOpenable「词汇不外泄——封装为布尔面」同款纪律：
+   * D4 取消 API 的 409 NOT_CANCELLABLE 判定经此面，免 import 本模块机器件。
+   */
+  isTerminalStatus(status: string): boolean {
+    return (SESSION_TERMINAL_STATUSES as readonly string[]).includes(status);
+  }
+
+  /**
    * D2 提醒回查锚（M2-W1 T4 修复环 I-1）：sessionOpenable 同口径（存在且非终态）**加上**
    * 「报名已截止仍未成团」防御半边——status='CREATED' 且 now>enroll_deadline → false。
    *
@@ -681,12 +694,15 @@ export class SessionService {
    * D1 RoomClosed 聚合锚（M2-W1 T1 纯读导出位，加法）：{lawyer_id, firm_id}——close 出箱载荷的
    * 归属半边（gross/payment_order_id 由消费方经 F2 退款源聚合）。firm_id 经 A3a getFirmId
    * （档案绑定，A3b 进件前 null——消费方显式失败口径，不静默）；场次缺失返回 null。
+   * exec（可选，#42 M2-W2 T3 纯加法）：sessions 读走调用方事务句柄（同快照）；firm_id 的
+   * A3a 读保持池连接（档案行低频变更，非资金聚合列——报告注记）。
    */
   async closeAnchorOf(
     sessionId: number,
+    exec?: SqlExecutor,
   ): Promise<{ lawyer_id: number; firm_id: number | null } | null> {
     const id = assertPositiveInt(sessionId, 'session_id');
-    const res = await this.pool.query<{ lawyer_id: string }>(
+    const res = await (exec ?? this.pool).query<{ lawyer_id: string }>(
       `SELECT lawyer_id FROM trade.sessions WHERE id = $1`,
       [id],
     );
@@ -785,6 +801,74 @@ export class SessionService {
       } satisfies SessionFailedPayload,
     });
     return { failed: true, session_id: id };
+  }
+
+  // ===========================================================================
+  // D4 取消推进位（M2-W2 T3：受限入边 CANCELLED 的 trade 侧唯一写点；SessionCancelled
+  // 事件出箱归 D4 fulfillment——本面只做状态+锁+job 清场，不代发事件）
+  // ===========================================================================
+
+  /**
+   * 场次取消推进（D4 §4/§5；session.machine D4 受限入边）：FOR UPDATE 行锁 → 终态
+   * {cancelled:false, status}（幂等/409 判定归调用方 D4）→ 守卫迁移 CANCELLED（STL 留痕，
+   * reason=调用方携 D4 分支+规则版本，≤128）→ 占用锁同事务释放（架构 §4.2，failOnDeadline
+   * 同款）→ 未发 session 锚 job 同事务作废（REMIND×4+ENROLL_DEADLINE+ROOM_OPEN——D2 §4
+   * 「取消 → 业务侧作废未发 job」；房间锚 job 归 D4 房间取消步/执行器 recheck 兜底）。
+   * 出参 session=迁移后全量视图（D4 载荷锚 slot_start/session_total 取自本读）。
+   */
+  async cancelSession(
+    uow: SqlExecutor,
+    sessionId: number,
+    reason: string,
+  ): Promise<{
+    cancelled: boolean;
+    status: SessionStatus;
+    session: SessionView | null;
+  }> {
+    const id = assertPositiveInt(sessionId, 'session_id');
+    const found = await uow.query<SessionRow>(
+      `SELECT ${SESSION_COLS} FROM trade.sessions WHERE id = $1 FOR UPDATE`,
+      [id],
+    );
+    const row = found.rows[0];
+    if (!row) throw new AppError(ErrorCode.NotFound, `场次不存在：${id}`);
+    const current = row.status as SessionStatus;
+    if ((SESSION_TERMINAL_STATUSES as readonly SessionStatus[]).includes(current)) {
+      return { cancelled: false, status: current, session: null };
+    }
+    await this.guard.assertTransition(SESSION_MACHINE, {
+      entityId: id,
+      from: current,
+      to: 'CANCELLED',
+      reason,
+      uow,
+    });
+    const updated = await uow.query<SessionRow>(
+      `UPDATE trade.sessions SET status = 'CANCELLED', status_since = now()
+        WHERE id = $1 AND status = $2 RETURNING ${SESSION_COLS}`,
+      [id, current],
+    );
+    if (updated.rows.length === 0) {
+      throw new AppError(ErrorCode.StateStaleEntity, `场次 ${id} 已被并发迁移`);
+    }
+    // 占用锁同事务释放（CANCELLED=锁终态「不再需要占用锁」，不等 reaper 兜底）
+    await this.locks.releaseSlot(uow, {
+      refType: 'session',
+      refId: id,
+      reason: 'session_cancelled',
+    });
+    // 未发 session 锚 job 作废（幽灵提醒禁令 D2 §4；ROOM_OPEN 对 CANCELLED 的 recheck
+    // sessionOpenable 亦兜底，双保险同 failOnDeadline 头注口径）
+    for (const [jobType] of REMIND_OFFSETS_MS) {
+      await this.scheduler.cancelJob(uow, { jobType, refType: 'session', refId: id });
+    }
+    await this.scheduler.cancelJob(uow, {
+      jobType: 'ENROLL_DEADLINE',
+      refType: 'session',
+      refId: id,
+    });
+    await this.scheduler.cancelJob(uow, { jobType: 'ROOM_OPEN', refType: 'session', refId: id });
+    return { cancelled: true, status: 'CANCELLED', session: toView(updated.rows[0]!) };
   }
 
   // ===========================================================================

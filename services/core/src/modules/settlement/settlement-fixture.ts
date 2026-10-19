@@ -19,3 +19,15 @@ export async function travelHoldCreated(pool: Pool, settlementId: number): Promi
     [settlementId],
   );
 }
+
+// ---- M2-W2 T3 扩展：D4 取消 spec 的 settlement 侧直读锚（owner=settlement 同头注纪律） ----
+
+/** 违约扣减幂等收据全量行（D4 赔付指令断言锚：penalty/ 键+金额恰一次） */
+export async function penaltyReceiptsRaw(
+  pool: Pool,
+): Promise<ReadonlyArray<{ penalty_key: string; amount: string }>> {
+  const res = await pool.query<{ penalty_key: string; amount: string }>(
+    `SELECT penalty_key, amount::text AS amount FROM settlement.settlement_penalty_receipts ORDER BY id`,
+  );
+  return res.rows;
+}

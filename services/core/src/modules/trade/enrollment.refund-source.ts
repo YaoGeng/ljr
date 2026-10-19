@@ -16,6 +16,7 @@ import {
   REFUND_SOURCE_REF_TYPE_SESSION,
   type RefundSource,
   type RefundSourceOrder,
+  type SqlExecutorLike,
 } from '@ljr/shared';
 import { PgPoolService } from '../../infrastructure/sql';
 import { PaymentGatewayService } from '../payment/payment.gateway.service';
@@ -42,16 +43,24 @@ export class SessionRefundSource implements RefundSource, OnModuleInit {
     this.registry.register(REFUND_SOURCE_REF_TYPE_SESSION, this);
   }
 
-  async listPaidPaymentOrders(refId: number): Promise<readonly RefundSourceOrder[]> {
-    const res = await this.pool.query<PaidEnrollmentRow>(
-      `SELECT id, user_id::text AS user_id, cash_amount::text AS cash_amount, points_amount
+  /**
+   * exec（可选，#42 M2-W2 T3 纯加法）：调用方业务事务句柄——传入时 enrollments 读与调用方
+   * 事务同快照（close 聚合资金口径）；不传=池连接（既有形态）。F1 支付单定位读
+   * （findOrderByIdempotencyKey）保持池连接——订单行创建后拆分不可变，非同事务漂移面（报告注记）。
+   */
+  async listPaidPaymentOrders(
+    refId: number,
+    exec?: SqlExecutorLike,
+  ): Promise<readonly RefundSourceOrder[]> {
+    const LIST_SQL = `SELECT id, user_id::text AS user_id, cash_amount::text AS cash_amount, points_amount
          FROM trade.enrollments
         WHERE ref_type = 'session' AND ref_id = $1 AND pay_status = 'PAID'
-        ORDER BY id`,
-      [refId],
-    );
+        ORDER BY id`;
+    const rows: PaidEnrollmentRow[] = exec
+      ? ((await exec.query(LIST_SQL, [refId])).rows as unknown as PaidEnrollmentRow[]) // 结构型行收窄（列解释归本实现方）
+      : (await this.pool.query<PaidEnrollmentRow>(LIST_SQL, [refId])).rows;
     const orders: RefundSourceOrder[] = [];
-    for (const row of res.rows) {
+    for (const row of rows) {
       const order = await this.payment.findOrderByIdempotencyKey(
         enrollmentOrderKey(Number(row.id)),
       );

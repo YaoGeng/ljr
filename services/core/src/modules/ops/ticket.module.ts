@@ -38,6 +38,8 @@ import { TicketGateRegistration, TicketOpenTicketSource, TicketService } from '.
     // 消费器经 onModuleInit 注册到 outbox relay
     TicketConsumer,
   ],
-  exports: [TicketService, TicketOpenTicketSource],
+  // TicketResolveCallbackRegistry（M2-W2 T3 加法导出）：D4 cancellations approve 回调的
+  // 注册缝（OpenTicketGate 导出同款裁决——目标侧 onModuleInit register，H3 侧本体零改动）
+  exports: [TicketService, TicketOpenTicketSource, TicketResolveCallbackRegistry],
 })
 export class TicketModule {}

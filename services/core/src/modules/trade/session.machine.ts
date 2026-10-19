@@ -8,8 +8,11 @@
  *     与 F3（HOLD→SETTLED）推进，本批声明词汇、生产者随 M2 落位；
  *   - CREATED→FAILED：R-03 截止未满流标——仅 ENROLL_DEADLINE 截止 job 判定（本模块执行器），
  *     同事务释放占用锁（架构 §4.2）并出箱 SessionFailed；
- *   - CANCELLED：简报裁决「词汇保留不接线」——D4=M2 决定受限入边（§4「任意（受限）」的
- *     具体源态集是 D4 规则的一部分），本批不声明任何入边、无生产者。
+ *   - CANCELLED 入边（D4=M2 受限入边决策，M2-W2 T3 落位）：五个非终态源态
+ *     CREATED/FULL/CONFIRMED/OPEN/IN_SERVICE →CANCELLED——「任意（受限）」=受限集即
+ *     非终态全集（FINISHED/HOLD/SETTLED 已完成服务/结算、FAILED/CANCELLED 已终态，
+ *     一律不可取消=D4 §5 409 NOT_CANCELLABLE 的机器面依据）。生产者=SessionService.
+ *     cancelSession（trade 导出面，D4 fulfillment 经此推进；reason 带 d4 分支+规则版本）。
  *
  * 终态集（B2 reaper TerminalStateProvider 同口径，「该 session 不再需要占用锁」）：
  *   FAILED / CANCELLED / FINISHED / SETTLED。
@@ -62,5 +65,11 @@ export const SESSION_MACHINE = createStateMachine<SessionStatus>({
     { from: 'FINISHED', to: 'HOLD' },
     { from: 'HOLD', to: 'SETTLED' },
     { from: 'CREATED', to: 'FAILED' },
+    // D4=M2 受限入边（M2-W2 T3）：非终态全集 →CANCELLED（409 NOT_CANCELLABLE=终态不可取消）
+    { from: 'CREATED', to: 'CANCELLED' },
+    { from: 'FULL', to: 'CANCELLED' },
+    { from: 'CONFIRMED', to: 'CANCELLED' },
+    { from: 'OPEN', to: 'CANCELLED' },
+    { from: 'IN_SERVICE', to: 'CANCELLED' },
   ],
 });

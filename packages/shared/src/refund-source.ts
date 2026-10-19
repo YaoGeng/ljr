@@ -13,6 +13,20 @@
  */
 import type { Money } from './money';
 
+/**
+ * 最小 SQL 执行器结构型（pg Pool/PoolClient/core SqlExecutor 结构兼容，shared 不引 core
+ * 类型）。#42 close 聚合 uow 注入面（M2-W2 T3 纯加法，04§8-42）：listPaidPaymentOrders
+ * 增可选 exec 参数——D1 closeRoom 聚合段（gross/首单）与业务事务同快照读的资金聚合口径
+ * 一致性；缺省（不传）=实现方池连接，既有行为不变。行形态刻意最宽（Record）——列解释归
+ * 实现方（本结构型只承载「在哪条连接上执行」）。
+ */
+export interface SqlExecutorLike {
+  query(
+    text: string,
+    values?: unknown[],
+  ): Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }>;
+}
+
 /** 退款源清单行：原支付拆分快照（金额守恒与全额退款的上限锚；金额 Money 字符串禁 float） */
 export interface RefundSourceOrder {
   /** F1 支付单 id（payment.payment_orders.id） */
@@ -25,9 +39,14 @@ export interface RefundSourceOrder {
   readonly points_amount: number;
 }
 
-/** 退款源：按业务实体返回已支付支付单清单（仅已支付——未支付单无款可退，流标静默跳过） */
+/** 退款源：按业务实体返回已支付支付单清单（仅已支付——未支付单无款可退，流标静默跳过）。
+ *  exec（可选，#42 M2-W2 T3 纯加法）：调用方业务事务句柄——传入时清单读与调用方事务同
+ *  快照（close 聚合等资金聚合口径一致性）；不传=实现方池连接（既有消费端形态，行为不变）。 */
 export interface RefundSource {
-  listPaidPaymentOrders(refId: number): Promise<readonly RefundSourceOrder[]>;
+  listPaidPaymentOrders(
+    refId: number,
+    exec?: SqlExecutorLike,
+  ): Promise<readonly RefundSourceOrder[]>;
 }
 
 /** 注册键：B2C 场次（SessionFailed 消费器的 refType；同 B2 占用锁 ref_type 词汇） */

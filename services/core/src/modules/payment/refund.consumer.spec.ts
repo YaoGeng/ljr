@@ -5,7 +5,9 @@ import { Logger } from '@nestjs/common';
 import type { Pool } from 'pg';
 import {
   PAYMENT_CALLBACK_INBOXED_TOPIC,
+  SESSION_CANCELLED_TOPIC,
   SESSION_FAILED_TOPIC,
+  type SessionCancelledPayload,
   type SessionFailedPayload,
 } from '@ljr/shared';
 import { OutboxRelayService } from '../../infrastructure/outbox/outbox-relay.service';
@@ -24,6 +26,7 @@ import { PaymentGatewayService } from './payment.gateway.service';
 import {
   RefundConsumer,
   createRefundCallbackHandler,
+  createSessionCancelledRefundHandler,
   createSessionFailedHandler,
 } from './refund.consumer';
 import { RefundService } from './refund.service';
@@ -439,5 +442,117 @@ describe('F2 批量退款消费端（需 PG）', () => {
       `SELECT count(*)::int AS n FROM payment.refunds`,
     );
     expect(refundsN.rows[0]!.n).toBe(0);
+  });
+
+  // --------------------------------------------------------------------------
+  // SessionCancelled 全额退款 handler（M2-W2 T3，D4 取消真链；双路径之全额路径）
+  // --------------------------------------------------------------------------
+
+  it('SessionCancelled 消费：全员全额受理（CANCEL_RULE / refund/po-{id}/session-cancel 键）+幂等键防重', async () => {
+    const payerA = await createPaidOrder({ cash: '100.00', points: 0 });
+    const payerB = await createPaidOrder({ cash: '60.00', points: 4000 });
+    const source: RefundSource = {
+      listPaidPaymentOrders: async () => [
+        {
+          payment_order_id: payerA.id,
+          user_id: 611,
+          cash_amount: payerA.cash_amount,
+          points_amount: payerA.points_amount,
+        },
+        {
+          payment_order_id: payerB.id,
+          user_id: 612,
+          cash_amount: payerB.cash_amount,
+          points_amount: payerB.points_amount,
+        },
+      ],
+    };
+    registry.register('session', source);
+    await seedPointsBalance(pool, 612, 0);
+
+    const handler = createSessionCancelledRefundHandler(refunds, registry);
+    await handler(
+      {
+        id: 7,
+        eventId: 'e7',
+        topic: SESSION_CANCELLED_TOPIC,
+        payload: {
+          session_id: 601,
+          cancelled_by: 'platform',
+          cancelled_by_user_id: null,
+          cancelled_at: new Date().toISOString(),
+          session_start_at: new Date().toISOString(),
+        } as unknown as SessionCancelledPayload,
+        retryCount: 0,
+      },
+      stubUow,
+    );
+    const rows = await pool.query<{
+      payment_order_id: number;
+      cash_amount: string;
+      points_amount: number;
+      reason: string;
+      idempotency_key: string;
+    }>(
+      `SELECT payment_order_id::int AS payment_order_id, cash_amount::text AS cash_amount,
+              points_amount, reason, idempotency_key FROM payment.refunds ORDER BY id`,
+    );
+    expect(rows.rows).toHaveLength(2);
+    expect(rows.rows[0]).toMatchObject({
+      payment_order_id: payerA.id,
+      cash_amount: '100.00',
+      points_amount: 0,
+      reason: 'CANCEL_RULE',
+      idempotency_key: `refund/po-${payerA.id}/session-cancel`,
+    });
+    expect(rows.rows[1]).toMatchObject({
+      payment_order_id: payerB.id,
+      cash_amount: '60.00',
+      points_amount: 4000, // 积分部分原额还原（R-03 口径同 GROUP_FAIL 链）
+    });
+
+    // 幂等键防重：重放（relay at-least-once 重投）→ 受理面同键重放不重复
+    await handler(
+      {
+        id: 8,
+        eventId: 'e8',
+        topic: SESSION_CANCELLED_TOPIC,
+        payload: {
+          session_id: 601,
+          cancelled_by: 'platform',
+          cancelled_by_user_id: null,
+          cancelled_at: new Date().toISOString(),
+          session_start_at: new Date().toISOString(),
+        } as unknown as SessionCancelledPayload,
+        retryCount: 0,
+      },
+      stubUow,
+    );
+    expect(
+      (await pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM payment.refunds`)).rows[0]!
+        .n,
+    ).toBe(2);
+  });
+
+  it('SessionCancelled 载荷防御：缺 session_id / cancelled_by 越域 → 抛错进重试轨道（不静默丢弃）', async () => {
+    const handler = createSessionCancelledRefundHandler(refunds, registry);
+    await expect(
+      handler(
+        { id: 9, eventId: 'e9', topic: SESSION_CANCELLED_TOPIC, payload: {}, retryCount: 0 },
+        stubUow,
+      ),
+    ).rejects.toMatchObject({ code: 'E_INVALID_ARGUMENT' });
+    await expect(
+      handler(
+        {
+          id: 10,
+          eventId: 'e10',
+          topic: SESSION_CANCELLED_TOPIC,
+          payload: { session_id: 602, cancelled_by: 'agent' },
+          retryCount: 0,
+        },
+        stubUow,
+      ),
+    ).rejects.toMatchObject({ code: 'E_INVALID_ARGUMENT' });
   });
 });

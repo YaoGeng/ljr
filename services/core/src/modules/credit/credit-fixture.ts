@@ -23,3 +23,33 @@ export async function seedRestriction(
     [ownerType, ownerId, kind, days],
   );
 }
+
+// ---- M2-W2 T3 扩展：D4 取消 spec 的 credit 侧直读锚（owner=credit 同头注纪律） ----
+
+/** 流水行直读（D4 取消/选择信用档的入账断言锚；action 升序） */
+export async function creditEventRowsRaw(
+  pool: Pool,
+  ownerType: 'user' | 'lawyer',
+  ownerId: number,
+): Promise<ReadonlyArray<{ action: string; delta: number; ref_id: string }>> {
+  const res = await pool.query<{ action: string; delta: number; ref_id: string }>(
+    `SELECT action, delta, ref_id::text AS ref_id FROM credit.credit_events
+      WHERE owner_type = $1 AND owner_id = $2 ORDER BY id`,
+    [ownerType, ownerId],
+  );
+  return res.rows;
+}
+
+/** 限制令行直读（D4 真事件驱动的 G1 停接令断言锚） */
+export async function restrictionRowsRaw(
+  pool: Pool,
+  ownerType: 'user' | 'lawyer',
+  ownerId: number,
+): Promise<ReadonlyArray<{ kind: string; reason: string }>> {
+  const res = await pool.query<{ kind: string; reason: string }>(
+    `SELECT kind, reason FROM credit.credit_restrictions
+      WHERE owner_type = $1 AND owner_id = $2 ORDER BY id`,
+    [ownerType, ownerId],
+  );
+  return res.rows;
+}

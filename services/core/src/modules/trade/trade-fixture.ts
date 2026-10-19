@@ -17,6 +17,9 @@ export interface SeedPaidEnrollmentOptions {
   readonly cash: string;
   readonly points: number;
   readonly unitPrice: string;
+  /** price_snapshot 显式覆盖（M2-W2 T3 加法：D4 报名取消链走 advanceToRefunded——出库
+   *  防御 parsePriceSnapshot 要求六键形状，缺省 '{}' 占位与该链不兼容）；缺省 '{}' 保持 */
+  readonly snapshot?: Record<string, unknown>;
 }
 
 /** 直插一场次行（唯一 slot_start 由自增序保证），可选挂一个 PAID 报名；返回场次 id */
@@ -78,11 +81,34 @@ export async function seedPaidEnrollmentRaw(
     `INSERT INTO trade.enrollments
        (ref_type, ref_id, user_id, price_snapshot, unit_price, paid_amount, cash_amount,
         points_amount, price_version_id, pay_status, credit_used)
-     VALUES ($1, $2, $3, '{}'::jsonb, $4, $5, $6, $7, 1, 'PAID', 0)
+     VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, 1, 'PAID', 0)
      RETURNING id`,
-    [refType, refId, o.userId, o.unitPrice, paidFull, o.cash, o.points],
+    [
+      refType,
+      refId,
+      o.userId,
+      JSON.stringify(o.snapshot ?? {}),
+      o.unitPrice,
+      paidFull,
+      o.cash,
+      o.points,
+    ],
   );
   return Number(res.rows[0]!.id);
+}
+
+// ---- M2-W2 T3 扩展：D4 报名取消 spec 的 trade 侧直读锚 ----
+
+/** 报名支付状态直读（D4 报名取消终态化断言锚；行不存在=undefined） */
+export async function enrollmentPayStatusRaw(
+  pool: Pool,
+  enrollmentId: number,
+): Promise<string | undefined> {
+  const res = await pool.query<{ pay_status: string }>(
+    `SELECT pay_status FROM trade.enrollments WHERE id = $1`,
+    [enrollmentId],
+  );
+  return res.rows[0]?.pay_status;
 }
 
 // ---- M2-W1 T1 扩展：D1 房间生命周期 spec 的场次注入（slot_start 显式任意时刻——misfire/
