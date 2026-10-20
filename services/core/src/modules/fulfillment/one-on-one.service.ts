@@ -911,22 +911,40 @@ export class OneOnOneService {
     // F3 结算链扩展（与 I-3 的 gross 构成对齐一并在 M2 联调闭合，04 §8 登记归 T7）。
     const unitCents = moneyToCents(pre.unit_price);
     const prepaidCents = moneyToCents(pre.prepaid);
-    let settleCents = 0;
-    if (pre.status === 'IN_SERVICE') {
-      if (pre.mode === 'text') {
-        // ②开始后文字：settle=单价×已完成轮次（封顶 prepaid——cancel 无补差出边，类注口径）
-        settleCents = Math.min(unitCents * pre.consumed_units, prepaidCents);
-      } else {
-        // ③开始后音视频：consumed=0 收 1 单位 50%（floor 到分）退其余；≥1 实结（封顶同上）
-        settleCents =
-          pre.consumed_units === 0
-            ? Math.floor(unitCents / 2)
-            : Math.min(unitCents * pre.consumed_units, prepaidCents);
+    let refundCents: number;
+    let full: boolean;
+    if (pre.status === 'CANCELLED') {
+      // B-1 终审修复波（BLOCKER）：崩溃窗重入（步骤一已提交 CANCELLED+refund_amount、
+      // F2 受理/终态化未达）——**以步骤一原子持久化的 refund_amount 为权威**续跑，禁按
+      // status 重算档位：重入态非 IN_SERVICE 会使解算恒退化为全退（③voice consumed≥1 封顶
+      // 情形将以全退键 refund/po-{po}/ooo-cancel 超退整单 prepaid——资损面）。full 判据=
+      // 已持久化退款额等于 prepaid。
+      if (pre.refund_amount === null) {
+        throw new AppError(
+          ErrorCode.InternalError,
+          `订单 ${id} 处于 CANCELLED 但 refund_amount 缺失（不应触达——取消步骤一原子写入）`,
+        );
       }
+      refundCents = moneyToCents(pre.refund_amount);
+      full = refundCents >= prepaidCents;
+    } else {
+      let settleCents = 0;
+      if (pre.status === 'IN_SERVICE') {
+        if (pre.mode === 'text') {
+          // ②开始后文字：settle=单价×已完成轮次（封顶 prepaid——cancel 无补差出边，类注口径）
+          settleCents = Math.min(unitCents * pre.consumed_units, prepaidCents);
+        } else {
+          // ③开始后音视频：consumed=0 收 1 单位 50%（floor 到分）退其余；≥1 实结（封顶同上）
+          settleCents =
+            pre.consumed_units === 0
+              ? Math.floor(unitCents / 2)
+              : Math.min(unitCents * pre.consumed_units, prepaidCents);
+        }
+      }
+      // ① IN_SERVICE 前：settle=0 全退（含 text 已开始但 0 轮完成形态——服务未交付）
+      refundCents = Math.max(0, prepaidCents - settleCents);
+      full = settleCents === 0;
     }
-    // ① IN_SERVICE 前：settle=0 全退（含 text 已开始但 0 轮完成形态——服务未交付）
-    const refundCents = Math.max(0, prepaidCents - settleCents);
-    const full = settleCents === 0;
 
     if (pre.status !== 'CANCELLED') {
       // ---- 步骤一：CANCELLED（受理先行于退款指令——D4 双路径先例）
@@ -1061,9 +1079,11 @@ export class OneOnOneService {
 
   /**
    * OOO_SETTLE_DEFAULT（30min 默认确认，D9 配置化）：FINISHED=系统计量值双默认；
-   * **SETTLING=半默认同样锚系统计量**（I-1 修复环：不采信首方声明值——低报防线；
-   * settle=clamp[0, unit_price×consumed_units]，少补>prepaid 合法域经补差承载）。
-   * 多退=F2 受理（自持事务，崩溃窗口重放幂等收敛）；少补=F1 补差单同 uow。其他态=幂等无操作。
+   * **SETTLING=半默认锚系统计量**（I-1 修复环：不采信首方声明值——低报防线；
+   * settle=clamp[0, unit_price×consumed_units]，少补>prepaid 合法域经补差承载）——
+   * **例外（H-1 终审修复波）**：在册 ooo-settle 退款单（双确认多退崩溃窗）=共识值权威，
+   * 尊重已落 settle_amount 禁系统计量覆盖。多退=F2 受理（自持事务，崩溃窗口重放幂等收敛）；
+   * 少补=F1 补差单同 uow。其他态=幂等无操作。
    */
   async settleDefaultExecute(
     uow: SqlExecutor,
@@ -1089,13 +1109,26 @@ export class OneOnOneService {
       return { order_id: id, status: after?.status ?? 'SETTLED' };
     }
     if (row.status === 'SETTLING') {
-      // I-1：半默认改锚系统计量（首方声明值弃用——覆盖写 settle_amount 后按系统值结算）
-      const settle = this.systemSettleOf(row);
-      await uow.query(
-        `UPDATE fulfillment.one_on_one_orders SET settle_amount = $2, updated_at = now()
-          WHERE id = $1`,
-        [id, settle],
+      // H-1 终审修复波：**双确认多退崩溃窗**（双方一致已确认→F2 ooo-settle 受理已提交而终态化
+      // 未达，30min 默认先于客户端重试触发）——在册 ooo-settle 退款单为权威：尊重已落
+      // settle_amount 共识值收敛（系统计量不得覆盖——退款已按共识额发出，重算会造成
+      // 「共识值被覆盖+同键异额受理冲突」双面漂移）；无在册退款单=首方单独确认的半默认
+      // → I-1 口径锚系统计量（不采信首方声明值——低报防线）。
+      const settleRefund = (await this.refunds.listByOrderId(Number(row.payment_order_id))).find(
+        (r) => r.idempotency_key === oooSettleRefundKey(Number(row.payment_order_id)),
       );
+      let settle: string;
+      if (settleRefund) {
+        settle = row.settle_amount ?? row.prepaid; // 双确认共识值（多退受理在册——禁覆盖）
+      } else {
+        // I-1：半默认改锚系统计量（首方声明值弃用——覆盖写 settle_amount 后按系统值结算）
+        settle = this.systemSettleOf(row);
+        await uow.query(
+          `UPDATE fulfillment.one_on_one_orders SET settle_amount = $2, updated_at = now()
+            WHERE id = $1`,
+          [id, settle],
+        );
+      }
       await this.finalizeInUow(
         uow,
         toView({ ...row, settle_amount: settle }),

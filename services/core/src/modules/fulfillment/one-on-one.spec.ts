@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { createHmac, randomBytes } from 'node:crypto';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { WsAdapter } from '@nestjs/platform-ws';
@@ -30,6 +30,7 @@ import { creditEventRowsRaw } from '../credit/credit-fixture';
 import { RuleCenterService } from '../ops/rule-center.service';
 import { PAYMENT_CONFIG } from '../payment/payment.config';
 import { PaymentGatewayService } from '../payment/payment.gateway.service';
+import { RefundService } from '../payment/refund.service';
 import {
   countLedgersByKey,
   getPaymentOrderByKey,
@@ -1240,5 +1241,82 @@ describe('D6 1对1 服务闭环（下单/支付/接单/计量/实结/取消三�
     expect((await oooRow(id))!['status']).toBe('ACCEPTED'); // recheck=非 PAID → 无操作
     expect(await jobStatusRaw(pool, 'OOO_ACCEPT_TIMEOUT', 'one_on_one', id)).toBe('CANCELLED');
     expect(await outboxPayloads(ONE_ON_ONE_LAWYER_TIMEOUT_TOPIC)).toHaveLength(0);
+  });
+
+  // ===========================================================================
+  // 终审修复波（arch Approved-with-notes：B-1 BLOCKER 资损 + H-1 加固）
+  // ===========================================================================
+
+  it('B-1 取消崩溃窗重入：③半价取消 F2 受理崩溃→CANCELLED.refund_amount 权威续跑（部分退额维持非全退）', async () => {
+    const lawyer = nextLawyer();
+    await seedLawyer(lawyer);
+    const user = nextUser();
+    await seedUser(user);
+    const created = await createOrder(user, await seedRoom(lawyer), 'voice'); // prepaid=100
+    const id = created.order.id;
+    await paySuccess(created.payment_order.id);
+    await orders.accept(id, { actorLawyerId: lawyer });
+    await orders.recordDuration(id, 0); // IN_SERVICE+consumed=0 → ③ 首单位半价：应退 50.00
+
+    // 模拟崩溃：F2 受理首调炸（步骤一 CANCELLED + refund_amount=50.00 已原子提交）
+    const spy = vi
+      .spyOn(app.get(RefundService), 'accept')
+      .mockRejectedValueOnce(new Error('simulated crash'));
+    await expect(orders.cancel(id, { role: 'user', actorUserId: user })).rejects.toThrow(
+      'simulated crash',
+    );
+    expect((await oooRow(id))!['status']).toBe('CANCELLED');
+    expect((await oooRow(id))!['refund_amount']).toBe('50.00');
+    spy.mockRestore();
+
+    // 客户端重试：以已持久化 refund_amount 为权威续跑——部分退额维持（修复前按 status 重算
+    // 恒全退：将以 ooo-cancel 键超退整单 100）
+    const resumed = await orders.cancel(id, { role: 'user', actorUserId: user });
+    expect(resumed.refund.kind).toBe('PARTIAL');
+    expect(resumed.refund.amount).toBe('50.00');
+    expect(resumed.order.status).toBe('PARTIAL_REFUNDED');
+    const refundRows = await listRefundsByOrderId(pool, created.payment_order.id);
+    expect(refundRows).toHaveLength(1); // 恰一张
+    expect(refundRows[0]!['idempotency_key']).toBe(
+      `refund/po-${created.payment_order.id}/ooo-cancel-partial`,
+    );
+    expect(refundRows[0]!['cash_amount']).toBe('50.00'); // 部分键+50 额——B-1 回归钉
+  });
+
+  it('H-1 双确认多退崩溃窗：ooo-settle 受理在册→默认确认尊重共识值（系统计量不覆盖，退款恰一张）', async () => {
+    const lawyer = nextLawyer();
+    await seedLawyer(lawyer);
+    const user = nextUser();
+    await seedUser(user);
+    const roomId = await seedRoom(lawyer);
+    const created = await createOrder(user, roomId, 'voice'); // prepaid=100，consumed 将=0
+    const id = created.order.id;
+    await paySuccess(created.payment_order.id);
+    await orders.accept(id, { actorLawyerId: lawyer });
+    await orders.recordDuration(id, 0); // consumed=0 → 系统计量 settle=0.00（与共识 40 相异）
+    await orders.finish(id, 0, { actorLawyerId: lawyer });
+    await orders.settleConfirm(id, { role: 'user', settle_amount: '40.00' }, { actorUserId: user });
+
+    // 模拟崩溃：双确认第二方的 F2 受理已提交、终态化未达（直调同键同额=finalize 的受理半边）
+    await app.get(RefundService).accept({
+      order_id: created.payment_order.id,
+      user_id: user,
+      cash: '60.00',
+      points: 0,
+      reason: 'SETTLE_REFUND',
+      idempotency_key: `refund/po-${created.payment_order.id}/ooo-settle`,
+    });
+
+    // 30min 默认触发：共识值 40 权威（修复前按系统计量 0 重算→同键异额 409/账面漂移）
+    await dueJobsNow(id, ['OOO_SETTLE_DEFAULT']);
+    await scheduler.tick('normal');
+    const row = (await oooRow(id))!;
+    expect(row['status']).toBe('SETTLED');
+    expect(row['settle_amount']).toBe('40.00'); // 共识值未被系统计量（0.00）覆盖
+    const refundRows = await listRefundsByOrderId(pool, created.payment_order.id);
+    expect(refundRows).toHaveLength(1);
+    expect(refundRows[0]!['cash_amount']).toBe('60.00'); // 幂等重放恰一张同额
+    const settled = await outboxPayloads(ONE_ON_ONE_SETTLED_TOPIC);
+    expect(settled.at(-1)).toMatchObject({ order_id: id, net: '40.00' });
   });
 });
