@@ -51,3 +51,7 @@ export interface RefundSource {
 
 /** 注册键：B2C 场次（SessionFailed 消费器的 refType；同 B2 占用锁 ref_type 词汇） */
 export const REFUND_SOURCE_REF_TYPE_SESSION = 'session';
+
+/** 注册键：C2B 拼团（I-1 接线=M2-W3 T1：LawyerRejected 拒绝/超时全员退款清单源——C2 超时
+ *  自动拒与 C4 显式拒同 topic 一次覆盖；同 B2 占用锁 ref_type 词汇） */
+export const REFUND_SOURCE_REF_TYPE_GROUPBUY = 'groupbuy';

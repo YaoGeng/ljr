@@ -54,7 +54,7 @@ import { EnrollmentConsumer } from './enrollment.consumer';
 import { EnrollmentController } from './enrollment.controller';
 import { EnrollmentPatrolService } from './enrollment.patrol';
 import { EnrollmentQueryService } from './enrollment.query';
-import { SessionRefundSource } from './enrollment.refund-source';
+import { GroupBuyRefundSource, SessionRefundSource } from './enrollment.refund-source';
 import { EnrollmentService } from './enrollment.service';
 import { NotifyModule } from '../notify/notify.module';
 import { TRADE_RESCHEDULE_CONFIG, tradeRescheduleConfigFromEnv } from './reschedule.config';
@@ -95,10 +95,12 @@ import { RescheduleService } from './reschedule.service';
     // （应用服务+REST 面；Session 建面经 SessionService 单点，enrollment 迁移=trade 域内批量新建）
     GroupBuyResponseService,
     // C3 报名与支付成团（T7）：查询件（C2 cancel 计数缝）/应用服务/退款源（R-W3-M onModuleInit
-    // 注册 'session'）/消费者（回调成团守卫+SessionFailed·GroupBuyExpired 扫场+RefundCompleted 收敛）
+    // 注册 'session'；groupbuy 键=I-1 M2-W3 T1：LawyerRejected 拒绝/超时全员退款清单源——同表
+    // ref_type 分流共用 impl）/消费者（回调成团守卫+SessionFailed·GroupBuyExpired 扫场+RefundCompleted 收敛）
     EnrollmentQueryService,
     EnrollmentService,
     SessionRefundSource,
+    GroupBuyRefundSource,
     EnrollmentConsumer,
     // H4 资损巡检①类候选检测件（M1-W4 T1：trade 侧自持 SQL，ops 巡检聚合消费——跨域经导出服务）
     EnrollmentPatrolService,

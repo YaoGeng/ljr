@@ -18,7 +18,14 @@
  *      event=REFUND_SUCCESS → 按订单幂等键（biz 键去事件后缀）收敛退款单 DONE+还原+F1 单
  *      REFUNDING→REFUNDED（守卫推进）→ inbox CONSUMED；PAY_SUCCESS noop（C3=T7 消费位，
  *      不动 inbox——消费权归 C3）。
- *   其余发起方事件（GroupBuyExpired/LawyerRejected...）=M2 生产方桩接线位。
+ *   ④ LawyerRejected（trade.group_buy.lawyer_rejected，C2 超时/C4 显式拒生产=M-1/M2-W2 在位）：
+ *      拼团拒绝/超时全员全额退款（I-1=M2-W3 T1）——载荷 {group_id, lawyer_id, via_timeout}，
+ *      付款人清单经 'groupbuy' 退款源（trade GroupBuyRefundSource）；reason 映射（W3-10）：
+ *      via_timeout=true→TIMEOUT（12h 确认超时）/false→LAWYER_REJECT（显式拒），
+ *      REFUND_REASONS 既有值零扩；幂等键=refund/po-{id}/lawyer-rejected（per 报名支付单，
+ *      重放短路断点续跑同 ②口径）；G1 信用消费同 topic 扇出并存（②同款先例），-5 档与
+ *      全额退款互不扰。
+ *   其余发起方事件（GroupBuyExpired...）=M2 生产方桩接线位。
  *
  * 事务形态（credit/firm-merchant 消费先例）：handler 不用 relay 认领事务的 uow——RefundService
  * 自持事务，崩溃窗口「已提交而 SENT 未标」→ 重投由幂等短路（at-least-once 语义内）。
@@ -29,10 +36,13 @@ import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import {
   AppError,
   ErrorCode,
+  LAWYER_REJECTED_TOPIC,
   PAYMENT_CALLBACK_INBOXED_TOPIC,
+  REFUND_SOURCE_REF_TYPE_GROUPBUY,
   REFUND_SOURCE_REF_TYPE_SESSION,
   SESSION_CANCELLED_TOPIC,
   SESSION_FAILED_TOPIC,
+  type LawyerRejectedPayload,
   type RefundSourceOrder,
   type SessionCancelledPayload,
   type SessionFailedPayload,
@@ -41,6 +51,7 @@ import type { OutboxHandler, RelayEvent } from '../../infrastructure/outbox/outb
 import { OutboxRelayService } from '../../infrastructure/outbox/outbox-relay.service';
 import { PaymentGatewayService } from './payment.gateway.service';
 import { RefundService } from './refund.service';
+import type { RefundReason } from './refund.types';
 import { RefundSourceRegistry } from './refund.source';
 
 const REFUND_SUCCESS_SUFFIX = ':REFUND_SUCCESS';
@@ -220,6 +231,88 @@ export function createSessionCancelledRefundHandler(
 }
 
 /**
+ * 独立可测的 LawyerRejected 拼团全员退款 handler（I-1=M2-W3 T1；镜像 SessionCancelled 形态）：
+ * C2 12h 确认超时自动拒（via_timeout=true→reason=TIMEOUT）与 C4 律师显式拒（false→
+ * LAWYER_REJECT）同 topic 一次覆盖（W3-10 映射，REFUND_REASONS 既有值零扩）。载荷漂移
+ * （group_id/lawyer_id 非正整数、via_timeout 非布尔）→ 抛错进重试轨道（不静默丢弃——W1 旧
+ * 载荷形状无 via_timeout 字段，漂移显性化优于兼容吞）；无 'groupbuy' 退款源 → warn 跳过
+ * （SessionFailed 同口径）；逐单独立事务受理全额退款（幂等键=refund/po-{id}/lawyer-rejected
+ * ——重放短路，断点续跑只补未受理单）。
+ */
+export function createLawyerRejectedRefundHandler(
+  refunds: RefundService,
+  sources: RefundSourceRegistry,
+): OutboxHandler {
+  const logger = new Logger('RefundLawyerRejected');
+  return async (event: RelayEvent): Promise<void> => {
+    if (event.topic !== LAWYER_REJECTED_TOPIC) {
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `拼团拒退消费器收到未注册 topic：${event.topic}`,
+      );
+    }
+    const payload = (event.payload ?? {}) as Partial<LawyerRejectedPayload>;
+    if (!isPositiveInt(payload.group_id) || !isPositiveInt(payload.lawyer_id)) {
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `事件 ${event.topic} 载荷缺 group_id/lawyer_id 正整数（进重试轨道，不静默丢弃）`,
+      );
+    }
+    if (typeof payload.via_timeout !== 'boolean') {
+      // 变体判别字段缺失/漂移：reason 无法映射（W3-10 两档必居其一），显性化优于猜测
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `事件 ${event.topic} 载荷 via_timeout 须为布尔（W1 旧形状漂移显性化，进重试轨道）`,
+      );
+    }
+    const source = sources.resolve(REFUND_SOURCE_REF_TYPE_GROUPBUY);
+    if (!source) {
+      logger.warn(
+        `LawyerRejected 拼团退款跳过：未注册 'groupbuy' 退款源（group=${payload.group_id}，event_id=${event.eventId}）`,
+      );
+      return;
+    }
+    const listed = await source.listPaidPaymentOrders(payload.group_id);
+    const orders = listed.map((raw, i) => assertSourceOrder(raw, i));
+
+    // reason 两档映射（W3-10）：超时自动拒=TIMEOUT / 律师显式拒=LAWYER_REJECT——同一拼团
+    // 全员全额（拒绝后无部分退语义，锁终态与全员退款成对）
+    const reason: RefundReason = payload.via_timeout ? 'TIMEOUT' : 'LAWYER_REJECT';
+    const failures: { payment_order_id: number; message: string }[] = [];
+    for (const order of orders) {
+      try {
+        // 逐单独立事务（受理自持）：断点续跑语义——重入时已落单的走幂等重放短路
+        await refunds.accept({
+          order_id: order.payment_order_id,
+          user_id: order.user_id,
+          cash: order.cash_amount,
+          points: order.points_amount,
+          reason,
+          idempotency_key: `refund/po-${order.payment_order_id}/lawyer-rejected`,
+        });
+      } catch (e) {
+        failures.push({
+          payment_order_id: order.payment_order_id,
+          message: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+    if (failures.length > 0) {
+      // 整体抛错进 relay 重试轨道：重入只补未受理单（已 DONE/PROCESSING 幂等短路）
+      throw new AppError(
+        ErrorCode.OutboxHandlerFailed,
+        `LawyerRejected 拼团退款部分失败（group=${payload.group_id}）：${failures
+          .map((f) => `po-${f.payment_order_id}: ${f.message}`)
+          .join('；')}`,
+      );
+    }
+    logger.log(
+      `LawyerRejected 拼团退款受理完成：group=${payload.group_id} via_timeout=${payload.via_timeout} 单数=${orders.length}`,
+    );
+  };
+}
+
+/**
  * 已知回调事件允许清单（评审 Minor-4）：REFUND_SUCCESS=本域收敛；PAY_SUCCESS=C3=T7 消费位。
  * 清单外值=通道/上游漂移信号 → warn 显性化（不抛防毒丸；M2 扩展事件时同步本清单）。
  */
@@ -289,7 +382,9 @@ export class RefundConsumer implements OnModuleInit {
 
   onModuleInit(): void {
     // 同 topic 双 handler 扇出由 relay 承接；SessionFailed 独占 topic；
-    // SessionCancelled=G1/I1 消费并存（M1 在位），本域新增退款真链（M2-W2 T3）
+    // SessionCancelled=G1/I1 消费并存（M1 在位），本域新增退款真链（M2-W2 T3）；
+    // LawyerRejected=G1 信用消费并存（credit.consumer 同 topic 在位——②同款扇出先例），
+    // 本域新增拼团拒绝/超时全员退款真链（I-1=M2-W3 T1）
     this.relay.registerHandler(
       SESSION_FAILED_TOPIC,
       createSessionFailedHandler(this.refunds, this.sources),
@@ -297,6 +392,10 @@ export class RefundConsumer implements OnModuleInit {
     this.relay.registerHandler(
       SESSION_CANCELLED_TOPIC,
       createSessionCancelledRefundHandler(this.refunds, this.sources),
+    );
+    this.relay.registerHandler(
+      LAWYER_REJECTED_TOPIC,
+      createLawyerRejectedRefundHandler(this.refunds, this.sources),
     );
     this.relay.registerHandler(
       PAYMENT_CALLBACK_INBOXED_TOPIC,

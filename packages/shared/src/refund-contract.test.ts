@@ -5,7 +5,12 @@ import {
   REFUND_FAILED_TOPIC,
   RefundFailedPayload,
 } from './events';
-import { REFUND_SOURCE_REF_TYPE_SESSION, RefundSource, RefundSourceOrder } from './refund-source';
+import {
+  REFUND_SOURCE_REF_TYPE_GROUPBUY,
+  REFUND_SOURCE_REF_TYPE_SESSION,
+  RefundSource,
+  RefundSourceOrder,
+} from './refund-source';
 import { assertMoney } from './money';
 
 describe('F2 退款事件契约（M1-W3 T6）：topic 命名 + 载荷形状（金额 Money 字符串禁 float）', () => {
@@ -58,5 +63,9 @@ describe('R-W3-M 退款源接口契约（Ruling：付款人清单经 trade 退�
     const rows = await fake.listPaidPaymentOrders(7);
     expect(rows).toHaveLength(1);
     expect((await fake.listPaidPaymentOrders(8)).length).toBe(0);
+  });
+
+  it('groupbuy 注册键常量=groupbuy（I-1 接线：LawyerRejected 拒绝/超时全员退款清单源）', () => {
+    expect(REFUND_SOURCE_REF_TYPE_GROUPBUY).toBe('groupbuy');
   });
 });
