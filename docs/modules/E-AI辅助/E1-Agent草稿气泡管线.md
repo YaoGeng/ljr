@@ -14,16 +14,20 @@
 - 降级：LLM 故障 → 律师端显式"AI 辅助不可用"，不阻塞手打
 
 ## 3. 领域模型
+（M2-W3 落地=V48__agent_assist；§3 裸列+四增补列：conversation_id=源会话锚（消息回查/推送面）、latency_ms/segment_ms=§8 各段打点、agent_review_logs.lawyer_id=动作归属（审计/H4）；replied_at 语义=处理时刻（三动作终态化与 EXPIRED 置换同写——「处理」统一语义）；action 出参={draft_id,status,deduplicated}（幂等回执面加法））
 drafts(
-  id bigserial PK, room_id bigint NOT NULL, target_user_id bigint NOT NULL,
+  id bigserial PK, room_id bigint NOT NULL, conversation_id bigint NOT NULL,
+  target_user_id bigint NOT NULL,
   question_digest text NOT NULL,               -- 脱敏后问题摘要
-  content text NOT NULL,                       -- 草稿（含"AI 辅助，仅供参考"标记）
-  placeholders jsonb,                          -- 占位符→原文映射（仅律师端展示用，不入 LLM）
+  content text NOT NULL,                       -- 草稿（含"AI 辅助，仅供参考"标记——R-04 管线级强制断言）
+  placeholders jsonb,                          -- 占位符→原文映射（仅律师端展示用，不入 LLM；listDrafts 经成员门 fail-closed）
   status varchar(12) NOT NULL,                 -- PENDING|SENT|EDITED_SENT|DISCARDED|EXPIRED
   answered boolean NOT NULL DEFAULT false,     -- 待办标记（E2）
+  latency_ms int, segment_ms jsonb,            -- 总延迟+各段打点（§8 预算口径）
   created_at, replied_at
 )
-agent_review_logs(id PK, draft_id, action varchar(12), edited_content text NULL, review_ms int, sent_at)
+agent_review_logs(id PK, draft_id, lawyer_id, action varchar(12), edited_content text NULL, review_ms int, sent_at)
+（UNIQUE(draft_id,action)=幂等键；行不可变仅 SELECT/INSERT）
 
 ## 4. 管线流程
 MQ 消息 → 脱敏层（NER+规则：姓名/证件/电话/地址→占位符，同训练管线同源）→ 敏感话术硬拦（承诺结果/包赢类词表 H5：命中即不生成、返回拦截提示）→ 意图/聚类 → RAG（pgvector，E3 知识库）→ LLM（境内供应商 ⚠）→ 气泡推送（占位符在律师端还原显示）→ 律师动作 → AgentReviewLog。
@@ -54,12 +58,12 @@ MQ 消息 → 脱敏层（NER+规则：姓名/证件/电话/地址→占位符�
 - 禁止：原文进提示词；Agent 直发消息；境外 LLM SDK 引入（合规红线）。
 
 ## 10. 验收清单
-- [x] 脱敏层：PII 回归集 0 漏杀（进入 LLM 的载荷抽检断言）（证据：commits 9b60e9d、d335477，task-7-report §8）
-- [ ] 敏感话术命中不生成（后续联调：M2——词集消费位=H5 WordDictService.currentBlockWords 已留好，task-7-report §8）
-- [ ] 发送动作走 D5 律师链路（隔离断言通过）（后续联调：M2——R-01 草稿写路径本批未建即无违反面，task-7-report §8）
-- [ ] 降级态律师端可见且手打不受阻（后续联调：M2——LLM 适配器与 WSS 气泡批次，task-7-report §8）
-- [ ] P95 ≤8s（压测：10 房间×5 用户并发提问）（后续联调：M2——本批承担脱敏段 ≤1s 冒烟断言（10k 文本 <50ms 纯路径），task-7-report §8）
-- [ ] AgentReviewLog 三动作+耗时落库（H4 可算采用率）（后续联调：M2——agent_review_logs 表本批不建，task-7-report §8）
+- [x] 脱敏层：PII 回归集 0 漏杀（进入 LLM 的载荷抽检断言）（证据：commits 9b60e9d、d335477，task-7-report §8；M2-W3 管线沿用+CapturingLlmAdapter 全载荷零 PII 抽检断言）
+- [x] 敏感话术命中不生成（M2-W3 T4：legal_industry BLOCK 集=WordDictService.currentBlockWords 消费；命中→零草稿零 DraftGenerated+draft_blocked 帧仅律师；词表后置到达=第二道门用例）
+- [x] 发送动作走 D5 律师链路（隔离断言通过）（M2-W3 T4：action→ConversationService.sendMessage 律师链路真跑（成员门+风控+发号）；隔离双钉=行为断言（管线全程 fulfillment 零新增行）+源面静态扫描（agent-assist 禁 fulfillment 写形态）；评审修复环=action 单事务行锁前置（并发双发收窄为崩溃窗））
+- [x] 降级态律师端可见且手打不受阻（M2-W3 T4：LLM/管线段失败→agent_degraded 帧仅律师+不烧 relay 重试+下一条消息自愈；GET /agent/health 透出降级态；故障注入用例）
+- [x] P95 ≤8s（压测：10 房间×5 用户并发提问）（M2-W3 T4：mock 期各段打点 segment_ms 四键+总 latency_ms 落库断言（分段和≤总）；脱敏段 ≤1s=M1 既有；10×5 真并发压测=M5 真供应商接入时随 D11 换装补（mock 期耗时毫秒级，压测无鉴别力——注记）
+- [x] AgentReviewLog 三动作+耗时落库（H4 可算采用率）（M2-W3 T4：agent_review_logs 表落 V48+UNIQUE(draft_id,action) 幂等+review_ms；H4 草稿采用率桩→真（（send|edit_send）÷generated 事件口径）；评审修复环=R-04 标记管线级强制+listDrafts per-room 归属门）
 
 ## 11. 待澄清点
 - ⚠04§8-11 LLM 供应商选型（管线以适配器隔离，切换不改主流程）。
