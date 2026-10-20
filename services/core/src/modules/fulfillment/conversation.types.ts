@@ -132,6 +132,23 @@ export interface EnsureConversationResult {
   readonly created: boolean;
 }
 
+/**
+ * 消息回查视图（agent-assist 专用内部读导出面 readMessageForAgent 的出参，M2-W3 T4：
+ * A.4「fulfillment→agent-assist 消息内容读」行）。content=原文（含 PII）——只在进程内传递，
+ * 禁入事件载荷与日志（E1 载荷 PII 铁律）；消费方（E1）先过 SanitizeService 再进 RAG/LLM。
+ */
+export interface AgentMessageRead {
+  /** 会话形态（E1 消费过滤锚：仅 room 型用户消息跑草稿管线） */
+  readonly type: ConversationType;
+  /** 会话 ref_id（room 型=房间 id——E1 草稿行的 room_id 锚） */
+  readonly ref_id: number;
+  /** 发送者 id（E1 target_user_id 锚） */
+  readonly sender_id: number;
+  readonly sender_role: SenderRole;
+  readonly content: string;
+  readonly mention: MentionTarget | null;
+}
+
 /** 冷存一轮结果（COLD_ARCHIVE 执行器 detail 承载） */
 export interface ColdArchiveResult {
   /** 冷存归档的会话数 */

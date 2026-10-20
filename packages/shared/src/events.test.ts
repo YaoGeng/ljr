@@ -139,6 +139,10 @@ import {
   OneOnOneDiffPendingPayload,
   ONE_ON_ONE_DIFF_UNPAID_TOPIC,
   OneOnOneDiffUnpaidPayload,
+  DRAFT_GENERATED_TOPIC,
+  DraftGeneratedPayload,
+  DRAFT_ACTIONED_TOPIC,
+  DraftActionedPayload,
 } from './events';
 
 describe('A1 身份事件契约（M1-W2）：topic 命名 + 载荷形状（PII 禁入载荷）', () => {
@@ -1010,5 +1014,42 @@ describe('M2-W3 D6 1对1 服务闭环事件契约（T2）：五新 topic（附�
     expect(ONE_ON_ONE_DIFF_UNPAID_TOPIC).toBe('fulfillment.one_on_one.diff_unpaid');
     const payload: OneOnOneDiffUnpaidPayload = { order_id: 501, user_id: 601 };
     expect(payload).toEqual({ order_id: 501, user_id: 601 });
+  });
+});
+
+describe('M2-W3 E1 草稿管线事件契约（T4）：两新 topic（附录 A.1 冻结形状）；载荷 PII 铁律=草稿正文/原文禁入', () => {
+  it('DraftGenerated：topic=agent_assist.draft.generated，{draft_id, room_id, conversation_id, target_user_id, latency_ms, segment_ms{sanitize,intent,rag,llm}}（→H4 草稿延迟+采用率分母）', () => {
+    expect(DRAFT_GENERATED_TOPIC).toBe('agent_assist.draft.generated');
+    const payload: DraftGeneratedPayload = {
+      draft_id: 71,
+      room_id: 3001,
+      conversation_id: 88,
+      target_user_id: 601,
+      latency_ms: 412,
+      segment_ms: { sanitize: 5, intent: 3, rag: 120, llm: 280 },
+    };
+    // 载荷形状钉死：无 question_digest/content/placeholders 字段（PII 铁律——正文/原文禁入载荷）
+    expect(Object.keys(payload).sort()).toEqual(
+      [
+        'conversation_id',
+        'draft_id',
+        'latency_ms',
+        'room_id',
+        'segment_ms',
+        'target_user_id',
+      ].sort(),
+    );
+    expect(Object.keys(payload.segment_ms).sort()).toEqual(['intent', 'llm', 'rag', 'sanitize']);
+  });
+
+  it('DraftActioned：topic=agent_assist.draft.actioned，{draft_id, room_id, action(send|edit_send|discard), review_ms}（→H4 采用率分子、E2 待办）', () => {
+    expect(DRAFT_ACTIONED_TOPIC).toBe('agent_assist.draft.actioned');
+    const payload: DraftActionedPayload = {
+      draft_id: 71,
+      room_id: 3001,
+      action: 'edit_send',
+      review_ms: 8_400,
+    };
+    expect(payload).toEqual({ draft_id: 71, room_id: 3001, action: 'edit_send', review_ms: 8_400 });
   });
 });

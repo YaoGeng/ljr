@@ -128,7 +128,9 @@ import { ONE_ON_ONE_CONFIG, oneOnOneConfigFromEnv } from './one-on-one.config';
   ],
   // 可剥离纪律：只导出应用服务（内部件不外泄）；ConversationService=D2 房间内提醒
   // （postInternalMessage 系统消息写入面，T4 消费）和 W3 E1（agent 写入接线位）的导出面；
-  // CancellationService=D4 取消/赔付指令导出面（I1 通知消费=W2+ 接线位）
-  exports: [RoomService, ConversationService, CancellationService],
+  // CancellationService=D4 取消/赔付指令导出面（I1 通知消费=W2+ 接线位）；
+  // ConversationHub=M2-W3 T4 纯加法导出（E1 气泡帧角色定向投递 publishTo——R-04 律师端
+  // 可见性承载；服务侧只依赖本抽象的既有头注纪律延续，订阅面仍归网关）
+  exports: [RoomService, ConversationService, CancellationService, ConversationHub],
 })
 export class FulfillmentModule {}

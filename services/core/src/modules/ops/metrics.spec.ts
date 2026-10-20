@@ -381,11 +381,47 @@ describe('H4 指标管道（§9 口径锁定 + R-03 + 查询面，需 PG）', ()
     expect(valueOf(res, 'lawyer_room_avg_duration_min')).toBeNull(); // W1 契约无 opened_at/closed_at
   });
 
-  it('核心组：草稿采用率=桩位（E1=W3，agent_review_logs 无事件源）', async () => {
+  it('核心组：草稿采用率（M2-W3 T4 桩转真：采用（send|edit_send）÷生成——02 §7.2 action 分布口径）', async () => {
+    // 已知输入：3 生成 + send/edit_send/discard 各 1 → 采用率 2/3；action 分布 dim 各 1
+    for (const id of [71, 72, 73]) {
+      await recordEvent('agent_assist.draft.generated', {
+        draft_id: id,
+        room_id: 3001,
+        conversation_id: 88,
+        target_user_id: USER_A,
+        latency_ms: 412,
+        segment_ms: { sanitize: 5, intent: 3, rag: 120, llm: 280 },
+      });
+    }
+    await recordEvent('agent_assist.draft.actioned', {
+      draft_id: 71,
+      room_id: 3001,
+      action: 'send',
+      review_ms: 8_400,
+    });
+    await recordEvent('agent_assist.draft.actioned', {
+      draft_id: 72,
+      room_id: 3001,
+      action: 'edit_send',
+      review_ms: 15_000,
+    });
+    await recordEvent('agent_assist.draft.actioned', {
+      draft_id: 73,
+      room_id: 3001,
+      action: 'discard',
+      review_ms: 900,
+    });
+    await relay.tick();
+
+    expect(await counterValue('draft_generated')).toBe(3);
+    expect(await counterValue('draft_adopted')).toBe(2); // discard 不计分子
+    for (const action of ['send', 'edit_send', 'discard']) {
+      expect(await counterValue('draft_actioned', `action:${action}`)).toBe(1);
+    }
     const res = await metrics.getMetrics({ group: 'core' });
+    expect(valueOf(res, 'draft_adoption_rate')).toBe(0.6667); // 2÷3 四位舍入
     const m = res.metrics.find((x) => x.key === 'draft_adoption_rate')!;
-    expect(m.value).toBeNull();
-    expect(m.stub).toContain('E1');
+    expect(m.stub).toBeNull(); // 桩注记清除（真口径）
   });
 
   it('核心组：满意度四维均值（§7.2「用户满意度」=user_to_lawyer 方向；lawyer_to_user 留 dim 不入均值）', async () => {

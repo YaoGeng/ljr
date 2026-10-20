@@ -66,6 +66,8 @@ export const TEST_DB_TABLES = [
   'agent_assist.knowledge_docs',
   'agent_assist.knowledge_chunks',
   'agent_assist.sanitize_audit',
+  'agent_assist.drafts',
+  'agent_assist.agent_review_logs',
   'payment.payment_orders',
   'payment.inbox',
   'payment.split_ledgers',

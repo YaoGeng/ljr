@@ -107,3 +107,48 @@ export async function roomConversationIdRaw(pool: Pool, roomId: number): Promise
   const row = res.rows[0];
   return row === undefined ? null : Number(row.id);
 }
+
+// ---- M2-W3 T4 扩展：E1 隔离架构级断言锚（agent-assist spec 消费） ----
+
+/**
+ * 会话/消息行计数（E1 §9「隔离验证：草稿路径无法写 messages 表」的行为断言锚——agent-assist
+ * spec 断言管线全程 fulfillment 两表零新增行、律师 action 后 messages 恰 +1）。owner=
+ * fulfillment 直读合法，spec 只 import 函数不内联本域表名（schema-refs 纪律）。
+ */
+export async function fulfillmentCountsRaw(
+  pool: Pool,
+): Promise<{ conversations: number; messages: number }> {
+  const res = await pool.query<{ c: string; m: string }>(
+    `SELECT (SELECT count(*) FROM fulfillment.conversations)::text AS c,
+            (SELECT count(*) FROM fulfillment.messages)::text AS m`,
+  );
+  return { conversations: Number(res.rows[0]!.c), messages: Number(res.rows[0]!.m) };
+}
+
+/**
+ * room 会话消息直读（E1 spec 断言发送动作经 sendMessage 真链落行：sender_role='lawyer' 锚；
+ * roomConversationMessagesRaw 的按 seq 过滤变体——E1 用例只需目标会话全部消息）。
+ */
+export async function conversationMessagesRaw(
+  pool: Pool,
+  conversationId: number,
+): Promise<
+  ReadonlyArray<{ seq: number; sender_role: string; content: string; risk_flag: string | null }>
+> {
+  const res = await pool.query<{
+    seq: string;
+    sender_role: string;
+    content: string;
+    risk_flag: string | null;
+  }>(
+    `SELECT seq, sender_role, content, risk_flag FROM fulfillment.messages
+      WHERE conversation_id = $1 ORDER BY seq`,
+    [conversationId],
+  );
+  return res.rows.map((r) => ({
+    seq: Number(r.seq),
+    sender_role: r.sender_role,
+    content: r.content,
+    risk_flag: r.risk_flag,
+  }));
+}

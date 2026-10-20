@@ -18,6 +18,8 @@
     "trade": "V1__schemas_roles.sql"
   },
   "tables": {
+    "agent_assist.agent_review_logs": "V48__agent_assist.sql",
+    "agent_assist.drafts": "V48__agent_assist.sql",
     "agent_assist.knowledge_chunks": "V9__agent_assist.sql",
     "agent_assist.knowledge_docs": "V9__agent_assist.sql",
     "agent_assist.sanitize_audit": "V10__agent_assist.sql",

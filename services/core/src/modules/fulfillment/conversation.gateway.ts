@@ -287,7 +287,9 @@ export class ConversationGateway {
         state.identity!.role,
         'joined',
       );
-      this.hub.subscribe(conversationId, this.subscriberOf(client));
+      // W3-6：订阅登记携 JWT claims.role——E1 草稿帧（hub.publishTo(['lawyer'])）的 R-04
+      // 「仅律师端可见」过滤锚；user 订阅者对角色过滤帧零收到
+      this.hub.subscribe(conversationId, this.subscriberOf(client), state.identity!.role);
       state.joined.add(conversationId);
       const backfill = await this.conversations.recentMessages(conversationId);
       this.send(client, {

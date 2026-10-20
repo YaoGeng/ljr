@@ -1040,3 +1040,37 @@ export interface OneOnOneDiffUnpaidPayload {
   readonly order_id: number;
   readonly user_id: number;
 }
+
+// —— E1 两 topic（M2-W3 T4；附录 A.1 冻结形状）——
+// 载荷 PII 铁律（E1 铁律延续）：question_digest 已脱敏、草稿正文/原文禁入载荷——消费者按需
+// 经 fulfillment 导出接口回查（原文只在进程内传递）。
+
+/** 草稿生成（E1 §6 生产 → H4 草稿延迟+采用率分母；附录 A.1 冻结形状）。
+ *  latency_ms=四段（脱敏/意图/检索/生成）总耗时；segment_ms=各段打点（§8 预算口径：
+ *  sanitize≤1s / intent≤1s / rag≤2s / llm≤4s，总 P95≤8s）。 */
+export const DRAFT_GENERATED_TOPIC = 'agent_assist.draft.generated';
+
+export interface DraftGeneratedPayload {
+  readonly draft_id: number;
+  readonly room_id: number;
+  readonly conversation_id: number;
+  readonly target_user_id: number;
+  readonly latency_ms: number;
+  readonly segment_ms: Readonly<{
+    sanitize: number;
+    intent: number;
+    rag: number;
+    llm: number;
+  }>;
+}
+
+/** 草稿动作（E1 §6 生产 → H4 采用率分子（send|edit_send）、E2 待办（M4）；附录 A.1 冻结形状）。
+ *  action=律师三动作；review_ms=草稿 created_at→动作时刻耗时（§8 审查耗时）。 */
+export const DRAFT_ACTIONED_TOPIC = 'agent_assist.draft.actioned';
+
+export interface DraftActionedPayload {
+  readonly draft_id: number;
+  readonly room_id: number;
+  readonly action: 'send' | 'edit_send' | 'discard';
+  readonly review_ms: number;
+}

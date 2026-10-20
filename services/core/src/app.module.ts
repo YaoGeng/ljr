@@ -18,6 +18,7 @@ import { WordDictModule } from './modules/ops/word-dict.module';
 import { LawyerAdminModule } from './modules/ops/lawyer-admin.module';
 import { SpecialtyKnowledgeModule } from './modules/agent-assist/specialty.module';
 import { SanitizeModule } from './modules/agent-assist/sanitize.module';
+import { DraftModule } from './modules/agent-assist/draft.module';
 import { PaymentModule } from './modules/payment/payment.module';
 import { BenefitsModule } from './modules/benefits/points.module';
 import { BenefitsConsumersModule } from './modules/benefits/absence.consumer';
@@ -53,6 +54,7 @@ import { HealthController } from './health.controller';
     LawyerAdminModule, // H1 律师与资质管理（ops schema owner，M1-W3 Task 10 压轴；W2 终审 G-A 前置门关闭承载面：/admin/lawyers @RequireRole('admin')+auditor_id 回填+ops 域审计表同事务审计；A3a 的 admin 占位控制器退役，契约归 A3a、HTTP 面归 ops）
     SpecialtyKnowledgeModule, // E3 专项配置与知识库基建（agent_assist schema owner，M1-W1 Task 6；E1 Task 7 同目录追加）
     SanitizeModule, // E1 实时脱敏层切片（agent_assist schema owner，M1-W1 Task 7；草稿管线接线 M2-W3）
+    DraftModule, // E1 Agent 草稿气泡管线（agent_assist schema owner，M2-W3 T4：MessageSent 消费→脱敏→硬拦→意图→RAG→mock LLM→气泡（publishTo 仅律师）→三动作（sendMessage 律师链路=R-01 唯一发送路径）；V48 两表
     PaymentModule, // F1 支付网关与回调 Inbox（payment schema owner，M1-W3 Task 1；指令面+回调验签+Inbox+对账；下游 C3=T7/H3=M2 接线）+ A3b 律所进件子域（M1-W3 Task 3：firm_merchants 状态机/R-01 查询面/FIRM_REVERIFY/保证金指令台账；下游 F3=T8/T10 H1 消费 FirmMerchantService）
     BenefitsModule, // F4 权益①切片（benefits schema owner，M1-W3 Task 2；积分账户/冻结核销解冻/退款还原/过期双路径；下游 C3=T7/F2=T6 消费 PointsService，券/备付=M2-W2 ②全量）
     BenefitsConsumersModule, // F4 ②全量 AttendanceAdjudicated 分成消费装配（M2-W2 T6：paid 聚合经 payment 导出面——PaymentModule imports BenefitsModule 反向即环，故平级装配；文件级无环，见 absence.consumer.ts 头注）

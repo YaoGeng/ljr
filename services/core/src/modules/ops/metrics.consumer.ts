@@ -16,6 +16,8 @@ import {
   TICKET_CATEGORIES,
   type AttendanceAdjudicatedPayload,
   type CouponGrantedPayload,
+  type DraftActionedPayload,
+  type DraftGeneratedPayload,
   type EnrollmentPaidPayload,
   type GroupBuyConvertedPayload,
   type GroupBuyLawyerConfirmedPayload,
@@ -350,6 +352,60 @@ export function counterIncrementsFor(topic: string, payload: unknown): readonly 
       }
       return [];
     }
+    // —— M2-W3 T4 E1 两 topic（A.1 H4 消费列：草稿采用率桩→真——02 §7.2「agent_review_logs
+    //    action 分布」口径：采用（send|edit_send）÷生成；discard 留 dim 不计分子） ——
+    case 'agent_assist.draft.generated': {
+      const p = raw as Partial<DraftGeneratedPayload>;
+      const seg = p.segment_ms as Record<string, unknown> | undefined;
+      if (
+        !isPositiveInt(p.draft_id) ||
+        !isPositiveInt(p.room_id) ||
+        !isPositiveInt(p.conversation_id) ||
+        !isPositiveInt(p.target_user_id) ||
+        typeof p.latency_ms !== 'number' ||
+        !Number.isInteger(p.latency_ms) ||
+        p.latency_ms < 0 ||
+        seg === null ||
+        typeof seg !== 'object'
+      ) {
+        bad(
+          topic,
+          payload,
+          '须 draft_id/room_id/conversation_id/target_user_id 正整数、latency_ms 非负整数、segment_ms 对象',
+        );
+      }
+      for (const key of ['sanitize', 'intent', 'rag', 'llm'] as const) {
+        if (
+          typeof seg?.[key] !== 'number' ||
+          !Number.isInteger(seg[key]) ||
+          (seg[key] as number) < 0
+        ) {
+          bad(topic, payload, `segment_ms.${key} 须非负整数（§8 各段打点契约）`);
+        }
+      }
+      return [{ key: MC.DRAFT_GENERATED, dim: '', inc: 1 }];
+    }
+    case 'agent_assist.draft.actioned': {
+      const p = raw as Partial<DraftActionedPayload>;
+      if (
+        !isPositiveInt(p.draft_id) ||
+        !isPositiveInt(p.room_id) ||
+        (p.action !== 'send' && p.action !== 'edit_send' && p.action !== 'discard') ||
+        typeof p.review_ms !== 'number' ||
+        !Number.isInteger(p.review_ms) ||
+        p.review_ms < 0
+      ) {
+        bad(topic, payload, '须 draft_id/room_id 正整数、action 三值、review_ms 非负整数');
+      }
+      // action 分布（02 §7.2 口径逐字）+ 采用分子（send|edit_send；discard 不计）
+      const out: MetricIncrement[] = [
+        { key: MC.DRAFT_ACTIONED, dim: `action:${p.action}`, inc: 1 },
+      ];
+      if (p.action !== 'discard') {
+        out.push({ key: MC.DRAFT_ADOPTED, dim: '', inc: 1 });
+      }
+      return out;
+    }
     default:
       throw new AppError(
         ErrorCode.InvalidArgument,
@@ -358,7 +414,7 @@ export function counterIncrementsFor(topic: string, payload: unknown): readonly 
   }
 }
 
-/** 指标源 topic 注册清单（16 计数源 + 4 登记位 + 5 D6 登记位（M2-W3）；handler 注册与文档锚） */
+/** 指标源 topic 注册清单（16 计数源 + 4 登记位 + 5 D6 登记位 + 2 E1 计数源（M2-W3 T4）；handler 注册与文档锚） */
 export const METRICS_SOURCE_TOPICS = [
   'trade.session.created',
   'trade.session.full',
@@ -385,6 +441,8 @@ export const METRICS_SOURCE_TOPICS = [
   'fulfillment.one_on_one.finished',
   'fulfillment.one_on_one.diff_pending',
   'fulfillment.one_on_one.diff_unpaid',
+  'agent_assist.draft.generated',
+  'agent_assist.draft.actioned',
 ] as const;
 
 @Injectable()

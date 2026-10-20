@@ -85,6 +85,15 @@ export const MC = {
   PRICE_CHANGE_APPROVED: 'price_change_approved',
   /** 补偿积分授予数（← PointsGranted kind=COMPENSATION；其余 kind 记账不计数） */
   COMP_POINTS_GRANTED: 'comp_points_granted',
+  /** 草稿生成数（dim=''；← DraftGenerated——E1=M2-W3 真生产，采用率分母 + 草稿延迟
+   *  口径的计数半边（延迟分布=P95 压测面，不入日表）） */
+  DRAFT_GENERATED: 'draft_generated',
+  /** 草稿采用数（dim=''；← DraftActioned action∈send|edit_send——采用率分子：02 §7.2
+   *  「agent_review_logs.action 分布」的采用半边（EDITED_SENT=修改后采用同计入）） */
+  DRAFT_ADOPTED: 'draft_adopted',
+  /** 草稿动作数（dim=action:{send|edit_send|discard}；← DraftActioned——action 分布，
+   *  02 §7.2 口径逐字；discard 留痕不计分子） */
+  DRAFT_ACTIONED: 'draft_actioned',
 } as const;
 
 /** 评价四维（G2 §3；顺序=展示序） */
@@ -159,7 +168,6 @@ export const METRIC_CATALOG: readonly MetricCatalogEntry[] = [
 export const METRIC_STUBS = {
   oneOnOneConversion:
     '分子=OneOnOnePaid 真事件流（D6=M2-W3 转真生产）；分母=到场用户判定行（normal+late）——§7.2「参与房间用户数」的可算面近似（absent 不计、未按 user 去重），口径待产品拍板',
-  draftAdoption: 'E1=W3：agent_review_logs 无事件源（草稿审查事件未流），不可算',
   lawyerRoomDuration:
     'ROOM_CLOSED 载荷无 opened_at/closed_at（W1 契约形状）——rooms.closed_at-opened_at 口径待事件增补，占位',
   lawyerRetention:

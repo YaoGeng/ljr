@@ -75,6 +75,7 @@ import {
   type ColdArchiveResult,
   type ConversationType,
   type ConversationView,
+  type AgentMessageRead,
   type EnsureConversationResult,
   type ListMessagesInput,
   type MentionTarget,
@@ -608,6 +609,50 @@ export class ConversationService {
       recorded: outcome.recorded,
       bothPartiesConsented: both,
     };
+  }
+
+  // ===========================================================================
+  // 内部读导出面（agent-assist 专用，M2-W3 T4；A.4「fulfillment→agent-assist 消息内容读」）
+  // ===========================================================================
+
+  /**
+   * 消息回查（agent-assist 专用内部接口，无 HTTP；E1 消费 MessageSent 后回查消息内容的
+   * **唯一入口**——跨域=接口纪律，agent-assist 禁直读本域表）：按 (conversation_id, seq)
+   * 精确回读一行，无行=null。content=原文（含 PII），只在进程内传递——**禁入事件载荷与
+   * 日志**（E1 载荷 PII 铁律：MessageSent/DraftGenerated 载荷均无 content）；调用方（E1
+   * 管线）先过 SanitizeService 再进 RAG/LLM（R-02）。不做成员门/形态过滤（服务端内部
+   * 消费，过滤语义由调用方承载：room 型+sender_role=user 才跑管线）。
+   */
+  async readMessageForAgent(conversationId: number, seq: number): Promise<AgentMessageRead | null> {
+    const id = assertPositiveInt(conversationId, 'conversation_id');
+    if (!Number.isInteger(seq) || seq <= 0) {
+      throw new AppError(ErrorCode.InvalidArgument, `seq 须为正整数，收到：${String(seq)}`);
+    }
+    const res = await this.pool.query<{
+      type: string;
+      ref_id: string;
+      sender_id: string;
+      sender_role: string;
+      content: string;
+      mention: string | null;
+    }>(
+      `SELECT c.type, c.ref_id, m.sender_id, m.sender_role, m.content, m.mention
+         FROM fulfillment.messages m
+         JOIN fulfillment.conversations c ON c.id = m.conversation_id
+        WHERE m.conversation_id = $1 AND m.seq = $2`,
+      [id, seq],
+    );
+    const row = res.rows[0];
+    return row
+      ? {
+          type: row.type as ConversationType,
+          ref_id: Number(row.ref_id),
+          sender_id: Number(row.sender_id),
+          sender_role: row.sender_role as SenderRole,
+          content: row.content,
+          mention: (row.mention as MentionTarget | null) ?? null,
+        }
+      : null;
   }
 
   // ===========================================================================

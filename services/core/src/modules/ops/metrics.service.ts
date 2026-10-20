@@ -192,6 +192,8 @@ export class MetricsService {
       convertedCreated: sumOf(MC.CONVERTED_SESSION_CREATED),
       priceChanges: sumOf(MC.PRICE_CHANGE_APPROVED),
       compGrants: sumOf(MC.COMP_POINTS_GRANTED),
+      draftGenerated: sumOf(MC.DRAFT_GENERATED),
+      draftAdopted: sumOf(MC.DRAFT_ADOPTED),
     };
     // 修复环 C-1：B2C 分列经算术推导（SessionCreated/SessionFull 载荷无 mode，C4 confirm/
     // convert 生成场次同发 SessionCreated；confirm「满员即成团」同事务再发 SessionFull）：
@@ -240,7 +242,10 @@ export class MetricsService {
     );
     put('lawyer_room_count', c.rooms);
     put('lawyer_room_avg_duration_min', null, METRIC_STUBS.lawyerRoomDuration);
-    put('draft_adoption_rate', null, METRIC_STUBS.draftAdoption);
+    // M2-W3 T4 桩转真：采用（SENT+EDITED_SENT）÷生成——02 §7.2「agent_review_logs.action 分布」
+    // 口径的事件承载（DraftActioned send|edit_send=分子 / DraftGenerated=分母；EDITED_SENT=
+    // 修改后采用同计入；discard 留 action dim 不计分子）
+    put('draft_adoption_rate', rate4(c.draftAdopted, c.draftGenerated));
     // 修复环 I-1：§7.2「用户满意度」=user_to_lawyer 方向（lawyer_to_user 计数留 dim 不入均值）
     for (const dim of REVIEW_DIMS) {
       put(
