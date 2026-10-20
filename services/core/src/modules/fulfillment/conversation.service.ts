@@ -28,8 +28,9 @@
  * → RTC startRecording（commit 后触达——真通道禁事务内外呼，mock 期零网络；崩溃窗恢复=
  * W2 D6 落位后按订单双方锚补核，头注声明）。并发串行化（T3 评审 C-2）：consent 事务首拍
  * conversations 行 FOR UPDATE——双方并发信令时后到者必见已提交对侧行，恰一次启动成立。
- * 双方身份 vs 订单 user/lawyer 的核验=D6（W3）订单面落位后接入（W1 无 D6 订单表，distinct
- * 双方即门）。
+ * 身份核验（#43 评审 I-4，M2-W3 T3 收口）：consent 给出方 party 须∈会话成员——one_on_one
+ * =订单双方（assertMembership 同一判定，D6 订单面落位后接入；room 型无 consent 门可补
+ * ——KindPolicy 全拒承载），防第三方补第二方触发录制。
  *
  * 撤回删除（R-04）：purgeTrainingCorpus=source_msg_id IS NOT NULL AND sender_id=该 user 的
  * 热行物理 DELETE + TrainingDataPurged{hot_count, cold_count:0} 回执（恒出箱——重放零行
@@ -232,18 +233,44 @@ export class ConversationService {
   }
 
   // ===========================================================================
-  // 成员门（T3 评审 C-1：四口统一——join/send/pull + GET messages；room 型校验成员资格）
+  // 成员门（T3 评审 C-1：四口统一——join/send/pull + GET messages；#43 三型分流 M2-W3 T3）
   // ===========================================================================
 
   /**
-   * room 会话成员门：conversation.ref_id=rooms.id → session_id（本域 rooms 直读）→ trade
-   * 导出面 isSessionParticipant（PAID 报名或场次律师）。非成员 → 403 E_ROLE_FORBIDDEN。
-   * private/one_on_one 型 W1 无订单锚（D6=W3，双方校验截止订单面落位）——开放（04§8 登记
-   * 由控制者承接）；调用方保证先行会话存在性判定（404）。
+   * 会话成员门（#43 四口补门，三型分流；原 assertRoomMembership——room 半边逻辑不变）：
+   *   room 型：conversation.ref_id=rooms.id → session_id（本域 rooms 直读）→ trade 导出面
+   *     isSessionParticipant（PAID 报名或场次律师）。非成员 → 403 E_ROLE_FORBIDDEN。
+   *   one_on_one 型（M2-W3 T3 新增）：本域 one_on_one_orders WHERE id=ref_id 直查（同
+   *     schema 合法，A.4 导出面清单「D5→#43 成员门」行），userId 须∈{user_id,lawyer_id}
+   *     ——**不要求订单状态**（REFUNDED/SETTLED 等历史会话双方仍可回看，口径=成员资格随
+   *     订单 parties 终身有效）；订单行缺失=数据漂移显性抛（room 型房间缺失同先例）。
+   *   private 型：维持开放（#7 私信通道决策未决——04 §8 #43 注记收口范围=one_on_one，
+   *     风险已知悉）；调用方保证先行会话存在性判定（404）。
    */
-  async assertRoomMembership(conversation: ConversationView, userId: number): Promise<void> {
-    if (conversation.type !== 'room') return;
+  async assertMembership(conversation: ConversationView, userId: number): Promise<void> {
     assertPositiveInt(userId, 'user_id');
+    if (conversation.type === 'one_on_one') {
+      const order = await this.pool.query<{ user_id: string; lawyer_id: string }>(
+        `SELECT user_id, lawyer_id FROM fulfillment.one_on_one_orders WHERE id = $1`,
+        [conversation.ref_id],
+      );
+      const row = order.rows[0];
+      if (!row) {
+        // 会话在册而订单缺失=数据漂移——显式失败不静默放行（D5 建会话锚=OneOnOnePaid）
+        throw new AppError(
+          ErrorCode.Conflict,
+          `1对1 订单 ${conversation.ref_id} 不存在（one_on_one 会话 ${conversation.conversation_id} 数据漂移）`,
+        );
+      }
+      if (userId !== Number(row.user_id) && userId !== Number(row.lawyer_id)) {
+        throw new AppError(
+          ErrorCode.RoleForbidden,
+          `用户 ${userId} 非订单 ${conversation.ref_id} 双方（user=${row.user_id}/lawyer=${row.lawyer_id}），无权访问 one_on_one 会话 ${conversation.conversation_id}`,
+        );
+      }
+      return;
+    }
+    if (conversation.type !== 'room') return; // private：开放（#7 未决，类注）
     const room = await this.pool.query<{ session_id: string }>(
       `SELECT session_id FROM fulfillment.rooms WHERE id = $1`,
       [conversation.ref_id],
@@ -266,13 +293,13 @@ export class ConversationService {
     }
   }
 
-  /** 四口统一入口：会话存在（404）+ room 型成员门（403）→ 返回会话视图 */
+  /** 四口统一入口（join 口前置）：会话存在（404）+ 三型成员门（403/409）→ 返回会话视图 */
   async assertAccess(conversationId: number, userId: number): Promise<ConversationView> {
     const conversation = await this.getConversation(conversationId);
     if (!conversation) {
       throw new AppError(ErrorCode.NotFound, `会话 ${conversationId} 不存在`);
     }
-    await this.assertRoomMembership(conversation, userId);
+    await this.assertMembership(conversation, userId);
     return conversation;
   }
 
@@ -310,8 +337,8 @@ export class ConversationService {
     if (!conversation) {
       throw new AppError(ErrorCode.NotFound, `会话 ${conversationId} 不存在`);
     }
-    // C-1 成员门（发送口）：room 型非参与方拒于风控/发号之前（最廉价的门先过）
-    await this.assertRoomMembership(conversation, senderId);
+    // C-1 成员门（发送口）：非成员（room 参与方/one_on_one 双方）拒于风控/发号之前（最廉价的门先过）
+    await this.assertMembership(conversation, senderId);
 
     // 1) 同步风控（R-01 单入口；REVIEW 副作用=risk_records 自持短事务——W1 checkRisk 现状）
     const verdict = await this.risk.checkRisk({ content: input.content, conversationId });
@@ -472,8 +499,8 @@ export class ConversationService {
     if (!conversation) {
       throw new AppError(ErrorCode.NotFound, `会话 ${conversationId} 不存在`);
     }
-    // C-1 成员门（读口：HTTP GET 与 WSS pull 共用本方法——单点设门）
-    await this.assertRoomMembership(conversation, asUserId);
+    // C-1 成员门（读口：HTTP GET 与 WSS pull 共用本方法——单点设门，三型分流）
+    await this.assertMembership(conversation, asUserId);
     const res = await this.pool.query<MessageRow>(
       `SELECT ${MESSAGE_COLS} FROM fulfillment.messages
         WHERE conversation_id = $1 AND seq > $2
@@ -513,12 +540,18 @@ export class ConversationService {
       throw new AppError(ErrorCode.NotFound, `会话 ${conversationId} 不存在`);
     }
     if (conversation.type !== 'one_on_one') {
-      // D10 边界：拼单房间默认不录制（consent 门仅 1对1）——信令面直接 403（kind 策略口径）
+      // D10 边界：拼单房间默认不录制（consent 门仅 1对1）——信令面直接 403（kind 策略口径；
+      // room 型对全部调用方（含非参与方）恒拒=无第二门可补，「room 型 consent 成员门」由本
+      // 全拒承载——#43 评审 I-4 的 room 半边核实结论）
       throw new AppError(
         ErrorCode.KindPolicy,
         `录制同意仅限 one_on_one 会话（拼单房间默认不录制，D10）；会话 ${conversationId} type=${conversation.type}`,
       );
     }
+    // #43 评审 I-4（M2-W3 T3）：consent 给出方 party 须∈会话成员（one_on_one=订单双方，
+    // 与四口共用 assertMembership 判定）——防第三方补第二方触发录制；置于拒结名义分支之前
+    // （信令面统一成员门，第三方探测/拒结名义同拒）
+    await this.assertMembership(conversation, partyId);
     if (!input.accept) {
       // W1 无撤回语义（consent_records 无撤销列）：拒结名义零落行零判门，回执直达
       return {

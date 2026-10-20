@@ -251,7 +251,7 @@ describe('C1 HTTP 契约（§5，需 PG）', () => {
     expect(missing.body.code).toBe(ErrorCode.NotFound);
   });
 
-  it('GET /lawyer/sessions/stats：enroll_rate/group_rate 出数（口径=范围内聚合）；attendance/ooo=null 桩；缺参 400；user token 403', async () => {
+  it('GET /lawyer/sessions/stats：enroll_rate/group_rate 出数（口径=范围内聚合）；attendance/ooo 缺数据=null（聚合面=M2-W3 T3 接真，出数用例在 D3 attendance.spec）；缺参 400；user token 403', async () => {
     const base = Date.now();
     const ymd = (offsetDays: number): string =>
       new Date(base + offsetDays * 24 * HOUR).toISOString().slice(0, 10);
@@ -281,8 +281,8 @@ describe('C1 HTTP 契约（§5，需 PG）', () => {
     ]); // §5 四键逐字
     expect(stats.body.enroll_rate).toBe(0.4); // Σjoined=4 / Σcapacity=10
     expect(stats.body.group_rate).toBe(0.5); // 成团 1（FULL）/总 2
-    expect(stats.body.attendance_rate).toBeNull(); // 桩：D3=M2
-    expect(stats.body.ooo_rate).toBeNull(); // 桩：D6=M2
+    expect(stats.body.attendance_rate).toBeNull(); // 缺数据 null（M2-W3 T3 接真后：窗内零已判定行）
+    expect(stats.body.ooo_rate).toBeNull(); // 缺数据 null（M2-W3 T3 接真后：窗内零进房用户）
 
     const empty = await request(app.getHttpServer())
       .get(`/lawyer/sessions/stats?from=${ymd(40)}&to=${ymd(41)}`)

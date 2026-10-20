@@ -667,6 +667,60 @@ describe('D6 1对1 服务闭环（下单/支付/接单/计量/实结/取消三�
     ).rejects.toMatchObject({ code: ErrorCode.SettleMismatch });
   });
 
+  it('真链两端到端（W1 遗留②补验=M2-W3 T3 桩转正锚）：真订单 create→PAY_SUCCESS→真 OneOnOnePaid→D5 落 one_on_one 会话→accept 回填→消息计量→finish→双确认→真 OneOnOneSettled→settlement 消费落行（两端消费面零改动）', async () => {
+    const lawyer = nextLawyer();
+    await seedLawyer(lawyer);
+    const user = nextUser();
+    await seedUser(user);
+    const roomId = await seedRoom(lawyer);
+
+    // ---- 一端（OneOnOnePaid 真生产→D5 消费）：真订单支付链，零合成事件直投 ----
+    const created = await createOrder(user, roomId, 'text');
+    const id = created.order.id;
+    await paySuccess(created.payment_order.id); // ingest+两轮 relay（FROZEN→PAID→出箱→D5 建会话）
+    const paid = await outboxPayloads(ONE_ON_ONE_PAID_TOPIC);
+    expect(paid).toEqual([{ order_id: id, user_id: user, lawyer_id: lawyer }]); // 服务生产，非 spec 直投
+    const convId = await oooConversationId(id);
+    expect(convId).toBeGreaterThan(0); // D5 既有消费面零改动落位
+    // #43 联动：会话成员=订单双方（user 读回正向）
+    await expect(
+      conversations.listMessages({ conversationId: convId, asUserId: user }),
+    ).resolves.toHaveLength(0);
+
+    // ---- 主链推进：accept（W3-13 回填）→首问 IN_SERVICE→答 1 轮→finish ----
+    const accepted = await orders.accept(id, { actorLawyerId: lawyer });
+    expect(accepted.conversation_id).toBe(convId);
+    expect((await oooRow(id))!['conversation_id']).not.toBeNull();
+    await sendMessage(convId, user, 'user', '真链端到端：首问');
+    await relay.tick();
+    await sendMessage(convId, lawyer, 'lawyer', '真链端到端：答');
+    await relay.tick();
+    expect((await oooRow(id))!['status']).toBe('IN_SERVICE');
+    await orders.finish(id, undefined, { actorLawyerId: lawyer });
+
+    // ---- 另一端（OneOnOneSettled 真生产→F3 消费）：双确认一致→结算行落位 ----
+    await orders.settleConfirm(id, { role: 'user', settle_amount: '50.00' }, { actorUserId: user });
+    const done = await orders.settleConfirm(
+      id,
+      { role: 'lawyer', settle_amount: '50.00' },
+      { actorUserId: lawyer },
+    );
+    expect(done.status).toBe('SETTLED');
+    const settled = await outboxPayloads(ONE_ON_ONE_SETTLED_TOPIC);
+    expect(settled).toEqual([
+      {
+        order_id: id,
+        lawyer_id: lawyer,
+        firm_id: FIRM_ID,
+        gross: '50.00',
+        net: '50.00',
+        payment_order_id: created.payment_order.id,
+      },
+    ]); // 服务生产（emitSettled），非 spec 直投
+    await relay.tick(); // F3 既有消费面零改动 → settlements 行落位
+    expect(await countSettlementsByRef(pool, 'one_on_one', id)).toBe(1);
+  });
+
   it('实结多退：双方确认值<prepaid→F2 SETTLE_REFUND 受理（退差）→REFUND_PARTIAL→SETTLED+OneOnOneSettled（net=实结）', async () => {
     const lawyer = nextLawyer();
     await seedLawyer(lawyer);

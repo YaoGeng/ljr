@@ -11,6 +11,7 @@ import {
   PRESENCE_JOINED_TOPIC,
   PRESENCE_LEFT_TOPIC,
   ROOM_IN_SERVICE_TOPIC,
+  ROOM_OPENED_TOPIC,
   SESSION_CANCELLED_TOPIC,
   ATTENDANCE_ADJUDICATED_TOPIC,
   type PresencePayload,
@@ -23,13 +24,16 @@ import { IDENTITY_CONFIG, type IdentityConfig } from '../identity/identity.confi
 import { SchedulerService } from '../schedule/scheduler.service';
 import { backdateRoomJobsDue, cancelPendingJobsByType } from '../schedule/job-fixture';
 import { seedGroupBuyRaw, seedPaidEnrollmentRaw, seedSessionAtRaw } from '../trade/trade-fixture';
+import { SessionService } from '../trade/session.service';
 import { FulfillmentModule } from './fulfillment.module';
 import { MockRtcProvider } from './rtc-provider';
 import { ATTENDANCE_DEFAULT_CONFIG, attendanceConfigFromEnv } from './attendance.config';
 import { presentUserIdsAt } from './attendance.types';
 import { AttendanceService } from './attendance.service';
+import { ConversationService } from './conversation.service';
 import { RoomService } from './room.service';
 import { attendanceRowsRaw, roomConversationIdRaw } from './fulfillment-fixture';
+import { seedOooOrderRaw, seedRoomRaw } from './one-on-one-fixture';
 import { grantUserRoles, seedLawyerProfile, seedUserShell } from '../identity/lawyer-fixture';
 import { seedPaymentOrderRaw } from '../payment/order-fixture';
 import { enrollmentOrderKey } from '../trade/enrollment.types';
@@ -68,6 +72,8 @@ describe('D3 到场与缺席判定（presence 消费/两级判定/缺席关闭/c
   let poolSvc: PgPoolService;
   let outbox: OutboxService;
   let rtc: MockRtcProvider;
+  let conversations: ConversationService;
+  let sessions: SessionService;
 
   const outboxPayloads = async (topic: string): Promise<Record<string, unknown>[]> => {
     const res = await pool.query<{ payload: Record<string, unknown> }>(
@@ -160,6 +166,8 @@ describe('D3 到场与缺席判定（presence 消费/两级判定/缺席关闭/c
     poolSvc = app.get(PgPoolService);
     outbox = app.get(OutboxService);
     rtc = app.get(MockRtcProvider);
+    conversations = app.get(ConversationService);
+    sessions = app.get(SessionService);
   });
 
   afterAll(async () => {
@@ -816,6 +824,112 @@ describe('D3 到场与缺席判定（presence 消费/两级判定/缺席关闭/c
       code: ErrorCode.InvalidArgument,
       httpStatus: 400,
     });
+  });
+
+  it('C1 stats 接真（M2-W3 T3，W2 复审 §3-⑤）：attendance_rate/ooo_rate 经本域聚合导出面出数（已知输入→期望值）；缺数据 null 双路', async () => {
+    // 上海日锚先取再 seed（午夜翻转竞态防御——T3 评审 M-2：today 若后取，跨零点时 seed 落窗外）
+    const today = new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10);
+    // 窗内场次+房间（判定/订单行的聚合锚）
+    const s1 = await seedSessionAtRaw(pool, LAWYER_A, 'CONFIRMED', new Date(), 'text');
+    const r1 = await seedRoomRaw(pool, s1);
+    // 判定行：律师 NORMAL+用户甲 NORMAL+用户乙 ABSENT（已判 3 行到场 2 → attendance_rate=0.6667，
+    // H4 口径双角色）；用户丙未判定（adjudicated_at 空——不进 attendance 分母；first_join_at 在册
+    // =进过房，进 ooo 分母）
+    await pool.query(
+      `INSERT INTO fulfillment.attendances
+         (room_id, user_id, role, first_join_at, last_seen_at, status, adjudicated_at)
+       VALUES ($1, $2, 'lawyer', now(), now(), 'NORMAL', now()),
+              ($1, $3, 'user',   now(), now(), 'NORMAL', now()),
+              ($1, $4, 'user',   NULL,  NULL,  'ABSENT', now()),
+              ($1, $5, 'user',   now(), now(), 'NORMAL', NULL)`,
+      [r1, LAWYER_A, 7821, 7822, 7823],
+    );
+    // 1对1 订单：甲（PAID 已支付计入）+丙（REFUNDED 终态仍计）——分子排除 CREATED 弃单
+    // （H4 已支付语义对齐，T3 评审 I-1；缺数据路另证 null）
+    await seedOooOrderRaw(pool, { roomId: r1, userId: 7821, lawyerId: LAWYER_A, status: 'PAID' });
+    await seedOooOrderRaw(pool, {
+      roomId: r1,
+      userId: 7823,
+      lawyerId: LAWYER_A,
+      status: 'REFUNDED',
+    });
+    // CREATED 弃单不计分子（过滤口径钉住：多一单弃单 ooo_rate 仍 1）
+    await seedOooOrderRaw(pool, {
+      roomId: r1,
+      userId: 7823,
+      lawyerId: LAWYER_A,
+      serviceType: 'doc_revision',
+      status: 'CREATED',
+    });
+    // ooo 分母=进房去重用户=甲+丙（乙未进、律师角色不计）→ 2/2=1
+
+    const stats = await sessions.stats(LAWYER_A, today, today);
+    expect(stats.enroll_rate).toBe(0); // 夹具场 joined=0/capacity=5（出数形态由 HTTP 面用例钉）
+    expect(stats.group_rate).toBe(1); // CONFIRMED ∈ 成团链
+    expect(stats.attendance_rate).toBe(0.6667); // (NORMAL+LATE)2 ÷ 已判 3
+    expect(stats.ooo_rate).toBe(1); // 订单 2 ÷ 进房用户 2
+
+    // 缺数据路一：有场次零判定/零订单/零进房 → 两率 null（非 0）
+    await seedSessionAtRaw(pool, LAWYER_B, 'CONFIRMED', new Date(), 'text');
+    const bare = await sessions.stats(LAWYER_B, today, today);
+    expect(bare.attendance_rate).toBeNull();
+    expect(bare.ooo_rate).toBeNull();
+
+    // 缺数据路二：空窗（无场次）→ 四率全 null
+    const empty = await sessions.stats(LAWYER_A, '2020-01-01', '2020-01-01');
+    expect(empty).toEqual({
+      enroll_rate: null,
+      group_rate: null,
+      attendance_rate: null,
+      ooo_rate: null,
+    });
+  });
+
+  it('AttendanceGate 时序缝联调（W1 原文回指=W2 复审 §3-⑦，M2-W3 T3 验收）：开房 job→ROOM_OPENED→presence join/leave/join（D5 真链 recordPresence）→GRACE_END 消费→判定不误判（容忍窗内抖动全 NORMAL+IN_SERVICE）', async () => {
+    // ---- 段 1：开房 job 真链（slot_start 锚定使 grace_end≈now+30s——段 2 presence 的 at
+    // 服务器时刻全落 [g−60s, g] 容忍窗内，零合成时间戳）----
+    const slotStart = new Date(Date.now() - 4.5 * MIN); // grace_end=slot+5min≈now+30s
+    const sessionId = await seedSessionAtRaw(pool, LAWYER_A, 'CONFIRMED', slotStart, 'text');
+    await seedPaidEnrollmentRaw(pool, 'session', sessionId, {
+      userId: 7831,
+      cash: '100.00',
+      points: 0,
+      unitPrice: '100.00',
+    });
+    const room = await openRoom(sessionId, slotStart);
+    const convId = await roomConversationIdRaw(pool, room.id);
+    expect(convId).not.toBeNull(); // 开房即建 room 会话（presence 锚）
+    const opened = await outboxPayloads(ROOM_OPENED_TOPIC);
+    expect(opened).toHaveLength(1); // 段 1 事件出口（job→事件）
+
+    // ---- 段 2：presence join/leave/join 抖动经 D5 真链（recordPresence=WSS join/leave 的
+    // 服务承载，at=服务器接收时刻；事件 id 序先于 GracePeriodEnded=判定重放快照内）----
+    const conversation = (await conversations.getConversation(convId!))!;
+    await conversations.recordPresence(conversation, LAWYER_A, 'lawyer', 'joined');
+    await conversations.recordPresence(conversation, 7831, 'user', 'joined');
+    await conversations.recordPresence(conversation, 7831, 'user', 'left'); // 抖动半程
+    await conversations.recordPresence(conversation, 7831, 'user', 'joined'); // 重连归位
+    await relay.tick(); // D3 presence 消费 → attendances 真链落行
+    await relay.tick(); // 二轮兜底（ROOM_OPENED 无 handler 的重试噪音不阻塞——W2 同口径）
+    const seeded = await attendanceRowsRaw(pool, room.id);
+    expect(seeded).toHaveLength(2); // upsert 幂等：join/leave/join 恒两行
+    expect(seeded.every((r) => r.first_join_at !== null)).toBe(true);
+
+    // ---- 段 3：GRACE_END job→GracePeriodEnded→relay 消费→job1 判定（due 回拨时间注入）----
+    await backdateRoomJobsDue(pool, ['GRACE_END'], room.id);
+    await silenceReminderJobs();
+    await runGraceAdjudication();
+
+    // 判定不误判：抖动全在容忍窗内——律师+用户 NORMAL、房间 IN_SERVICE、零 ABSENT
+    const after = await roomRowOf(sessionId);
+    expect(after.status).toBe('IN_SERVICE');
+    const rows = await attendanceRowsRaw(pool, room.id);
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.status === 'NORMAL' && r.adjudicated_at !== null)).toBe(true);
+    expect(rows.some((r) => r.status === 'ABSENT')).toBe(false); // 45s 级抖动不误判（W2 单点用例的链式串联形态）
+    expect(await outboxPayloads(ROOM_IN_SERVICE_TOPIC)).toEqual([
+      { room_id: room.id, session_id: sessionId },
+    ]);
   });
 
   // ===========================================================================

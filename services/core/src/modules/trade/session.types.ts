@@ -194,14 +194,16 @@ export interface SessionDetailView extends SessionView {
 
 /** GET /lawyer/sessions/stats 出参（§5 逐字四键）。口径（范围内=slot_start 落 [from,to) 的
  *  sessions 聚合，报告注明）：enroll_rate=Σjoined/Σcapacity；group_rate=已出 CREATED（成团链
- *  FULL..SETTLED）场次数/总场次数；attendance/ooo 桩=null（D3/D6=M2，H4 联调 M2-W2）。 */
+ *  FULL..SETTLED）场次数/总场次数；attendance_rate/ooo_rate=M2-W3 T3 起经 fulfillment 聚合
+ *  导出面取真值（FulfillmentStatsService——H4 到场率口径/02 §7.2 转化率口径），窗内零判定/
+ *  零参与者 → null（缺数据语义，非 0）。 */
 export interface SessionStatsView {
   readonly enroll_rate: number | null;
   readonly group_rate: number | null;
-  /** 桩标注：到场率依赖 D3 到场判定（M2 落位），本批恒 null——H4 数据源联调 M2-W2 */
-  readonly attendance_rate: null;
-  /** 桩标注：1对1转化率依赖 D6（M2 落位），本批恒 null */
-  readonly ooo_rate: null;
+  /** 到场率=(NORMAL+LATE)÷已判定行（H4 口径，双角色）；窗内零已判定行 → null */
+  readonly attendance_rate: number | null;
+  /** 1对1转化率=订单数÷进房去重用户数（02 §7.2 口径）；窗内零进房用户 → null */
+  readonly ooo_rate: number | null;
 }
 
 /** GET /sessions 筛选（§5 ?specialty=&city=&lawyer=&from=&to=；from/to=YYYY-MM-DD 上海日界）。

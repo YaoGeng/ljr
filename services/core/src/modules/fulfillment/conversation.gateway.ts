@@ -29,9 +29,10 @@
  * ——头注钉住）→ room 型成员门（C-1：PAID 报名/场次律师经 trade 导出面，非成员 403）→
  * **presence 出箱先行**（失败即止零订阅残留）→ 订阅 → 回填 → joined 帧。
  *
- * 成员门（C-1 四口）：join（本件）/send+pull（服务面 sendMessage/listMessages 单点设门）/
- * HTTP GET messages（controller 传 asUserId）——room 型统一校验；private/one_on_one 型 W1
- * 无订单锚（D6=W3）保持开放（04§8 登记由控制者承接）。
+ * 成员门（C-1 四口 + #43 三型分流，M2-W3 T3）：join（本件，经 assertMembership）/
+ * send+pull（服务面 sendMessage/listMessages 单点设门）/HTTP GET messages（controller 传
+ * asUserId）——room 型=PAID 报名/场次律师；one_on_one 型=订单双方（one_on_one_orders 直查，
+ * 不要求订单状态——历史会话可回看）；private 型维持开放（#7 私信通道决策未决）。
  *
  * 发送链顺序在 ConversationService.sendMessage（成员门→BLOCKED 拒=广播前拦截，本件只透传
  * 403 回执，零本地缓冲——「其他成员零收到」由顺序保证）。
@@ -277,8 +278,8 @@ export class ConversationGateway {
     const conversationId = frame.conversation_id;
     try {
       const conversation = await this.joinableConversation(conversationId);
-      // C-1 成员门（join 口）：room 型非参与方拒（403）
-      await this.conversations.assertRoomMembership(conversation, state.identity!.userId);
+      // C-1 成员门（join 口，#43 三型分流）：room 型非参与方/one_on_one 型非订单双方拒（403）
+      await this.conversations.assertMembership(conversation, state.identity!.userId);
       // I-3：presence 先行——出箱失败即止（不订阅不回填，无残留）
       await this.conversations.recordPresence(
         conversation,

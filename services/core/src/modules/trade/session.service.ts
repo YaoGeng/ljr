@@ -43,6 +43,7 @@ import { PricingConfigService } from '../pricing/pricing.service';
 import type { ScheduleJobType } from '../schedule/scheduler.catalog';
 import { SchedulerService } from '../schedule/scheduler.service';
 import { SlotLockService } from '../schedule/slot-lock.service';
+import { FulfillmentStatsService } from '../fulfillment/fulfillment-stats.service';
 import { SESSION_MACHINE, SESSION_TERMINAL_STATUSES, type SessionStatus } from './session.machine';
 import { SessionListCache } from './session.cache';
 import { TRADE_SESSION_CONFIG, type TradeSessionConfig } from './session.config';
@@ -152,11 +153,13 @@ export class SessionService {
     private readonly guard: StateTransitionGuardService,
     private readonly scheduler: SchedulerService,
     private readonly locks: SlotLockService,
-    // 跨模块消费全部走导出服务（B3/G1/A3a）——禁跨 schema join（架构 §3.2 红线）
+    // 跨模块消费全部走导出服务（B3/G1/A3a/D3+D6 聚合）——禁跨 schema join（架构 §3.2 红线）
     private readonly pricing: PricingConfigService,
     private readonly credit: CreditService,
     private readonly audit: LawyerQualificationService,
     private readonly cache: SessionListCache,
+    // M2-W3 T3：C1 stats attendance/ooo 聚合面（fulfillment 域 owner——平级装配模块，trade.module 注记）
+    private readonly fulfillmentStats: FulfillmentStatsService,
     // Symbol token（纯 interface 无运行时类型）：module useFactory 装配，测试构造直传
     @Inject(TRADE_SESSION_CONFIG) private readonly config: TradeSessionConfig,
   ) {}
@@ -423,7 +426,7 @@ export class SessionService {
   }
 
   // ===========================================================================
-  // 律师场次看板（§5 GET /lawyer/sessions/stats：四率；本批可算两率+两桩）
+  // 律师场次看板（§5 GET /lawyer/sessions/stats：四率——M2-W3 T3 起全真值）
   // ===========================================================================
 
   async stats(lawyerId: number, from: string, to: string): Promise<SessionStatsView> {
@@ -457,15 +460,25 @@ export class SessionService {
     );
     const row = res.rows[0]!;
     if (row.total === 0) {
-      // 无数据：本批可算两率同桩一致返 null（「stats 出数」验收=有场次时出数，用例钉住）
+      // 无场次：四率一致 null（attendance/ooo 的聚合面窗内零场次同收敛——FulfillmentStatsService 空清单）
       return { enroll_rate: null, group_rate: null, attendance_rate: null, ooo_rate: null };
     }
+    // attendance/ooo=M2-W3 T3 接真（W2 复审 §3-⑤）：窗内场次清单（本域窄面，D3 attendanceStats
+    // 同款分工）→ fulfillment 聚合导出面（跨域=接口，禁 join——A.4「fulfillment→trade stats」行）
+    const sessionIds = await this.sessionIdsOfLawyerBetween(
+      lawyerId,
+      shanghaiDayStart(fromDate),
+      shanghaiDayStart(shanghaiDayAfter(toDate)),
+    );
+    const [attendanceRate, oooRate] = await Promise.all([
+      this.fulfillmentStats.attendanceRateOfSessions(sessionIds),
+      this.fulfillmentStats.oooConversionRateOfSessions(sessionIds),
+    ]);
     return {
       enroll_rate: rate4(row.joined_sum, row.capacity_sum),
       group_rate: rate4(row.grouped, row.total),
-      // 桩标注（§5 出参注释）：attendance 依赖 D3（M2）、ooo 依赖 D6（M2），H4 联调 M2-W2
-      attendance_rate: null,
-      ooo_rate: null,
+      attendance_rate: attendanceRate,
+      ooo_rate: oooRate,
     };
   }
 

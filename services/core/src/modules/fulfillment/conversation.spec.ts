@@ -40,6 +40,7 @@ import { seedPaidEnrollmentRaw, seedSessionAtRaw } from '../trade/trade-fixture'
 import { FulfillmentModule } from './fulfillment.module';
 import { MockRtcProvider } from './rtc-provider';
 import { ConversationService } from './conversation.service';
+import { seedOooOrderRaw } from './one-on-one-fixture';
 
 /**
  * D5 会话与消息服务面（需 PG；M2-W1 T3——D5 §10 五项 + §9 铁律的服务层承载）：
@@ -355,11 +356,72 @@ describe('D5 会话与消息服务面（发送链/seq/补拉/consent 双门/撤�
       asUserId: USER_A,
     });
     expect(readable).toHaveLength(2);
-    // private/one_on_one 型：无订单锚（D6=W3）保持开放——存在即放行（04§8 登记由控制者落）
+    // private 型：#7 私信通道决策未决——维持开放（04§8 #43 注记收口范围=one_on_one）
     const priv = await conversations.ensureConversation('private', 515);
     await expect(
       conversations.listMessages({ conversationId: priv.conversation_id, asUserId: USER_B }),
     ).resolves.toHaveLength(0);
+  });
+
+  it('C-1 四口成员门（one_on_one 型，#43 M2-W3 T3）：非双方第三者 join/send/pull/GET 四口全 403；订单双方正向放行（不要求订单状态）；订单行缺失=409 数据漂移', async () => {
+    // 订单锚（ parties=USER_A×LAWYER_B；终态 SETTLED 造行——历史会话可回看口径）
+    const roomId = await seedRoomRow('OPEN', 610);
+    const orderId = await seedOooOrderRaw(pool, {
+      roomId,
+      userId: USER_A,
+      lawyerId: LAWYER_B,
+      status: 'SETTLED',
+    });
+    const conv = await conversations.ensureConversation('one_on_one', orderId);
+    const conversationId = conv.conversation_id;
+
+    // 第三者 USER_B 四口逐口拒（join=assertAccess 单点——WSS handleJoin 同一入口）
+    await expect(conversations.assertAccess(conversationId, USER_B)).rejects.toMatchObject({
+      code: ErrorCode.RoleForbidden,
+      httpStatus: 403,
+    });
+    await expect(
+      conversations.sendMessage({
+        conversationId,
+        senderId: USER_B,
+        senderRole: 'user',
+        content: '第三者发言',
+      }),
+    ).rejects.toMatchObject({ code: ErrorCode.RoleForbidden, httpStatus: 403 });
+    await expect(
+      conversations.listMessages({ conversationId, asUserId: USER_B }),
+    ).rejects.toMatchObject({ code: ErrorCode.RoleForbidden, httpStatus: 403 });
+    const tokenB = await tokens.signAccessToken({ userId: USER_B, role: 'user', roles: ['user'] });
+    const denied = await request(app.getHttpServer())
+      .get(`/conversations/${conversationId}/messages`)
+      .set('Authorization', `Bearer ${tokenB}`);
+    expect(denied.status).toBe(403);
+    expect(denied.body.code).toBe(ErrorCode.RoleForbidden);
+
+    // 双方正向：user 侧 send + lawyer 侧 send/pull（SETTLED 终态仍可回看——成员资格随 parties）
+    const asUser = await conversations.sendMessage({
+      conversationId,
+      senderId: USER_A,
+      senderRole: 'user',
+      content: '用户问',
+    });
+    expect(asUser.seq).toBe(1);
+    const asLawyer = await conversations.sendMessage({
+      conversationId,
+      senderId: LAWYER_B,
+      senderRole: 'lawyer',
+      content: '律师答',
+    });
+    expect(asLawyer.seq).toBe(2);
+    const pulled = await conversations.listMessages({ conversationId, asUserId: LAWYER_B });
+    expect(pulled).toHaveLength(2);
+
+    // 订单行缺失（会话在册而订单被清）=数据漂移显性 409 不静默放行
+    const orphan = await conversations.ensureConversation('one_on_one', 999_999);
+    await expect(conversations.assertAccess(orphan.conversation_id, USER_A)).rejects.toMatchObject({
+      code: ErrorCode.Conflict,
+      httpStatus: 409,
+    });
   });
 
   it('⚠W1-3 seq 并发无洞：两个发送方交错并发 12 条 → seq 恰为 1..12 无重复（行锁发号+UNIQUE 兜底）', async () => {
@@ -430,7 +492,14 @@ describe('D5 会话与消息服务面（发送链/seq/补拉/consent 双门/撤�
   // ===========================================================================
 
   it('R-03 consent 双门：单方落记录零启动；双方齐 startRecording 恰一次；重复信令幂等；room 型 403 E_KIND_POLICY', async () => {
-    const ooo = await conversations.ensureConversation('one_on_one', 901);
+    // 订单锚（#43 M2-W3 T3：consent party 须∈订单双方——901 系裸 ref 直建会话已不可达）
+    const roomId901 = await seedRoomRow('OPEN', 901);
+    const order901 = await seedOooOrderRaw(pool, {
+      roomId: roomId901,
+      userId: USER_A,
+      lawyerId: LAWYER_B,
+    });
+    const ooo = await conversations.ensureConversation('one_on_one', order901);
     // 单方（user）
     const first = await conversations.recordConsent({
       conversationId: ooo.conversation_id,
@@ -475,7 +544,13 @@ describe('D5 会话与消息服务面（发送链/seq/补拉/consent 双门/撤�
   });
 
   it('consent 前置校验：未知会话 404；accept=false 不落记录不判门（W1 无撤回语义，回执直达）', async () => {
-    const ooo = await conversations.ensureConversation('one_on_one', 902);
+    const roomId902 = await seedRoomRow('OPEN', 902);
+    const order902 = await seedOooOrderRaw(pool, {
+      roomId: roomId902,
+      userId: USER_A,
+      lawyerId: LAWYER_B,
+    });
+    const ooo = await conversations.ensureConversation('one_on_one', order902);
     await expect(
       conversations.recordConsent({ conversationId: 987654, partyId: USER_A, accept: true }),
     ).rejects.toMatchObject({ code: ErrorCode.NotFound });
@@ -489,8 +564,63 @@ describe('D5 会话与消息服务面（发送链/seq/补拉/consent 双门/撤�
     expect(recordingCalls()).toHaveLength(0);
   });
 
+  it('consent 身份核验（#43 评审 I-4，M2-W3 T3）：第三者 party 403（同意/拒结名义两分支均拒）零落行零启动；订单双方各一正向→双门齐恰一次启动', async () => {
+    const roomId903 = await seedRoomRow('OPEN', 903);
+    const order903 = await seedOooOrderRaw(pool, {
+      roomId: roomId903,
+      userId: USER_A,
+      lawyerId: LAWYER_B,
+    });
+    const ooo = await conversations.ensureConversation('one_on_one', order903);
+
+    // 第三者（USER_B 非订单双方）：给出同意 403；拒结名义同样拒（成员门先于拒结名义分支）
+    await expect(
+      conversations.recordConsent({
+        conversationId: ooo.conversation_id,
+        partyId: USER_B,
+        accept: true,
+      }),
+    ).rejects.toMatchObject({ code: ErrorCode.RoleForbidden, httpStatus: 403 });
+    await expect(
+      conversations.recordConsent({
+        conversationId: ooo.conversation_id,
+        partyId: USER_B,
+        accept: false,
+      }),
+    ).rejects.toMatchObject({ code: ErrorCode.RoleForbidden, httpStatus: 403 });
+    const rows = await pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM fulfillment.consent_records WHERE ref_id = $1`,
+      [ooo.conversation_id],
+    );
+    expect(rows.rows[0]!.n).toBe(0); // 零落行
+    expect(recordingCalls()).toHaveLength(0); // 零启动
+
+    // 双方各一正向（user 侧→单门；lawyer 侧→双门齐恰一次启动——同 R-03 双门口径）
+    const asUser = await conversations.recordConsent({
+      conversationId: ooo.conversation_id,
+      partyId: USER_A,
+      accept: true,
+    });
+    expect(asUser.recorded).toBe(true);
+    expect(asUser.bothPartiesConsented).toBe(false);
+    const asLawyer = await conversations.recordConsent({
+      conversationId: ooo.conversation_id,
+      partyId: LAWYER_B,
+      accept: true,
+    });
+    expect(asLawyer.recorded).toBe(true);
+    expect(asLawyer.bothPartiesConsented).toBe(true);
+    expect(recordingCalls()).toEqual([{ conversationId: ooo.conversation_id }]);
+  });
+
   it('C-2 consent 并发串行化：双方 Promise.recordConsent 并发 → 恰一方 both=true、startRecording 恰一次、双方回执齐', async () => {
-    const ooo = await conversations.ensureConversation('one_on_one', 905);
+    const roomId905 = await seedRoomRow('OPEN', 905);
+    const order905 = await seedOooOrderRaw(pool, {
+      roomId: roomId905,
+      userId: USER_A,
+      lawyerId: LAWYER_B,
+    });
+    const ooo = await conversations.ensureConversation('one_on_one', order905);
     const [asUser, asLawyer] = await Promise.all([
       conversations.recordConsent({
         conversationId: ooo.conversation_id,
@@ -595,6 +725,8 @@ describe('D5 会话与消息服务面（发送链/seq/补拉/consent 双门/撤�
 
   // ===========================================================================
   // OneOnOnePaid 合成事件桩（D6=W3 真生产；W1 直投 outbox 驱动）
+  // —— 真链转正=M2-W3 T3 集成用例锚（one-on-one.spec「真链两端到端」：真订单 PAY_SUCCESS
+  //    出箱→本消费面落 conversations 行；本单点消费者桩保留验证消费器幂等，不删不改断言）
   // ===========================================================================
 
   it('OneOnOnePaid 桩：消费建 one_on_one 会话+OneOnOneConversationCreated 出箱；重放幂等（created=false 零新事件）', async () => {

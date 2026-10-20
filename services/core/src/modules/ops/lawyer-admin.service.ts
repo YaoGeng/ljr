@@ -33,6 +33,7 @@ import {
   type SubmissionQueueItem,
 } from '../identity/lawyer.service';
 import { SessionService } from '../trade/session.service';
+import type { SessionStatsView } from '../trade/session.types';
 import { AuditLogService } from './audit-log.service';
 import type { WorkbenchStatus } from './lawyer-admin.http';
 import { slaRemainingMs } from './lawyer-admin.sla';
@@ -67,13 +68,9 @@ export interface LawyerProfileAdminView {
   readonly merchants: readonly FirmMerchantView[];
   /** G1 信用快照（lawyer 侧账户；score/recent_events/活跃限制令） */
   readonly credit: CreditMineView;
-  /** C1 场次统计四率（窗口=from/to；attendance/ooo 桩=null 口径同 C1） */
-  readonly session_stats: {
-    readonly enroll_rate: number | null;
-    readonly group_rate: number | null;
-    readonly attendance_rate: null;
-    readonly ooo_rate: null;
-  };
+  /** C1 场次统计四率（窗口=from/to；口径同 C1 SessionStatsView——M2-W3 T3 起 attendance/ooo
+   *  接真值经 fulfillment 聚合导出面，缺数据 null） */
+  readonly session_stats: SessionStatsView;
   /** 统计窗口（⚠§11 口径待产品定义：缺省=近 30 天上海日界，报告注记） */
   readonly session_stats_window: { readonly from: string; readonly to: string };
 }

@@ -289,7 +289,7 @@ describe('F3 事件消费端（需 PG）', () => {
     expect(n.rows[0]!.n).toBe(0);
   });
 
-  it('④ OneOnOneSettled 直投（D6=M2 桩）：ref_type=one_on_one 落表（§10-6 前半）', async () => {
+  it('④ OneOnOneSettled 直投（D6=M2 桩；真链转正=M2-W3 T3 集成用例锚——one-on-one.spec「真链两端到端」以服务真生产事件驱动本消费面，本单点桩保留验证消费器幂等，不删不改断言）：ref_type=one_on_one 落表（§10-6 前半）', async () => {
     await seedFirmMerchant(pool, FIRM, 'ACTIVE');
     const order = await createPaidOrder('80.00');
     const payload: OneOnOneSettledPayload = {

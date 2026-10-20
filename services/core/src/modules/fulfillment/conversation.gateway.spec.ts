@@ -26,6 +26,7 @@ import { FulfillmentModule } from './fulfillment.module';
 import { ConversationService } from './conversation.service';
 import { WSS_AUTH_TIMEOUT_MS } from './conversation.gateway';
 import { MockRtcProvider } from './rtc-provider';
+import { seedOooOrderRaw } from './one-on-one-fixture';
 
 /**
  * D5 WSS 网关集成（需 PG；真实 ws 客户端连 ws://127.0.0.1:<临时端口>/ws——简报指定形态）：
@@ -530,7 +531,15 @@ describe('D5 WSS 网关（首帧 auth/send 链/join 回填/presence/幂等/conse
       reply_to: 'join',
     });
 
-    const ooo = await conversations.ensureConversation('one_on_one', 903);
+    // one_on_one 型：无房间状态门（joinableConversation 仅 room 型查 OPEN）+订单双方成员门
+    // （#43 M2-W3 T3——USER_A=订单 user 侧放行；房间锚仅订单行存在性要求）
+    const oooRoomId = await seedRoomRow('OPEN', 903);
+    const oooOrderId = await seedOooOrderRaw(pool, {
+      roomId: oooRoomId,
+      userId: USER_A,
+      lawyerId: LAWYER_B,
+    });
+    const ooo = await conversations.ensureConversation('one_on_one', oooOrderId);
     await expect(join(user, ooo.conversation_id)).resolves.toMatchObject({
       type: 'joined',
       conversation_id: ooo.conversation_id,
@@ -618,7 +627,14 @@ describe('D5 WSS 网关（首帧 auth/send 链/join 回填/presence/幂等/conse
     });
     expect(rtc.recordingCalls).toHaveLength(0);
 
-    const ooo = await conversations.ensureConversation('one_on_one', 904);
+    // one_on_one 单方回执（#43 M2-W3 T3：consent party 须∈订单双方——USER_A=订单 user 侧）
+    const oooRoomId = await seedRoomRow('OPEN', 904);
+    const oooOrderId = await seedOooOrderRaw(pool, {
+      roomId: oooRoomId,
+      userId: USER_A,
+      lawyerId: LAWYER_B,
+    });
+    const ooo = await conversations.ensureConversation('one_on_one', oooOrderId);
     user.send({ type: 'recording-consent', conversation_id: ooo.conversation_id, accept: true });
     await expect(user.next()).resolves.toMatchObject({
       type: 'recording_consent',

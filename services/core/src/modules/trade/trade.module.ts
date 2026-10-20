@@ -57,6 +57,7 @@ import { EnrollmentQueryService } from './enrollment.query';
 import { GroupBuyRefundSource, SessionRefundSource } from './enrollment.refund-source';
 import { EnrollmentService } from './enrollment.service';
 import { NotifyModule } from '../notify/notify.module';
+import { FulfillmentStatsModule } from '../fulfillment/fulfillment-stats.service';
 import { TRADE_RESCHEDULE_CONFIG, tradeRescheduleConfigFromEnv } from './reschedule.config';
 import { RescheduleController } from './reschedule.controller';
 import { RescheduleJobExecutors } from './reschedule.executors';
@@ -75,6 +76,7 @@ import { RescheduleService } from './reschedule.service';
     LawyerQualificationModule,
     RealnameConsentModule, // A2：C3 实名闸口 isRealnameVerified（R-06；叶子无循环）
     NotifyModule, // I1：C5 超时回退 EXPIRED 通知用户（registerForEvent 事务内登记；叶子模块无循环——price-change C6 同款先例）
+    FulfillmentStatsModule, // M2-W3 T3：C1 stats attendance/ooo 聚合读面（fulfillment 域 owner）。平级装配：FulfillmentModule 已 imports 本模块（C1 快照面），并入 FulfillmentModule 即模块环——PricingChangeModule/BenefitsConsumersModule 先例；文件级无环（fulfillment-stats.service 不 import trade 件）
   ],
   controllers: [
     SessionController,
