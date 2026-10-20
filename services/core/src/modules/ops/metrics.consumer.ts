@@ -22,6 +22,11 @@ import {
   type GroupBuyPublishedPayload,
   type GroupBuyReachedPayload,
   type OneOnOnePaidPayload,
+  type OneOnOneAcceptedPayload,
+  type OneOnOneLawyerTimeoutPayload,
+  type OneOnOneFinishedPayload,
+  type OneOnOneDiffPendingPayload,
+  type OneOnOneDiffUnpaidPayload,
   type PointsGrantedPayload,
   type PriceChangeApprovedPayload,
   type ReminderDispatchedPayload,
@@ -289,6 +294,62 @@ export function counterIncrementsFor(topic: string, payload: unknown): readonly 
       }
       return []; // 提醒到达率：§7.2 映射表未列口径——记账不解释（待澄清）
     }
+    // —— M2-W3 T2 D6 登记位（A.1 H4 消费列：one_on_one.* 事件族；1对1转化率分子=
+    //    OneOnOnePaid 既有计数，本族暂无新指标口径——留痕零计数不发明） ——
+    case 'fulfillment.one_on_one.accepted': {
+      const p = raw as Partial<OneOnOneAcceptedPayload>;
+      if (!isPositiveInt(p.order_id) || !isPositiveInt(p.lawyer_id)) {
+        bad(topic, payload, '须 order_id/lawyer_id 正整数（conversation_id 可空 W3-13）');
+      }
+      return [];
+    }
+    case 'fulfillment.one_on_one.lawyer_timeout': {
+      const p = raw as Partial<OneOnOneLawyerTimeoutPayload>;
+      if (
+        !isPositiveInt(p.order_id) ||
+        !isPositiveInt(p.user_id) ||
+        !isPositiveInt(p.payment_order_id)
+      ) {
+        bad(topic, payload, '须 order_id/user_id/payment_order_id 正整数');
+      }
+      return [];
+    }
+    case 'fulfillment.one_on_one.finished': {
+      const p = raw as Partial<OneOnOneFinishedPayload>;
+      if (
+        !isPositiveInt(p.order_id) ||
+        !isPositiveInt(p.user_id) ||
+        !isPositiveInt(p.lawyer_id) ||
+        !Number.isInteger(p.consumed_units) ||
+        (p.consumed_units as number) < 0 ||
+        !isNonEmptyStr(p.settle_amount)
+      ) {
+        bad(
+          topic,
+          payload,
+          '须 order_id/user_id/lawyer_id 正整数、consumed_units 非负整数、settle_amount 非空',
+        );
+      }
+      return [];
+    }
+    case 'fulfillment.one_on_one.diff_pending': {
+      const p = raw as Partial<OneOnOneDiffPendingPayload>;
+      if (
+        !isPositiveInt(p.order_id) ||
+        !isPositiveInt(p.user_id) ||
+        !isNonEmptyStr(p.diff_amount)
+      ) {
+        bad(topic, payload, '须 order_id/user_id 正整数且 diff_amount 非空');
+      }
+      return [];
+    }
+    case 'fulfillment.one_on_one.diff_unpaid': {
+      const p = raw as Partial<OneOnOneDiffUnpaidPayload>;
+      if (!isPositiveInt(p.order_id) || !isPositiveInt(p.user_id)) {
+        bad(topic, payload, '须 order_id/user_id 正整数');
+      }
+      return [];
+    }
     default:
       throw new AppError(
         ErrorCode.InvalidArgument,
@@ -297,7 +358,7 @@ export function counterIncrementsFor(topic: string, payload: unknown): readonly 
   }
 }
 
-/** 指标源 topic 注册清单（16 计数源 + 4 登记位；handler 注册与文档锚） */
+/** 指标源 topic 注册清单（16 计数源 + 4 登记位 + 5 D6 登记位（M2-W3）；handler 注册与文档锚） */
 export const METRICS_SOURCE_TOPICS = [
   'trade.session.created',
   'trade.session.full',
@@ -319,6 +380,11 @@ export const METRICS_SOURCE_TOPICS = [
   'benefits.coupon.granted',
   'fulfillment.room.in_service',
   'notify.reminder.dispatched',
+  'fulfillment.one_on_one.accepted',
+  'fulfillment.one_on_one.lawyer_timeout',
+  'fulfillment.one_on_one.finished',
+  'fulfillment.one_on_one.diff_pending',
+  'fulfillment.one_on_one.diff_unpaid',
 ] as const;
 
 @Injectable()

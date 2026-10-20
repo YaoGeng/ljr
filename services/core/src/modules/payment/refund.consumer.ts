@@ -37,12 +37,14 @@ import {
   AppError,
   ErrorCode,
   LAWYER_REJECTED_TOPIC,
+  ONE_ON_ONE_LAWYER_TIMEOUT_TOPIC,
   PAYMENT_CALLBACK_INBOXED_TOPIC,
   REFUND_SOURCE_REF_TYPE_GROUPBUY,
   REFUND_SOURCE_REF_TYPE_SESSION,
   SESSION_CANCELLED_TOPIC,
   SESSION_FAILED_TOPIC,
   type LawyerRejectedPayload,
+  type OneOnOneLawyerTimeoutPayload,
   type RefundSourceOrder,
   type SessionCancelledPayload,
   type SessionFailedPayload,
@@ -313,6 +315,59 @@ export function createLawyerRejectedRefundHandler(
 }
 
 /**
+ * 独立可测的 OneOnOneLawyerTimeout 全额退款 handler（M2-W3 T2；D6 接单超时真链）：
+ * 载荷自带 payment_order_id（资金面免跨域查增补）→ F1 单定位 → 全额受理（reason OOO_TIMEOUT，
+ * §2 九值既有；幂等键=refund/po-{po}/ooo-timeout）。订单终态推进（LAWYER_TIMEOUT→REFUNDED）
+ * 由 D6 的 RefundCompleted 收敛消费器承载（本 handler 只管钱）。载荷漂移（order_id/user_id/
+ * payment_order_id 非正整数）→ 抛错进重试轨道（不静默丢弃）；F1 单不可读 → 同（显性化）。
+ */
+export function createOneOnOneTimeoutRefundHandler(
+  refunds: RefundService,
+  payment: PaymentGatewayService,
+): OutboxHandler {
+  const logger = new Logger('RefundOooTimeout');
+  return async (event: RelayEvent): Promise<void> => {
+    if (event.topic !== ONE_ON_ONE_LAWYER_TIMEOUT_TOPIC) {
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `1对1 接单超时退款消费器收到未注册 topic：${event.topic}`,
+      );
+    }
+    const payload = (event.payload ?? {}) as Partial<OneOnOneLawyerTimeoutPayload>;
+    if (
+      !isPositiveInt(payload.order_id) ||
+      !isPositiveInt(payload.user_id) ||
+      !isPositiveInt(payload.payment_order_id)
+    ) {
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `事件 ${event.topic} 载荷缺 order_id/user_id/payment_order_id 正整数（进重试轨道，不静默丢弃）`,
+      );
+    }
+    const order = await payment.findOrderById(payload.payment_order_id);
+    if (!order) {
+      throw new AppError(
+        ErrorCode.NotFound,
+        `订单 ${event.topic} 的 F1 支付单不可读：po=${payload.payment_order_id}（进重试轨道）`,
+      );
+    }
+    // 全额受理（幂等键重放短路——重投恰一次）；D6 订单 LAWYER_TIMEOUT→REFUNDED 由
+    // RefundCompleted 收敛链承载（本域不写 fulfillment 状态）
+    const { refund } = await refunds.accept({
+      order_id: order.id,
+      user_id: payload.user_id,
+      cash: order.cash_amount,
+      points: order.points_amount,
+      reason: 'OOO_TIMEOUT',
+      idempotency_key: `refund/po-${order.id}/ooo-timeout`,
+    });
+    logger.log(
+      `1对1 接单超时退款受理：ooo=${payload.order_id} po=${order.id} refund=${refund.refund_id} amount=${refund.cash_amount}`,
+    );
+  };
+}
+
+/**
  * 已知回调事件允许清单（评审 Minor-4）：REFUND_SUCCESS=本域收敛；PAY_SUCCESS=C3=T7 消费位。
  * 清单外值=通道/上游漂移信号 → warn 显性化（不抛防毒丸；M2 扩展事件时同步本清单）。
  */
@@ -396,6 +451,11 @@ export class RefundConsumer implements OnModuleInit {
     this.relay.registerHandler(
       LAWYER_REJECTED_TOPIC,
       createLawyerRejectedRefundHandler(this.refunds, this.sources),
+    );
+    // OneOnOneLawyerTimeout=D6 接单超时全额退款（M2-W3 T2；H4 管道同 topic 扇出并存）
+    this.relay.registerHandler(
+      ONE_ON_ONE_LAWYER_TIMEOUT_TOPIC,
+      createOneOnOneTimeoutRefundHandler(this.refunds, this.payment),
     );
     this.relay.registerHandler(
       PAYMENT_CALLBACK_INBOXED_TOPIC,

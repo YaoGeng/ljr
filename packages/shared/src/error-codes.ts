@@ -124,6 +124,18 @@ export const ErrorCode = {
   RescheduleUsed: 'E_RESCHEDULE_USED',
   /** C5 R-04 改期请求已过期：12h 确认窗已过（EXPIRED）不可确认（C5 §5 409 EXPIRED；M2-W2） */
   RescheduleExpired: 'E_RESCHEDULE_EXPIRED',
+  /** D6 B3 1对1 矩阵缺配：律师无现行价格版本或 one_on_one_prices 缺该 mode 档（D6 §5 400 PRICE_MISSING；M2-W3） */
+  PriceMissing: 'E_PRICE_MISSING',
+  /** D6 接单超时：paid_at+N 未接单（accept_deadline 已过）不可再接（D6 §5 409 TIMEOUT；M2-W3） */
+  AcceptTimeout: 'E_ACCEPT_TIMEOUT',
+  /** D6 finish 状态不符：订单非 IN_SERVICE 不可声明完成（D6 §5 409 NOT_IN_SERVICE；M2-W3） */
+  NotInService: 'E_NOT_IN_SERVICE',
+  /** D6 实结确认不一致：第二方确认值与首次记录不等（D6 §5 409 MISMATCH；M2-W3） */
+  SettleMismatch: 'E_MISMATCH',
+  /** D6 实结窗未开/补差未挂起：settle-confirm 非 FINISHED/SETTLING 或 settle-diff/pay 非 DIFF_PENDING（D6 §5 409 NOT_CONFIRMED；M2-W3） */
+  NotConfirmed: 'E_NOT_CONFIRMED',
+  /** D6 取消状态不符：订单已终态或已入实结链不可取消（D6 §5 409 NOT_CANCELLABLE；M2-W3） */
+  NotCancellable: 'E_NOT_CANCELLABLE',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -361,6 +373,30 @@ const ERROR_CODE_META: Readonly<Record<ErrorCode, ErrorCodeMeta>> = {
   [ErrorCode.RescheduleExpired]: {
     httpStatus: 409,
     defaultMessage: '改期请求已过 12h 确认窗（EXPIRED），原报名不受影响（R-04）',
+  },
+  [ErrorCode.PriceMissing]: {
+    httpStatus: 400,
+    defaultMessage: '该律师未配置 1对1 价格（B3 矩阵缺配），不可发起 1对1 订单',
+  },
+  [ErrorCode.AcceptTimeout]: {
+    httpStatus: 409,
+    defaultMessage: '律师接单已超时（paid_at+N 未接单），订单进入自动退款流程',
+  },
+  [ErrorCode.NotInService]: {
+    httpStatus: 409,
+    defaultMessage: '订单不在服务中（IN_SERVICE），不可声明完成',
+  },
+  [ErrorCode.SettleMismatch]: {
+    httpStatus: 409,
+    defaultMessage: '实结确认金额不一致（双方确认值须相等才结算）',
+  },
+  [ErrorCode.NotConfirmed]: {
+    httpStatus: 409,
+    defaultMessage: '实结确认窗未开或补差单未挂起（NOT_CONFIRMED）',
+  },
+  [ErrorCode.NotCancellable]: {
+    httpStatus: 409,
+    defaultMessage: '订单不可取消（已终态或已进入实结链）',
   },
 };
 

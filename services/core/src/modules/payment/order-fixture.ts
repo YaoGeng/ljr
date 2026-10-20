@@ -206,3 +206,12 @@ export async function seedSplitLedgerRaw(
   );
   return Number(res.rows[0]!.id);
 }
+
+/** 按幂等键的指令流水计数（D6=M2-W3 T2：「补差单未确认不扣款」断言锚——零流水即零扣款） */
+export async function countLedgersByKey(pool: Pool, key: string): Promise<number> {
+  const res = await pool.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM payment.split_ledgers WHERE idempotency_key = $1`,
+    [key],
+  );
+  return res.rows[0]!.n;
+}

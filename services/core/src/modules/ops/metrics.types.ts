@@ -60,7 +60,7 @@ export const MC = {
   ATTENDANCE_NORMAL: 'attendance_normal',
   ATTENDANCE_LATE: 'attendance_late',
   ATTENDANCE_ABSENT: 'attendance_absent',
-  /** 1对1 预付订单（← OneOnOnePaid；D6=W3 生产方未落=恒 0，指标桩位注记） */
+  /** 1对1 预付订单（dim=''；← OneOnOnePaid——D6=M2-W3 转真生产，转化率分子） */
   ONE_ON_ONE_PAID: 'one_on_one_paid',
   /** 房间关闭数（dim=lawyer:{id}；← RoomClosed） */
   ROOM_CLOSED: 'room_closed',
@@ -158,7 +158,7 @@ export const METRIC_CATALOG: readonly MetricCatalogEntry[] = [
 /** 桩位/近似口径注记词汇（查询面出参 stub；集中定义避免散写漂移） */
 export const METRIC_STUBS = {
   oneOnOneConversion:
-    'D6=W3：分子 one_on_one_orders 事件源（OneOnOnePaid）未全量=恒 0；分母参与房间用户数可算——按映射表实现可算面',
+    '分子=OneOnOnePaid 真事件流（D6=M2-W3 转真生产）；分母=到场用户判定行（normal+late）——§7.2「参与房间用户数」的可算面近似（absent 不计、未按 user 去重），口径待产品拍板',
   draftAdoption: 'E1=W3：agent_review_logs 无事件源（草稿审查事件未流），不可算',
   lawyerRoomDuration:
     'ROOM_CLOSED 载荷无 opened_at/closed_at（W1 契约形状）——rooms.closed_at-opened_at 口径待事件增补，占位',

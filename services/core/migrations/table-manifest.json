@@ -37,6 +37,7 @@
     "fulfillment.consent_records": "V37__fulfillment.sql",
     "fulfillment.conversations": "V37__fulfillment.sql",
     "fulfillment.messages": "V37__fulfillment.sql",
+    "fulfillment.one_on_one_orders": "V47__fulfillment.sql",
     "fulfillment.rooms": "V35__fulfillment.sql",
     "identity.consents": "V14__identity.sql",
     "identity.decrypt_approvals": "V14__identity.sql",

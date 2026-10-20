@@ -33,6 +33,9 @@ import { SchedulerModule } from '../schedule/scheduler.module';
 import { TradeModule } from '../trade/trade.module';
 import { PaymentModule } from '../payment/payment.module';
 import { IdentityAuthModule } from '../identity/identity-auth.module';
+import { LawyerQualificationModule } from '../identity/lawyer-qualification.module';
+import { RealnameConsentModule } from '../identity/realname-consent.module';
+import { PricingConfigModule } from '../pricing/pricing.module';
 import { RuleCenterModule } from '../ops/rule-center.module';
 import { WordDictModule } from '../ops/word-dict.module';
 import { SettlementModule } from '../settlement/settlement.module';
@@ -57,11 +60,16 @@ import { ATTENDANCE_CONFIG, attendanceConfigFromEnv } from './attendance.config'
 import { CancellationController } from './cancellation.controller';
 import { CancellationConsumer } from './cancellation.consumer';
 import { CancellationService } from './cancellation.service';
+import { OneOnOneController } from './one-on-one.controller';
+import { OneOnOneConsumer } from './one-on-one.consumer';
+import { OneOnOneJobExecutors } from './one-on-one.executors';
+import { OneOnOneService } from './one-on-one.service';
+import { ONE_ON_ONE_CONFIG, oneOnOneConfigFromEnv } from './one-on-one.config';
 
 @Module({
   imports: [
     InfrastructureModule,
-    SchedulerModule, // I2：GRACE_END/COLD_ARCHIVE 预写与自投 + 执行器注册表
+    SchedulerModule, // I2：GRACE_END/COLD_ARCHIVE 预写与自投 + 执行器注册表（OOO_* 三执行器=T2）
     TradeModule, // C1：getDetail 快照面 + sessionOpenable/closeAnchorOf 纯读窄面（T1 加法）
     PaymentModule, // F1/F2：RefundSourceRegistry（'session' 退款源=close gross 聚合链）
     IdentityAuthModule, // A1：close 律师端 JWT/角色守卫件 + D5 WSS 首帧 auth（叶子模块）
@@ -71,12 +79,16 @@ import { CancellationService } from './cancellation.service';
     SettlementModule, // F3：applyPenalty 赔付指令面（D4=M2-W2 T3；依赖树不含 fulfillment 无环）
     TicketModule, // H3：cancel_lt24h 工单创建面 + 处置回调注册缝（target='d4' 注册即通）
     CreditModule, // G1：choice=credit 的 user_cancel_late 入账面（EMIT_CREDIT_EVENT）
+    LawyerQualificationModule, // A3a：getFirmId 导出面（OneOnOneSettled 的 firm_id 构成，T2）
+    RealnameConsentModule, // A2：isRealnameVerified 实名闸口（D6 create R-06，C3 同款）
+    PricingConfigModule, // B3：getCurrentPricing one_on_one_prices 现行版（D6 unit_price 源）
   ],
   controllers: [
     RoomController,
     ConversationController,
     AttendanceController,
     CancellationController,
+    OneOnOneController,
   ],
   providers: [
     // RTC 通道适配器（供应商位：mock=W1；声网=M3-W1 换装只改工厂；测试可 override 注失败形态）
@@ -107,9 +119,15 @@ import { CancellationService } from './cancellation.service';
     // AttendanceAdjudicated（lawyer absent）/RoomOpenFailed 消费端 + d4 审批回调注册
     CancellationService,
     CancellationConsumer,
+    // D6 1对1 服务闭环（M2-W3 T2）：应用服务 + PAY_SUCCESS/RefundCompleted/MessageSent 消费端
+    // + OOO_ACCEPT_TIMEOUT/OOO_SETTLE_DEFAULT/DIFF_PAY_TIMEOUT 三执行器 + 时窗配置（W3-2）
+    OneOnOneService,
+    OneOnOneConsumer,
+    OneOnOneJobExecutors,
+    { provide: ONE_ON_ONE_CONFIG, useFactory: oneOnOneConfigFromEnv },
   ],
   // 可剥离纪律：只导出应用服务（内部件不外泄）；ConversationService=D2 房间内提醒
-  // （postInternalMessage 系统消息写入面，T4 消费）与 W3 E1（agent 写入接线位）的导出面；
+  // （postInternalMessage 系统消息写入面，T4 消费）和 W3 E1（agent 写入接线位）的导出面；
   // CancellationService=D4 取消/赔付指令导出面（I1 通知消费=W2+ 接线位）
   exports: [RoomService, ConversationService, CancellationService],
 })

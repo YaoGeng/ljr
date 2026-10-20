@@ -1,5 +1,5 @@
 /**
- * G1 事件消费端（§6）：六个上游事件 → EMIT_CREDIT_EVENT 统一入账。
+ * G1 事件消费端（§6）：八个上游事件 → EMIT_CREDIT_EVENT 统一入账。
  *   - SlotAbuseDetected（B2 真事件源，真接线；topic/载荷契约经 slot-lock.events 编译期绑定）
  *     → owner=滥用发起用户，action=user_slot_abuse，ref=(outbox_event, outbox 行 id)——载荷无
  *     业务 id（B2 拒绝路径锁行未写入），幂等引用取投递行 id（稳定；同用户再次滥用=新行新事件）；
@@ -7,7 +7,10 @@
  *     AttendanceAdjudicated（D3，normal/absent 入信用；late 无 §8.8 分值行不产生信用事件）、
  *     SessionCancelled（D4，档位按 PRD §8.7 时间锚归类；platform 取消无信用影响跳过）、
  *     ReviewSubmitted（G2，direction 定位被评方 owner）——生产者在 W3/M2，本批只注册消费
- *     +合成事件测试（docs/05 §2 桩方案；契约在 @ljr/shared 由本消费端钉形，R-W2-A 口径）。
+ *     +合成事件测试（docs/05 §2 桩方案；契约在 @ljr/shared 由本消费端钉形，R-W2-A 口径）；
+ *   - OneOnOneDiffUnpaid（D6 生产=M2-W3 T2；补差 15min 未付）→ owner=下单用户，
+ *     action=user_cancel_early（W3-11：PRD §8.8 无专属档位行——对齐既有最轻用户违约档 -5
+ *     默认，不自创；专属档位=04 §8 登记待产品拍板），ref=(one_on_one_order, order_id)。
  *
  * 消费幂等：emit 的 uq_credit_events_idem 兜底，at-least-once 重投零副作用；载荷缺/坏字段 →
  * 抛错进重试轨道（不静默丢弃——载荷漂移显性化，identity.consumer 同口径）。
@@ -19,6 +22,7 @@ import { AppError, ErrorCode } from '@ljr/shared';
 import {
   ATTENDANCE_ADJUDICATED_TOPIC,
   LAWYER_REJECTED_TOPIC,
+  ONE_ON_ONE_DIFF_UNPAID_TOPIC,
   PRICE_CHANGE_APPROVED_TOPIC,
   REVIEW_SUBMITTED_TOPIC,
   SESSION_CANCELLED_TOPIC,
@@ -216,6 +220,22 @@ export function createCreditEventHandler(credit: CreditService): OutboxHandler {
         });
         return;
       }
+      case ONE_ON_ONE_DIFF_UNPAID_TOPIC: {
+        // M2-W3 T2（W3-11）：补差 15min 未付——PRD §8.8 无专属档位行（用户侧全表仅
+        // 参与/取消/缺席三类），按「-5 默认」对齐既有最轻用户违约档 user_cancel_early
+        // （种子 delta=-5、violation 计入 30 天窗口）不自创新档位；专属档位=04 §8 登记
+        // 待产品拍板后扩展 G1 词汇表+H7 credit.rules 行
+        const orderId = requirePositiveInt(payload['order_id'], event.topic, 'order_id');
+        const userId = requirePositiveInt(payload['user_id'], event.topic, 'user_id');
+        await credit.emit({
+          owner_type: 'user',
+          owner_id: userId,
+          action: 'user_cancel_early',
+          ref_type: 'one_on_one_order',
+          ref_id: orderId,
+        });
+        return;
+      }
       default:
         // 注册表只按六 topic 注册，不应触达；防御性抛错进重试轨道（不静默）
         throw badPayload(event.topic, '未注册的 topic');
@@ -238,5 +258,7 @@ export class CreditEventConsumer implements OnModuleInit {
     this.relay.registerHandler(ATTENDANCE_ADJUDICATED_TOPIC, handler);
     this.relay.registerHandler(SESSION_CANCELLED_TOPIC, handler);
     this.relay.registerHandler(REVIEW_SUBMITTED_TOPIC, handler);
+    // M2-W3 T2：D6 补差 15min 未付信用记录（档位=W3-11 对齐既有，类注）
+    this.relay.registerHandler(ONE_ON_ONE_DIFF_UNPAID_TOPIC, handler);
   }
 }

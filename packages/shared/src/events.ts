@@ -981,3 +981,62 @@ export interface AbsenceShareDanglingPayload {
   /** 判定为到场/旁听的用户数（受领人非空——pool 有受领面） */
   readonly attending_users: number;
 }
+
+// ---------------------------------------------------------------------------
+// M2-W3 1对1 与 AI 管线批（T0 契约冻结，执行计划附录 A.1）：本段 D6 五新 topic（E1 两 topic
+// 随 T4 在本段追加）；OneOnOnePaid（D5 W1 消费钉形）/ OneOnOneSettled（F3 W2 定型）既有契约
+// 不重定义——D6 本批转真生产。载荷铁律延续：金额 Money 字符串禁 float、禁明文内容/凭据。
+// ---------------------------------------------------------------------------
+
+/** 律师接单（D6 §6 生产 → I1 通知（联调后置）、H4 管道；附录 A.1 冻结形状）。
+ *  conversation_id 可空（W3-13 回填锚）：会话由 D5 消费 OneOnOnePaid 异步建——accept 早于
+ *  D5 消费落地时为 null，后续消息面/查询面回填（订单 conversation_id 列 NULL 同款取舍）。 */
+export const ONE_ON_ONE_ACCEPTED_TOPIC = 'fulfillment.one_on_one.accepted';
+
+export interface OneOnOneAcceptedPayload {
+  readonly order_id: number;
+  readonly conversation_id: number | null;
+  readonly lawyer_id: number;
+}
+
+/** 接单超时（D6 §6 生产 → F2 全额退款 OOO_TIMEOUT 受理、H4；附录 A.1 冻结形状）。
+ *  payment_order_id 增补（任务 T2 裁定）：F2 消费定位 F1 预付单的资金面免跨域查锚。 */
+export const ONE_ON_ONE_LAWYER_TIMEOUT_TOPIC = 'fulfillment.one_on_one.lawyer_timeout';
+
+export interface OneOnOneLawyerTimeoutPayload {
+  readonly order_id: number;
+  readonly user_id: number;
+  readonly payment_order_id: number;
+}
+
+/** 服务完成（D6 §6 生产 → I1 实结确认提醒（联调后置）、H4；附录 A.1 冻结形状）。
+ *  consumed_units=系统计量值（finish 声明仅校验回执——advisory 口径，不采信虚报）；
+ *  settle_amount=完成时点暂估实结（unit_price×consumed_units；双方确认值可后置于 SETTLING 落定）。 */
+export const ONE_ON_ONE_FINISHED_TOPIC = 'fulfillment.one_on_one.finished';
+
+export interface OneOnOneFinishedPayload {
+  readonly order_id: number;
+  readonly user_id: number;
+  readonly lawyer_id: number;
+  readonly consumed_units: number;
+  readonly settle_amount: Money;
+}
+
+/** 补差待付（D6 §6 生产 → I1 补差支付提醒（联调后置）、H4；附录 A.1 冻结形状）。
+ *  diff_amount=实结−预付的差额（Money 字符串）；补差单未经用户确认支付不扣款（R-02）。 */
+export const ONE_ON_ONE_DIFF_PENDING_TOPIC = 'fulfillment.one_on_one.diff_pending';
+
+export interface OneOnOneDiffPendingPayload {
+  readonly order_id: number;
+  readonly user_id: number;
+  readonly diff_amount: Money;
+}
+
+/** 补差超时未付（D6 §6 生产 → G1 信用记录（档位=W3-11 对齐既有档位）、H4；附录 A.1 冻结形状）。
+ *  触发=DIFF_PENDING 15min 未付→按已服务比例结算（settle=prepaid，订单已同事务 SETTLED）。 */
+export const ONE_ON_ONE_DIFF_UNPAID_TOPIC = 'fulfillment.one_on_one.diff_unpaid';
+
+export interface OneOnOneDiffUnpaidPayload {
+  readonly order_id: number;
+  readonly user_id: number;
+}

@@ -31,3 +31,16 @@ export async function penaltyReceiptsRaw(
   );
   return res.rows;
 }
+
+/** ref 维度结算行计数（D6=M2-W3 T2：OneOnOneSettled→F3 结算行落位断言锚） */
+export async function countSettlementsByRef(
+  pool: Pool,
+  refType: string,
+  refId: number,
+): Promise<number> {
+  const res = await pool.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM settlement.settlements WHERE ref_type = $1 AND ref_id = $2`,
+    [refType, refId],
+  );
+  return res.rows[0]!.n;
+}

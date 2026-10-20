@@ -352,15 +352,21 @@ describe('H4 指标管道（§9 口径锁定 + R-03 + 查询面，需 PG）', ()
     expect(await counterValue('attendance_judged', 'role:user')).toBe(4);
   });
 
-  it('核心组：1对1转化率（分母=参与房间用户数可算；分子=D6 W3 事件未流恒 0，桩位注记）', async () => {
+  it('核心组：1对1转化率（分子=OneOnOnePaid 真事件流 D6=M2-W3 转真；分母=到场用户行可算面近似，桩注记）', async () => {
     await recordEvent('fulfillment.attendance.adjudicated', adjudicated(USER_A, 'normal'));
     await recordEvent('fulfillment.attendance.adjudicated', adjudicated(USER_B, 'normal'));
+    await recordEvent('fulfillment.attendance.adjudicated', adjudicated(9809, 'absent')); // 未参与不计分母
+    await recordEvent('fulfillment.one_on_one.paid', {
+      order_id: 501,
+      user_id: USER_A,
+      lawyer_id: LAWYER,
+    });
     await relay.tick();
 
     const res = await metrics.getMetrics({ group: 'core' });
-    expect(valueOf(res, 'one_on_one_conversion_rate')).toBe(0);
+    expect(valueOf(res, 'one_on_one_conversion_rate')).toBe(0.5); // 1÷(normal+late=2)
     const m = res.metrics.find((x) => x.key === 'one_on_one_conversion_rate')!;
-    expect(m.stub).toContain('D6'); // 桩位显式（不静默）
+    expect(m.stub).toContain('可算面'); // 近似口径显式（不静默）
   });
 
   it('核心组：律师人效·房间数（ROOM_CLOSED 按 lawyer dim 计数）；房间时长=桩位（载荷无时刻）', async () => {

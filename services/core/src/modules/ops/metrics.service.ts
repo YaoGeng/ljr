@@ -230,7 +230,14 @@ export class MetricsService {
     put('attendance_rate', rate4(c.normal + c.late, c.judged));
     put('punctual_attendance_rate', rate4(c.normal, c.judged));
     put('absence_rate', rate4(c.absent, c.judged));
-    put('one_on_one_conversion_rate', rate4(c.oooPaid, c.judged), METRIC_STUBS.oneOnOneConversion);
+    // M2-W3 T2 桩转真：分子=OneOnOnePaid（D6 本批真生产）；分母=到场用户判定行（normal+late）
+    // ——02 §7.2「one_on_one_orders ÷ 参与房间用户数」的可算面（absent=未参与不计；未按 user
+    // 去重的近似口径，stub 注记钉住）
+    put(
+      'one_on_one_conversion_rate',
+      rate4(c.oooPaid, c.normal + c.late),
+      METRIC_STUBS.oneOnOneConversion,
+    );
     put('lawyer_room_count', c.rooms);
     put('lawyer_room_avg_duration_min', null, METRIC_STUBS.lawyerRoomDuration);
     put('draft_adoption_rate', null, METRIC_STUBS.draftAdoption);

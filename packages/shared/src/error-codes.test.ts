@@ -150,3 +150,35 @@ describe('D5 会话错误码（M2-W1 T3）', () => {
     expect(new AppError(ErrorCode.BlockedByRisk).httpStatus).toBe(403);
   });
 });
+
+describe('D6 1对1 服务闭环错误码（M2-W3 T2）', () => {
+  it('PriceMissing：B3 矩阵缺配 400（D6 §5 400 PRICE_MISSING）', () => {
+    expect(ErrorCode.PriceMissing).toBe('E_PRICE_MISSING');
+    expect(new AppError(ErrorCode.PriceMissing).httpStatus).toBe(400);
+  });
+
+  it('AcceptTimeout：接单超时 409（D6 §5 409 TIMEOUT——paid_at+N 未接单）', () => {
+    expect(ErrorCode.AcceptTimeout).toBe('E_ACCEPT_TIMEOUT');
+    expect(new AppError(ErrorCode.AcceptTimeout).httpStatus).toBe(409);
+  });
+
+  it('NotInService：finish 状态不符 409（D6 §5 409 NOT_IN_SERVICE）', () => {
+    expect(ErrorCode.NotInService).toBe('E_NOT_IN_SERVICE');
+    expect(new AppError(ErrorCode.NotInService).httpStatus).toBe(409);
+  });
+
+  it('SettleMismatch：实结确认不一致 409（D6 §5 409 MISMATCH——双方确认值须相等）', () => {
+    expect(ErrorCode.SettleMismatch).toBe('E_MISMATCH');
+    expect(new AppError(ErrorCode.SettleMismatch).httpStatus).toBe(409);
+  });
+
+  it('NotConfirmed：实结窗未开/补差未挂起 409（D6 §5 409 NOT_CONFIRMED）', () => {
+    expect(ErrorCode.NotConfirmed).toBe('E_NOT_CONFIRMED');
+    expect(new AppError(ErrorCode.NotConfirmed).httpStatus).toBe(409);
+  });
+
+  it('NotCancellable：取消状态不符 409（D6 §5 409 NOT_CANCELLABLE）', () => {
+    expect(ErrorCode.NotCancellable).toBe('E_NOT_CANCELLABLE');
+    expect(new AppError(ErrorCode.NotCancellable).httpStatus).toBe(409);
+  });
+});

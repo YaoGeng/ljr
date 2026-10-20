@@ -129,6 +129,16 @@ import {
   ReserveDiffFoundPayload,
   ABSENCE_SHARE_DANGLING_TOPIC,
   AbsenceShareDanglingPayload,
+  ONE_ON_ONE_ACCEPTED_TOPIC,
+  OneOnOneAcceptedPayload,
+  ONE_ON_ONE_LAWYER_TIMEOUT_TOPIC,
+  OneOnOneLawyerTimeoutPayload,
+  ONE_ON_ONE_FINISHED_TOPIC,
+  OneOnOneFinishedPayload,
+  ONE_ON_ONE_DIFF_PENDING_TOPIC,
+  OneOnOneDiffPendingPayload,
+  ONE_ON_ONE_DIFF_UNPAID_TOPIC,
+  OneOnOneDiffUnpaidPayload,
 } from './events';
 
 describe('A1 身份事件契约（M1-W2）：topic 命名 + 载荷形状（PII 禁入载荷）', () => {
@@ -943,5 +953,62 @@ describe('M2-W2 F4 权益事件契约（T6 修复环 I-3）：AbsenceShareDangli
       attending_users: 3,
     };
     expect(payload).toEqual({ session_id: 915, absent_users: 2, attending_users: 3 });
+  });
+});
+
+describe('M2-W3 D6 1对1 服务闭环事件契约（T2）：五新 topic（附录 A.1 冻结形状）；OneOnOnePaid/OneOnOneSettled 既有契约不重定义（本批转真生产）', () => {
+  it('OneOnOneAccepted：topic=fulfillment.one_on_one.accepted，{order_id, conversation_id(可空 W3-13), lawyer_id}（→I1 通知、H4）', () => {
+    expect(ONE_ON_ONE_ACCEPTED_TOPIC).toBe('fulfillment.one_on_one.accepted');
+    const payload: OneOnOneAcceptedPayload = {
+      order_id: 501,
+      conversation_id: 13,
+      lawyer_id: 9101,
+    };
+    expect(payload.conversation_id).toBe(13);
+    // D5 异建会话未达时 conversation_id=null（W3-13 回填锚）
+    const early: OneOnOneAcceptedPayload = {
+      order_id: 502,
+      conversation_id: null,
+      lawyer_id: 9101,
+    };
+    expect(early.conversation_id).toBeNull();
+  });
+
+  it('OneOnOneLawyerTimeout：topic=fulfillment.one_on_one.lawyer_timeout，{order_id, user_id, payment_order_id}（→F2 全额退款 OOO_TIMEOUT 受理；payment_order_id=资金面免跨域查增补）', () => {
+    expect(ONE_ON_ONE_LAWYER_TIMEOUT_TOPIC).toBe('fulfillment.one_on_one.lawyer_timeout');
+    const payload: OneOnOneLawyerTimeoutPayload = {
+      order_id: 501,
+      user_id: 601,
+      payment_order_id: 9003,
+    };
+    expect(payload).toEqual({ order_id: 501, user_id: 601, payment_order_id: 9003 });
+  });
+
+  it('OneOnOneFinished：topic=fulfillment.one_on_one.finished，{order_id, user_id, lawyer_id, consumed_units, settle_amount(Money)}（→I1 实结确认提醒、H4；consumed_units=系统计量值）', () => {
+    expect(ONE_ON_ONE_FINISHED_TOPIC).toBe('fulfillment.one_on_one.finished');
+    const payload: OneOnOneFinishedPayload = {
+      order_id: 501,
+      user_id: 601,
+      lawyer_id: 9101,
+      consumed_units: 2,
+      settle_amount: '100.00',
+    };
+    expect(payload.settle_amount).toBe('100.00'); // Money 字符串禁 float
+  });
+
+  it('OneOnOneDiffPending：topic=fulfillment.one_on_one.diff_pending，{order_id, user_id, diff_amount(Money)}（→I1 补差支付提醒、H4；补差未确认不扣款 R-02）', () => {
+    expect(ONE_ON_ONE_DIFF_PENDING_TOPIC).toBe('fulfillment.one_on_one.diff_pending');
+    const payload: OneOnOneDiffPendingPayload = {
+      order_id: 501,
+      user_id: 601,
+      diff_amount: '50.00',
+    };
+    expect(payload.diff_amount).toBe('50.00');
+  });
+
+  it('OneOnOneDiffUnpaid：topic=fulfillment.one_on_one.diff_unpaid，{order_id, user_id}（→G1 信用记录（档位=W3-11）、H4；触发=15min 未付按已服务比例结算）', () => {
+    expect(ONE_ON_ONE_DIFF_UNPAID_TOPIC).toBe('fulfillment.one_on_one.diff_unpaid');
+    const payload: OneOnOneDiffUnpaidPayload = { order_id: 501, user_id: 601 };
+    expect(payload).toEqual({ order_id: 501, user_id: 601 });
   });
 });
