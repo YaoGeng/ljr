@@ -526,6 +526,7 @@ describe('E1 Agent 草稿气泡管线（脱敏→硬拦→意图→RAG→LLM→�
 
   // ===========================================================================
   // 评审修复环（T4 修复波）：I-1 R-04 标记强制 / I-2 listDrafts 越权门 / I-3 action 并发串行化
+  // ＋ E1 PIA 评审（M2-W4 T3）I-3：action 三动作成员门（discard 此前全程无门）
   // ===========================================================================
 
   it('I-1 R-04 标记强制：适配器输出缺「AI 辅助，仅供参考」标记→降级不出稿（零草稿零事件+agent_degraded 帧仅律师+health 透出）；恢复后照常出稿', async () => {
@@ -622,6 +623,51 @@ describe('E1 Agent 草稿气泡管线（脱敏→硬拦→意图→RAG→LLM→�
     const finalB = (await draftRowsRaw(pool, { roomId: room.roomId })).at(-1)!;
     expect(finalB['status']).toBe(winner === 'SENT' ? 'SENT' : 'DISCARDED'); // 终态唯一
     expect(await reviewLogRowsRaw(pool, { draftId: idB })).toHaveLength(1); // 留痕恰一行（胜者）
+  });
+
+  it('PIA 评审 I-3 action 三动作成员门：非会话成员律师 send/edit_send/discard 统一 403 RoleForbidden（fail-closed，listDrafts 同款）——零状态变化/零审计行/零消息/零事件；门先于幂等与状态判定（外部者不可探测草稿态）；房内律师照常可动作', async () => {
+    const room = await seedRoom();
+    const userId = nextUser();
+    await enroll(room.sessionId, userId);
+    const outsider = nextLawyer(); // 持律师 JWT 但非场次律师且无 PAID 报名（跨房外部者）
+
+    // 三动作逐一注入：每轮 ask 出一新 PENDING 稿（R-06 同 (room,user) 顶替前稿）作攻击锚
+    for (const input of [
+      { action: 'discard' },
+      { action: 'send' },
+      { action: 'edit_send', editedContent: '越权编辑稿（PIA I-3 注入）' },
+    ] as const) {
+      await ask(room.conversationId, userId, `越权动作注入 ${input.action}：经济补偿怎么算？`);
+      const draft = (await draftRowsRaw(pool, { roomId: room.roomId })).at(-1)!;
+      const draftId = Number(draft['id']);
+      const messagesBefore = (await fulfillmentCountsRaw(pool)).messages;
+      await expect(drafts.action(draftId, outsider, input)).rejects.toMatchObject({
+        code: ErrorCode.RoleForbidden,
+        httpStatus: 403,
+      });
+      // 零状态变化（草稿仍 PENDING，discard 不可销毁他人草稿）+零审计行（agent_review_logs
+      // 无 outsider lawyer_id——归属污染消除）+零消息落行+零事件
+      const after = (await draftRowsRaw(pool, { roomId: room.roomId })).at(-1)!;
+      expect(after['id']).toBe(draft['id']); // 锚同一行
+      expect(after['status']).toBe('PENDING');
+      expect(await reviewLogRowsRaw(pool, { draftId })).toHaveLength(0);
+      expect((await fulfillmentCountsRaw(pool)).messages).toBe(messagesBefore);
+      expect(await outboxPayloads('agent_assist.draft.actioned')).toHaveLength(0);
+    }
+
+    // 门先于状态判定：被 R-06 顶替的 EXPIRED 稿——外部者 action=403 而非 409（草稿态不可探测）
+    const superseded = (await draftRowsRaw(pool, { roomId: room.roomId }))[0]!;
+    expect(superseded['status']).toBe('EXPIRED');
+    await expect(
+      drafts.action(Number(superseded['id']), outsider, { action: 'discard' }),
+    ).rejects.toMatchObject({ code: ErrorCode.RoleForbidden, httpStatus: 403 });
+
+    // 成员回归：房内场次律师对最新 PENDING 照常 discard 成（门不误伤成员）
+    const latest = (await draftRowsRaw(pool, { roomId: room.roomId })).at(-1)!;
+    const latestId = Number(latest['id']);
+    await expect(
+      drafts.action(latestId, room.lawyerId, { action: 'discard' }),
+    ).resolves.toMatchObject({ draft_id: latestId, status: 'DISCARDED', deduplicated: false });
   });
 
   // ===========================================================================

@@ -49,20 +49,25 @@ export async function seedSessionRaw(
   return sessionId;
 }
 
-/** 直插一拼团任务行（PUBLISHED 等状态；仅作在团判定夹具）；返回拼团 id */
+/**
+ * 直插一拼团任务行（PUBLISHED 等状态；仅作在团判定夹具）；返回拼团 id。sessionId（可选，
+ * M2-W4 T4b 加法）=V41 承接锚列落值（createConvertedB2C 建面同事务落 session_id 的夹具面）
+ * ——转化承接场次反查用例（sessionRemindable 承接例外）。
+ */
 export async function seedGroupBuyRaw(
   pool: Pool,
   lawyerId: number,
   status: string,
+  sessionId?: number,
 ): Promise<number> {
   const g = await pool.query<{ id: string }>(
     `INSERT INTO trade.group_buys
        (initiator_id, lawyer_id, specialty, slot_start, sub_min, sub_max, share_price,
-        question_tags, deadline, status)
+        question_tags, deadline, status, session_id)
      VALUES (601, $1, 'labor_arbitration', now() + interval '5 days', 2, 5, '80.00',
-             '[]'::jsonb, now() + interval '4 days', $2)
+             '[]'::jsonb, now() + interval '4 days', $2, $3)
      RETURNING id`,
-    [lawyerId, status],
+    [lawyerId, status, sessionId ?? null],
   );
   return Number(g.rows[0]!.id);
 }

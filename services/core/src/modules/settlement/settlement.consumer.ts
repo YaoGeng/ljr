@@ -1,9 +1,13 @@
 /**
  * F3 事件消费端（§6；W3 可达面=合成事件桩 + A3b/I2 真通路；测试直投 outbox 沿 T2/T6 先例）：
  *   ① RoomClosed（fulfillment.room.closed，D1=M2 合成桩）：进结算 PENDING→HOLD（§4 FINISHED 链头，
- *      R-02 冻结期同事务起算）——ref=(session, session_id)；
- *   ② OneOnOneSettled（fulfillment.one_on_one.settled，D6=M2 合成桩）：进结算 ref=(one_on_one,
- *      order_id)（§3 逐字）；载荷 net=D6 实结参考价不参与构成（契约定型注记，M2 联调对齐位）；
+ *      R-02 冻结期同事务起算）——ref=(session, session_id)；建行前经 SessionAbsenceGate 回查
+ *      D3 缺席判定（T2-B1：判定先于关房的主流时序下以 ABSENCE_7030 建行——NO_SETTLEMENT
+ *      warn 流过的标记由回查承载，与③标记路双覆盖）；
+ *   ② OneOnOneSettled（fulfillment.one_on_one.settled，D6 已于 M2-W3 T2 转真生产）：进结算
+ *      ref=(one_on_one, order_id)（§3 逐字）；构成基=payload.net（实结净额/取消②③保留额，
+ *      W4 #45-① 闭合——W3「gross 基+net 参考」口径翻转；settlements.gross 列在 one_on_one
+ *      行承载构成基），gross=预付全额参考不参与构成；
  *   ③ AttendanceAdjudicated（fulfillment.attendance.adjudicated，D3=M2 合成桩；与 G1 同 topic
  *      扇出并存）：owner_type=user 且 result=absent → R-03 缺席 70/30 触发位；normal/late 与
  *      律师缺席（D4 违约域）不改变构成；无结算行（D3 先于 RoomClosed 的真实时序）=NO_SETTLEMENT
@@ -45,6 +49,7 @@ import {
 } from '@ljr/shared';
 import type { OutboxHandler, RelayEvent } from '../../infrastructure/outbox/outbox-relay.service';
 import { OutboxRelayService } from '../../infrastructure/outbox/outbox-relay.service';
+import { SessionAbsenceGate } from './settlement.gate';
 import { SettlementService } from './settlement.service';
 import { moneyToCents, type SettlementRefType } from './settlement.types';
 
@@ -90,7 +95,10 @@ function assertEnterFields(fields: {
 }
 
 /** 独立可测的 RoomClosed handler（D1=M2 合成桩；进结算幂等=UNIQUE(ref_type, ref_id)） */
-export function createRoomClosedHandler(settlements: SettlementService): OutboxHandler {
+export function createRoomClosedHandler(
+  settlements: SettlementService,
+  absence: SessionAbsenceGate,
+): OutboxHandler {
   const logger = new Logger('SettlementRoomClosed');
   return async (event: RelayEvent): Promise<void> => {
     if (event.topic !== ROOM_CLOSED_TOPIC) {
@@ -104,6 +112,10 @@ export function createRoomClosedHandler(settlements: SettlementService): OutboxH
       gross: raw.gross,
       payment_order_id: raw.payment_order_id,
     });
+    // T2-B1 修复：建行前回查 D3 缺席判定（真实主流时序=判定先于关房，此时标记事件已按
+    // NO_SETTLEMENT warn 流过——回查建行是唯一承载位；与「关房先→判定后」markAbsenceShare
+    // 标记路双覆盖，任一时序 70/30 不丢）。无源/无场次/无判定=FULL_TO_LAWYER 缺省（闸语义）
+    const absentAdjudicated = await absence.userAbsenceAdjudicated(payload.ref_id);
     const res = await settlements.enterSettlement({
       ref_type: 'session',
       ref_id: payload.ref_id,
@@ -111,14 +123,15 @@ export function createRoomClosedHandler(settlements: SettlementService): OutboxH
       firm_id: payload.firm_id,
       gross: payload.gross,
       payment_order_id: payload.payment_order_id,
+      ...(absentAdjudicated ? { share_mode: 'ABSENCE_7030' as const } : {}),
     });
     logger.log(
-      `RoomClosed 进结算：session=${payload.ref_id} created=${res.created} status=${res.settlement.status}（event_id=${event.eventId}）`,
+      `RoomClosed 进结算：session=${payload.ref_id} created=${res.created} status=${res.settlement.status} share_mode=${res.settlement.share_mode}（event_id=${event.eventId}）`,
     );
   };
 }
 
-/** 独立可测的 OneOnOneSettled handler（D6=M2 合成桩；ref=(one_on_one, order_id) §3 逐字） */
+/** 独立可测的 OneOnOneSettled handler（D6 真生产；ref=(one_on_one, order_id) §3 逐字） */
 export function createOneOnOneSettledHandler(settlements: SettlementService): OutboxHandler {
   const logger = new Logger('SettlementOneOnOne');
   return async (event: RelayEvent): Promise<void> => {
@@ -129,11 +142,23 @@ export function createOneOnOneSettledHandler(settlements: SettlementService): Ou
       );
     }
     const raw = (event.payload ?? {}) as Partial<OneOnOneSettledPayload>;
+    // W4 #45-①：构成基=net（实结净额/取消②③保留额）——校验同 gross（两位小数正金额），
+    // 非法→抛错进重试轨道不静默（禁回退 prepaid：会把多退/保留额形态虚增为全额构成）
+    if (
+      typeof raw.net !== 'string' ||
+      !/^\d+\.\d{2}$/.test(raw.net) ||
+      moneyToCents(raw.net) <= 0
+    ) {
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `1对1 进结算构成基 net 非法（须两位小数正金额）：${JSON.stringify(raw.net)}`,
+      );
+    }
     const payload = assertEnterFields({
       ref_id: raw.order_id,
       lawyer_id: raw.lawyer_id,
       firm_id: raw.firm_id,
-      gross: raw.gross,
+      gross: raw.gross, // 预付全额参考：形态校验（两位小数正金额）不参与构成
       payment_order_id: raw.payment_order_id,
     });
     const res = await settlements.enterSettlement({
@@ -141,12 +166,11 @@ export function createOneOnOneSettledHandler(settlements: SettlementService): Ou
       ref_id: payload.ref_id,
       lawyer_id: payload.lawyer_id,
       firm_id: payload.firm_id,
-      gross: payload.gross,
+      gross: raw.net, // input.gross 承载构成基（settlements.gross 列=one_on_one 行的实结净额/保留额）
       payment_order_id: payload.payment_order_id,
     });
-    // 载荷 net=D6 实结参考价：F3 构成以 gross（预付冻结额）为基（契约注记；M2 D6 联调对齐位）
     logger.log(
-      `OneOnOneSettled 进结算：order=${payload.ref_id} created=${res.created} status=${res.settlement.status}（event_id=${event.eventId}）`,
+      `OneOnOneSettled 进结算：order=${payload.ref_id} 构成基(net)=${raw.net} 预付参考(gross)=${payload.gross} created=${res.created} status=${res.settlement.status}（event_id=${event.eventId}）`,
     );
   };
 }
@@ -179,10 +203,11 @@ export function createAttendanceHandler(settlements: SettlementService): OutboxH
     const res = await settlements.markAbsenceShare('session', payload.session_id);
     if (res.marked) return;
     if (res.reason === 'NO_SETTLEMENT') {
-      // D3 判定先于 RoomClosed 的真实时序（PRD §8.5 流：缺席处理→房间结束→结算）：
-      // W3 合成桩按「先 RoomClosed 后判定」直投；真实顺序=M2 D3/D1 联调换装位（显性 warn，不炸）
+      // D3 判定先于 RoomClosed 的真实时序（PRD §8.5 流：缺席处理→房间结束→结算）：行未建
+      // 无从标记——标记由①建行回查 SessionAbsenceGate 承载（T2-B1 修复，双覆盖的另一半），
+      // 本 warn=留痕不炸不静默
       logger.warn(
-        `缺席分成标记跳过：session=${payload.session_id} 结算行未建（D3 先于 RoomClosed 时序；M2 联调换装位，event_id=${event.eventId}）`,
+        `缺席分成标记跳过：session=${payload.session_id} 结算行未建（D3 先于 RoomClosed 时序；标记由 RoomClosed 建行回查承载，event_id=${event.eventId}）`,
       );
       return;
     }
@@ -314,10 +339,14 @@ export class SettlementConsumer implements OnModuleInit {
   constructor(
     private readonly relay: OutboxRelayService,
     private readonly settlements: SettlementService,
+    private readonly absence: SessionAbsenceGate,
   ) {}
 
   onModuleInit(): void {
-    this.relay.registerHandler(ROOM_CLOSED_TOPIC, createRoomClosedHandler(this.settlements));
+    this.relay.registerHandler(
+      ROOM_CLOSED_TOPIC,
+      createRoomClosedHandler(this.settlements, this.absence),
+    );
     this.relay.registerHandler(
       ONE_ON_ONE_SETTLED_TOPIC,
       createOneOnOneSettledHandler(this.settlements),

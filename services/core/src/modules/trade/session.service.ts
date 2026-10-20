@@ -893,13 +893,15 @@ export class SessionService {
    * ——本半边在流标 job 终态化之前先行拦截（R-03 幽灵提醒禁令）。成团链（FULL/CONFIRMED/OPEN/
    * IN_SERVICE）不受截止窗影响恒可提醒；**sessionOpenable 已于 M2-W3 T5 对 CREATED 收紧
    * （N-4 复合守卫：PAID 在册 OR 截止 job 在册——开房链口径）**，本面防御半边与之同向
-   * （截止已过即拦提醒），两面独立导出不变。临期转化场次的提醒缺口=D2/I1 联调裁定项
-   * （M2-W2 T4 M-2 注记回指，未随 N-4 收口消解）。
+   * （截止已过即拦提醒），两面独立导出不变。
    *
-   * **M2-W2 T4 修复环 M-2 注记**：临期转化路径（createConvertedB2C 条件预写）合法产生「截止
-   * 已过、无 ENROLL_DEADLINE job」的 CREATED 迁移承接场次——本防御半边对这类场次的 REMIND
-   * 回查恒 false（迁移参与者的临期转化场次收不到 D2 提醒；开房不受影响——sessionOpenable
-   * 不含本半边）。行为面维持现状（D2 幽灵提醒禁令优先），提醒缺口随 D2/I1 联调（W3+）裁定。
+   * **承接反查例外（M-2 裁定已落地，M2-W4 T4b——W3 复审 §3-⑤ 消费项）**：临期转化路径
+   * （createConvertedB2C 条件预写）合法产生「截止已过、无 ENROLL_DEADLINE job」的 CREATED
+   * 迁移承接场次（REMIND×4 job 已同事务预写）——防御半边对这类场次恒 false 致迁移参与者收不到
+   * D2 提醒（M2-W2 T4 M-2 注记缺口）。裁定=承接反查例外放行：本分支内 trade.group_buys.
+   * session_id 反查在册（V41 承接锚，建面同事务落值；同 schema 合法直查）即转化承接场次 →
+   * true；反查不在册维持 false（「报名已截止仍未成团」幽灵提醒禁令不变——普通 CREATED 的
+   * M-2 坏孪生半边不受例外影响）。开房链口径（sessionOpenable）不随本例外变化。
    */
   async sessionRemindable(exec: SqlExecutor, sessionId: number): Promise<boolean> {
     const res = await exec.query<{ status: string; enroll_deadline: Date }>(
@@ -914,7 +916,13 @@ export class SessionService {
       return false; // 终态 → false
     }
     if (row.status === 'CREATED' && Date.now() > new Date(row.enroll_deadline).getTime()) {
-      return false; // 报名已截止仍未成团（修环 I-1 防御半边）
+      // 承接反查例外（M-2 裁定，头注）：group_buys.session_id 在册=转化承接场次放行；
+      // 不在册维持 false（幽灵提醒禁令）。同 schema 直查（V41 回链列，禁跨 schema join 不涉）
+      const anchored = await exec.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM trade.group_buys WHERE session_id = $1`,
+        [sessionId],
+      );
+      return (anchored.rows[0]?.n ?? 0) > 0;
     }
     return true;
   }

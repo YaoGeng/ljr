@@ -41,12 +41,15 @@
  * （70/30 分成/30% 积分=F3/F4 消费侧）。
  *
  * confirm-arrival（D2 §5 契约，M2-W2 T2 落位——W1 无锚禁建假 API 的补位）：幂等键=enrollment
- * ——经 trade 导出面 resolveEnrollment 解析 user+session→room（本域）→ 写/改 attendances
- * （status=NORMAL+first_join_at=now()：人工确认到场=NORMAL，D2 文档注记口径）+恰一次
- * AttendanceAdjudicated(normal)。已判定行（adjudicated_at 非空）→ 无操作返回现状（判定
- * 终态不翻案：>15min 缺席者确认到场不改 ABSENT，R-01 费用不退口径）。
+ *  ——经 trade 导出面 resolveEnrollment 解析 user+session→room（本域）→ 写/改 attendances
+ *  （status=NORMAL+first_join_at=now()：人工确认到场=NORMAL，D2 文档注记口径）+恰一次
+ *  AttendanceAdjudicated(normal)。已判定行（adjudicated_at 非空）→ 无操作返回现状（判定
+ *  终态不翻案：>15min 缺席者确认到场不改 ABSENT，R-01 费用不退口径）。
+ *
+ * 纯读导出（M2-W4 T2-B1）：sessionUserAbsenceAdjudicated——F3 RoomClosed 建行回查位（判定
+ * 先于关房的主流时序下 70/30 标记不丢），经 AttendanceAbsenceSource 适配注册进 F3 闸。
  */
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import {
   AppError,
   ErrorCode,
@@ -63,6 +66,7 @@ import type { SqlExecutor } from '../../infrastructure/sql';
 import { PgPoolService } from '../../infrastructure/sql';
 import { OutboxService } from '../../infrastructure/outbox/outbox.service';
 import { StateTransitionGuardService } from '../../infrastructure/state-machine/state-transition-guard.service';
+import { SessionAbsenceGate, type SessionAbsenceSource } from '../settlement/settlement.gate';
 import { EnrollmentService } from '../trade/enrollment.service';
 import { SessionService } from '../trade/session.service';
 import { ATTENDANCE_CONFIG, type AttendanceConfig } from './attendance.config';
@@ -694,5 +698,62 @@ export class AttendanceService {
         `房间 ${roomId} 已被并发迁移（${from}→${to}）`,
       );
     }
+  }
+
+  // ===========================================================================
+  // 纯读导出（M2-W4 T2-B1）：F3 RoomClosed 建行回查位——判定先于关房的主流时序下 70/30
+  // 标记不丢（trade closeAnchorOf 同形窄面；只读不写，禁跨 schema join——本域两表分查）
+  // ===========================================================================
+
+  /**
+   * 场次用户缺席判定在册查询：该场次房间上存在 role='user' 且 status='ABSENT' 的已判定行
+   * （adjudicated_at 非空——判定终态不翻案，在册即构成依据）→ true；无 → false；场次房间
+   * 不存在 → null（调用方闸缝按无判定语义收敛）。消费方=F3 SessionAbsenceGate（经
+   * AttendanceAbsenceSource 适配注册）。
+   */
+  async sessionUserAbsenceAdjudicated(sessionId: number): Promise<boolean | null> {
+    const sid = assertPositiveInt(sessionId, 'session_id');
+    const room = await this.pool.query<{ id: string }>(
+      `SELECT id FROM fulfillment.rooms WHERE session_id = $1`,
+      [sid],
+    );
+    const roomId = room.rows[0];
+    if (roomId === undefined) return null;
+    const res = await this.pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM fulfillment.attendances
+        WHERE room_id = $1 AND role = 'user' AND status = 'ABSENT' AND adjudicated_at IS NOT NULL`,
+      [Number(roomId.id)],
+    );
+    return (res.rows[0]?.n ?? 0) > 0;
+  }
+}
+
+/**
+ * D3 缺席判定源适配器（M2-W4 T2-B1）：F3 SessionAbsenceGate 的生产实现（TicketOpenTicketSource
+ * 同形——消费方定义接口 settlement.gate.SessionAbsenceSource，生产方注册实现）。
+ */
+@Injectable()
+export class AttendanceAbsenceSource implements SessionAbsenceSource {
+  constructor(private readonly attendance: AttendanceService) {}
+
+  async sessionUserAbsenceAdjudicated(sessionId: number): Promise<boolean | null> {
+    return this.attendance.sessionUserAbsenceAdjudicated(sessionId);
+  }
+}
+
+/**
+ * 生产装配（TicketGateRegistration 同形）：FulfillmentModule onModuleInit 把判定源注册进 F3 闸
+ * ——settlement 侧唯一改动=SettlementModule exports 增 SessionAbsenceGate（闸缝本体零改动）。
+ * registerSource 幂等覆盖（gate 语义），多实例/重复 init 安全。
+ */
+@Injectable()
+export class AttendanceAbsenceRegistration implements OnModuleInit {
+  constructor(
+    private readonly gate: SessionAbsenceGate,
+    private readonly source: AttendanceAbsenceSource,
+  ) {}
+
+  onModuleInit(): void {
+    this.gate.registerSource(this.source);
   }
 }

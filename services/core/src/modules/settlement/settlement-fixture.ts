@@ -44,3 +44,67 @@ export async function countSettlementsByRef(
   );
   return res.rows[0]!.n;
 }
+
+/** ref 维度结算行直读（M2-W4 T1：D6 spec 断言「构成基=net 落 gross 列」锚——gross 列在
+ *  one_on_one 行承载结算构成基，W4-1 裁决；owner=settlement 同头注纪律）。
+ *  M2-W4 T2 扩展（纯加法）：status/share_mode/escrow_status 三列并入出参——合并验收 spec
+ *  断言 ABSENCE_7030 标记与 SETTLED 终态（消费方 toMatchObject 不受加列影响） */
+export async function settlementByRefRaw(
+  pool: Pool,
+  refType: string,
+  refId: number,
+): Promise<{
+  gross: string;
+  penalty: string;
+  platform_fee: string;
+  net: string;
+  status: string;
+  share_mode: string;
+  escrow_status: string | null;
+} | null> {
+  const res = await pool.query<{
+    gross: string;
+    penalty: string;
+    platform_fee: string;
+    net: string;
+    status: string;
+    share_mode: string;
+    escrow_status: string | null;
+  }>(
+    `SELECT gross::text AS gross, penalty::text AS penalty,
+       platform_fee::text AS platform_fee, net::text AS net,
+       status, share_mode, escrow_status
+     FROM settlement.settlements WHERE ref_type = $1 AND ref_id = $2`,
+    [refType, refId],
+  );
+  return res.rows[0] ?? null;
+}
+
+/** ref 维度违约扣减留痕直读（M2-W4 T2：合并验收 C 链 deduction_detail 腿级断言锚；
+ *  owner=settlement 同头注纪律） */
+export async function deductionDetailByRefRaw(
+  pool: Pool,
+  refType: string,
+  refId: number,
+): Promise<Record<string, unknown> | null> {
+  const res = await pool.query<{ deduction_detail: Record<string, unknown> | null }>(
+    `SELECT deduction_detail FROM settlement.settlements WHERE ref_type = $1 AND ref_id = $2`,
+    [refType, refId],
+  );
+  return res.rows[0]?.deduction_detail ?? null;
+}
+
+/** ref 维度结算行 id 直读（M2-W4 T2：合并验收 spec 的 SETTLE_HOLD_RELEASE job 重注册锚——
+ *  I2 API cancel+register 按 settlement 行 id 定位；owner=settlement 同头注纪律） */
+export async function settlementIdByRefRaw(
+  pool: Pool,
+  refType: string,
+  refId: number,
+): Promise<number | null> {
+  const res = await pool.query<{ id: string }>(
+    `SELECT id FROM settlement.settlements WHERE ref_type = $1 AND ref_id = $2`,
+    [refType, refId],
+  );
+  const row = res.rows[0];
+  return row === undefined ? null : Number(row.id);
+}

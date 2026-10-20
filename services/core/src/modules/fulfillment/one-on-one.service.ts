@@ -39,17 +39,21 @@
  *   ——补差单未确认支付不扣款（R-02 禁无密扣款）。settle-diff/pay=支付参数重建面（dev mock
  *   通道预下单即成功形态，#40 四次修正口径）；补差 PAY_SUCCESS 收敛 DIFF_PENDING→SETTLED。
  *   30min 默认（executor）：FINISHED=系统计量值双默认；SETTLING=已录值补默认。终态出箱
- *   OneOnOneSettled（gross=prepaid/net=实结参考/lawyer_id/firm_id/payment_order_id——F3 既有
- *   契约逐字；firm_id 经 A3a getFirmId 导出面，进件前 null=显式失败不静默，RoomClosed 先例）。
+ *   OneOnOneSettled（gross=prepaid 预付参考/net=构成基（实结净额/取消②③保留额——W4 #45-①）/
+ *   lawyer_id/firm_id/payment_order_id——F3 既有契约逐字；firm_id 经 A3a getFirmId 导出面，
+ *   进件前 null=显式失败不静默，RoomClosed 先例）。
  *
  * === 取消三档（R-03 逐字，W3-4）与接单超时 ===
  *   ①IN_SERVICE 前（PAID/ACCEPTED）全退：CANCELLED→F2 全额（reason OOO_CANCEL，键
  *   refund/po-{po}/ooo-cancel）→REFUNDED；②text 开始后 settle=单价×已完成轮次退差（键
  *   ooo-cancel-partial）；③voice-video consumed=0 收 1 单位 50%（半单位 floor 到分）退其余、
- *   ≥1 实结多退少补（**取消少补侧按 prepaid 封顶**——状态机冻结 DIFF_PENDING 仅自 SETTLING
- *   可达，cancel 无补差出边；超支面=平台让利口径，报告注明）；settle=0 形态走全退键 REFUNDED。
+ *   ≥1 实结多退少补（**取消少补侧按 prepaid 封顶**——状态机冻结 DIFF_PENDING 仅自 SETTLING 可
+ *   达，cancel 无补差出边；超支面=平台让利口径，报告注明）；settle=0 形态走全退键 REFUNDED。
+ *   ②③保留额经步骤三终态化事务定向出 OneOnOneSettled{gross=prepaid, net=保留额}（W4-2
+ *   #45-①：F3 净额构成出口——非双轨；①全退/④超时不出）。
  *   受理先行→终态化（D4 双路径先例）；崩溃窗口=CANCELLED 行重入续跑（幂等键重放）+
- *   RefundCompleted 消费收敛兜底。接单超时=executor：PAID→LAWYER_TIMEOUT+OneOnOneLawyerTimeout
+ *   RefundCompleted 消费收敛兜底（收敛腿非 full 同发保留额事件——修复环 I-1，与步骤三
+ *   状态机互斥不双发）。接单超时=executor：PAID→LAWYER_TIMEOUT+OneOnOneLawyerTimeout
  *   出箱（载荷自带 payment_order_id 免跨域查）→ F2 消费全退（OOO_TIMEOUT）→RefundCompleted
  *   收敛 REFUNDED。
  *
@@ -906,9 +910,9 @@ export class OneOnOneService {
     }
 
     // ---- R-03 三档金额解算（settleCents=收取额；refundCents=退还额）
-    // I-2 评审登记注记：②③的保留额（settleCents）当前无 F3 结算出口——取消路径只发 F2 退差
-    // 指令不产 OneOnOneSettled（场次取消同口径：取消走退款轨道禁双轨）；律师收取侧兑付=
-    // F3 结算链扩展（与 I-3 的 gross 构成对齐一并在 M2 联调闭合，04 §8 登记归 T7）。
+    // W4-2（#45-① 闭合，原 I-2 登记注销）：②③保留额（prepaid−refund）经步骤三终态化事务
+    // 定向出 OneOnOneSettled{net=保留额} 兑付律师侧——非双轨（W3「取消走退款轨道禁双轨」裁决
+    // 防的是全额双轨：F2 退差与 F3 净额构成互补不重叠）；①全退/④超时无保留额不出。
     const unitCents = moneyToCents(pre.unit_price);
     const prepaidCents = moneyToCents(pre.prepaid);
     let refundCents: number;
@@ -991,6 +995,19 @@ export class OneOnOneService {
       const row = await this.lockOrder(uow, id);
       if (!row || row.status !== 'CANCELLED') return; // 并发胜者/重放已收敛
       await this.transition(uow, id, 'CANCELLED', target, 'cancel_refund_accepted');
+      if (!full) {
+        // W4-2 取消②③保留额 F3 定向出口（#45-①）：net=保留额=prepaid−refund（B-1 重入以
+        // 步骤一持久化 refund_amount 为权威——保留额恒同源）；①全退/④超时（REFUNDED）不出。
+        // 幂等=终态早退（重入即 status≠CANCELLED 短路）+ F3 enterSettlement UNIQUE(ref) 兜底。
+        await this.emitSettled(
+          uow,
+          toView({
+            ...row,
+            status: 'PARTIAL_REFUNDED',
+            settle_amount: centsToMoney(prepaidCents - refundCents),
+          }),
+        );
+      }
     });
     const after = (await this.readOrder(id))!;
     return {
@@ -1009,8 +1026,13 @@ export class OneOnOneService {
 
   /**
    * 退款完成收敛：LAWYER_TIMEOUT→REFUNDED（超时全退）；CANCELLED→REFUNDED/PARTIAL_REFUNDED
-   * （取消受理崩溃窗口兜底——按退款额与 prepaid 全等判全/部分）。已终态/其他态=幂等短路。
-   * refundCents=本笔退款单金额（cash+points 折分；D6 订单 cash-only，恒精确）。
+   * （取消受理崩溃窗口兜底——按退款额与 prepaid 全等判全/部分；**非 full 腿与 cancel 步骤三
+   * 同语义**：同事务定向出保留额事件，修复环 I-1——保留额以行上持久化 refund_amount 为权威
+   * 计算，禁走 emitSettled 的 ?? prepaid 回退（取消单 settle_amount 列恒 null，裸传会把构成基
+   * 虚增为预付全额且消费端拦不住）。与 cancel 步骤三双发风险=0：两路径均行锁+状态机互斥
+   * （先到者迁移、后到者终态早退）+ F3 enterSettlement UNIQUE(ref) 二重兜底）。
+   * 已终态/其他态=幂等短路。refundCents=本笔退款单金额（cash+points 折分；D6 订单
+   * cash-only，恒精确）。
    */
   async advanceRefundCompleted(
     orderId: number,
@@ -1025,7 +1047,8 @@ export class OneOnOneService {
         return;
       }
       if (row.status === 'CANCELLED') {
-        const full = refundCents >= moneyToCents(row.prepaid);
+        const prepaidCents = moneyToCents(row.prepaid);
+        const full = refundCents >= prepaidCents;
         await this.transition(
           uow,
           id,
@@ -1033,6 +1056,25 @@ export class OneOnOneService {
           full ? 'REFUNDED' : 'PARTIAL_REFUNDED',
           'refund_completed',
         );
+        if (!full) {
+          // 修复环 I-1：保留额形态收敛腿同事务出定向事件（gross=prepaid/net=保留额）；
+          // 保留额以步骤一原子持久化的 refund_amount 为权威（B-1 同纪律，缺失=不应触达）
+          if (row.refund_amount === null) {
+            throw new AppError(
+              ErrorCode.InternalError,
+              `订单 ${id} 处于 CANCELLED 但 refund_amount 缺失（不应触达——取消步骤一原子写入）`,
+            );
+          }
+          const retainedCents = prepaidCents - moneyToCents(row.refund_amount);
+          await this.emitSettled(
+            uow,
+            toView({
+              ...row,
+              status: 'PARTIAL_REFUNDED',
+              settle_amount: centsToMoney(retainedCents),
+            }),
+          );
+        }
       }
       // REFUNDED/PARTIAL_REFUNDED/SETTLED 等：幂等短路（多退实结路径自行终态化，不经本面）
     });
@@ -1326,11 +1368,10 @@ export class OneOnOneService {
   }
 
   /**
-   * OneOnOneSettled 出箱（F3 既有契约逐字：gross=prepaid/net=实结参考；firm_id=A3a 导出面）。
-   * I-2/I-3 评审登记注记：**F3 构成以 gross（prepaid）为基而净额语义=实结**——多退路径
-   * （SETTLE_REFUND 退差）与取消②③保留额（lawyer 收取侧）的 F3 gross 构成/F2 退差账面
-   * 叠加，为 shared OneOnOneSettled 头注既有「M2 联调对齐位」——真通道/集成验收前必须
-   * 闭合（04 §8 登记归 T7）。
+   * OneOnOneSettled 出箱（F3 既有契约逐字：gross=prepaid 预付参考/net=构成基；firm_id=A3a
+   * 导出面，进件前 null=显式失败不静默）。W4 #45-① 闭合（原 I-2/I-3 登记注销）：net=结算
+   * 构成基（实结净额/取消②③保留额——F3 构成与平台费按此计算），gross=预付全额参考不参与
+   * 构成；多退/取消退差在 D6/F2 侧完成，与 F3 净额构成无叠加。
    */
   private async emitSettled(uow: SqlExecutor, view: OneOnOneOrderView): Promise<void> {
     const firmId = await this.lawyerQuals.getFirmId(view.lawyer_id);

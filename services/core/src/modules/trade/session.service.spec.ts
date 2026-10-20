@@ -18,7 +18,7 @@ import { CREDIT_RULES_KEY } from '../credit/credit.types';
 import { IDENTITY_CONFIG, type IdentityConfig } from '../identity/identity.config';
 import { seedLawyerProfile } from '../identity/lawyer-fixture';
 import { LawyerQualificationService } from '../identity/lawyer.service';
-import { seedPaidEnrollmentRaw, seedSessionAtRaw } from './trade-fixture';
+import { seedGroupBuyRaw, seedPaidEnrollmentRaw, seedSessionAtRaw } from './trade-fixture';
 import { RuleCenterService } from '../ops/rule-center.service';
 import { PricingConfigService } from '../pricing/pricing.service';
 import { SLOT_ABUSE_DETECTED_TOPIC } from '../schedule/slot-lock.events';
@@ -752,5 +752,42 @@ describe('C1 领域层（开团事务/幂等/R-01/R-04/R-05/截止流标/终态 
 
     // ⑥ 不存在 → false（原有口径不动）
     await expect(sessions.sessionOpenable(pool, 999_999_999)).resolves.toBe(false);
+  });
+
+  // ===========================================================================
+  // sessionRemindable 承接反查例外（M2-W4 T4b；W3 复审 §3-⑤ M-2 裁定落地：D2 临期转化
+  // 场次提醒缺口——转化承接场次合法带「已过截止、无 ENROLL_DEADLINE job」CREATED 形态，
+  // 防御半边恒拦致迁移参与者收不到 D2 提醒 → 承接反查在册即放行）
+  // ===========================================================================
+
+  it('sessionRemindable 承接反查例外（M-2 裁定）：转化承接（group_buys.session_id 在册、CREATED、已过截止、无截止 job）→ true；普通 CREATED 已过截止（无承接锚）→ false；CREATED 未过截止/成团链 → true；终态（含承接锚）/不存在 → false', async () => {
+    // ① 转化承接场次（M-2 裁定放行面）：createConvertedB2C 条件预写形态——CREATED、
+    //    截止已过（seedSessionAtRaw 的 deadline=slot_start−24h，slot+2h ⇒ 截止 22h 前已过）、
+    //    无 ENROLL_DEADLINE job，但 group_buys.session_id 反查在册（V41 承接锚同事务落值）
+    const converted = await seedSessionAtRaw(pool, 9101, 'CREATED', hourAfter(2));
+    await seedGroupBuyRaw(pool, 9101, 'CONVERTED', converted);
+    await expect(sessions.sessionRemindable(pool, converted)).resolves.toBe(true);
+
+    // ② 普通 CREATED 已过截止（无承接锚）：「报名已截止仍未成团」幽灵提醒禁令维持 false
+    const plain = await seedSessionAtRaw(pool, 9101, 'CREATED', hourAfter(2));
+    await expect(sessions.sessionRemindable(pool, plain)).resolves.toBe(false);
+
+    // ③ CREATED 未过截止（slot+30h ⇒ 截止 +6h 未到）：防御半边不触发恒 true（锚无关）
+    const fresh = await seedSessionAtRaw(pool, 9101, 'CREATED', hourAfter(30));
+    await expect(sessions.sessionRemindable(pool, fresh)).resolves.toBe(true);
+
+    // ④ 非 CREATED 非终态（成团链 CONFIRMED）已过截止：恒 true（既有口径回归——防御半边
+    //    只作用 CREATED，承接例外无关）
+    const confirmed = await seedSessionAtRaw(pool, 9101, 'CONFIRMED', hourAfter(2));
+    await expect(sessions.sessionRemindable(pool, confirmed)).resolves.toBe(true);
+
+    // ⑤ 终态优先于例外：承接场次后续 CANCELLED（有承接锚）→ false（例外只在 CREATED 已过
+    //    截止分支；终态/不存在半边不动）
+    const deadConverted = await seedSessionAtRaw(pool, 9101, 'CANCELLED', hourAfter(2));
+    await seedGroupBuyRaw(pool, 9101, 'CONVERTED', deadConverted);
+    await expect(sessions.sessionRemindable(pool, deadConverted)).resolves.toBe(false);
+
+    // ⑥ 不存在 → false（原有口径不动）
+    await expect(sessions.sessionRemindable(pool, 999_999_999)).resolves.toBe(false);
   });
 });

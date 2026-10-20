@@ -22,7 +22,7 @@ import { InfrastructureModule } from '../../infrastructure/infrastructure.module
 import { SchedulerModule } from '../schedule/scheduler.module';
 import { PaymentModule } from '../payment/payment.module';
 import { IdentityAuthModule } from '../identity/identity-auth.module';
-import { OpenTicketGate } from './settlement.gate';
+import { OpenTicketGate, SessionAbsenceGate } from './settlement.gate';
 import { SettlementController } from './settlement.controller';
 import { SettlementService } from './settlement.service';
 import { SettlementConsumer } from './settlement.consumer';
@@ -35,16 +35,19 @@ import { SettlementJobExecutors } from './settlement.executors';
   providers: [
     // H3 工单闸（W3 无生产源=恒无未结工单；H3=M2 经 registerSource 换装）
     OpenTicketGate,
+    // D3 缺席判定闸（M2-W4 T2-B1）：无源=恒 false（FULL_TO_LAWYER 缺省）；源经 FulfillmentModule
+    // 侧注册件装配（settlement 依赖树不含 fulfillment 无环——AttendanceAbsenceRegistration）
+    SessionAbsenceGate,
     SettlementService,
     // 消费器经 onModuleInit 注册到 outbox relay（同 topic 多 handler 扇出由 relay 承接）
     SettlementConsumer,
     // SETTLE_HOLD_RELEASE 执行器经 onModuleInit 注册到 I2 执行器注册表（producer/executor=F3）
     SettlementJobExecutors,
   ],
-  // 可剥离纪律：只导出应用服务（内部件不外泄）——**唯一例外=OpenTicketGate**（M2-W2 T1 修复
-  // 环 I-1，评审裁决）：gate 是 H3 工单源的注册缝（settlement.gate 注释逐字「H3=M2 经
-  // registerSource 换装」），导出供 TicketModule onModuleInit 注册（TicketGateRegistration），
-  // 闸本体与 F3 行为零改动
-  exports: [SettlementService, OpenTicketGate],
+  // 可剥离纪律：只导出应用服务（内部件不外泄）——**例外=注册缝闸**（OpenTicketGate=M2-W2 T1
+  // 修复环 I-1 评审裁决先例；SessionAbsenceGate=M2-W4 T2-B1 同形态）：gate 是生产方源的注册缝
+  // （settlement.gate 注释「registerSource 换装」），导出供生产方模块 onModuleInit 注册
+  // （TicketGateRegistration/AttendanceAbsenceRegistration），闸本体与 F3 行为零改动
+  exports: [SettlementService, OpenTicketGate, SessionAbsenceGate],
 })
 export class SettlementModule {}

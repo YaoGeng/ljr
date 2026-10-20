@@ -310,6 +310,12 @@ export class DraftService {
   /**
    * 律师动作（send|edit_send|discard）：全程单事务+行锁（FOR UPDATE 先于一切判定——T4 评审
    * I-3 修复环）：
+   *   0) 成员门（E1 PIA 评审 I-3 修复环）：draft.conversation_id 经 fulfillment 导出面
+   *      assertAccess 验 actor 会话成员资格（listDrafts 同款 fail-closed——非成员 403
+   *      RoleForbidden）。此前 discard 全程无门：任意持律师 JWT 者可对可枚举 draft_id 跨房
+   *      销毁他人草稿并向 agent_review_logs 写入 outsider lawyer_id（审计归属污染）。三动作
+   *      统一过门：send/edit_send 的 sendMessage 间接门之外加显式门=审计一致性（错误码同源
+   *      RoleForbidden，无行为差异）；置于幂等/状态判定之前——非成员请求不可探测草稿动作态；
    *   1) 幂等前置：agent_review_logs 已有 (draft_id,action) 行 ⇒ 零副作用幂等返回（重放
    *      不重复发消息/不出第二份事件）；
    *   2) 非 PENDING 且无同动作留痕 ⇒ 409 EXPIRED（含被 R-06 置 EXPIRED 的旧草稿）；
@@ -359,6 +365,10 @@ export class DraftService {
       if (!draft) {
         throw new AppError(ErrorCode.NotFound, `草稿 ${id} 不存在`);
       }
+
+      // 0) 成员门（PIA 评审 I-3）：三动作统一 fail-closed 过门（方法头注 0）；conversation_id
+      //    取自行锁内行（锁外读会漂移）；assertAccess 只读他域导出面（R-01：零 fulfillment 写）
+      await this.conversations.assertAccess(Number(draft.conversation_id), actor);
 
       // 1) 幂等前置（同动作已留痕 → 零副作用；锁内读无竞态）
       const logged = await uow.query(

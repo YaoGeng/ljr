@@ -37,7 +37,7 @@ import {
   listRefundsByOrderId,
 } from '../payment/order-fixture';
 import { PricingConfigService } from '../pricing/pricing.service';
-import { countSettlementsByRef } from '../settlement/settlement-fixture';
+import { countSettlementsByRef, settlementByRefRaw } from '../settlement/settlement-fixture';
 import { seedSessionAtRaw } from '../trade/trade-fixture';
 import { FulfillmentModule } from './fulfillment.module';
 import { ConversationService } from './conversation.service';
@@ -435,6 +435,8 @@ describe('D6 1对1 服务闭环（下单/支付/接单/计量/实结/取消三�
 
     await refundSuccess(created.payment_order.id);
     expect((await oooRow(id))!['status']).toBe('REFUNDED');
+    // W4 #45-①：④超时全退无保留额——零结算事件（F3 出口仅取消②③/实结路径）
+    expect(await outboxPayloads(ONE_ON_ONE_SETTLED_TOPIC)).toHaveLength(0);
     // 事件重放幂等：重投 LAWYER_TIMEOUT 事件 → F2 受理幂等短路（refund 单数不变）
     await relay.tick();
     expect((await listRefundsByOrderId(pool, created.payment_order.id)).length).toBe(1);
@@ -754,6 +756,13 @@ describe('D6 1对1 服务闭环（下单/支付/接单/计量/实结/取消三�
     expect(row['refund_amount']).toBe('60.00');
     const settled = await outboxPayloads(ONE_ON_ONE_SETTLED_TOPIC);
     expect(settled.at(-1)).toMatchObject({ order_id: id, gross: '100.00', net: '40.00' });
+    // W4 #45-① 四路钉子（多退 net=实结）：F3 结算行构成基（gross 列）=net=40 非 prepaid 100
+    await relay.tick();
+    expect(await countSettlementsByRef(pool, 'one_on_one', id)).toBe(1);
+    expect((await settlementByRefRaw(pool, 'one_on_one', id))!).toMatchObject({
+      gross: '40.00',
+      net: '40.00',
+    });
   });
 
   // ===========================================================================
@@ -835,6 +844,13 @@ describe('D6 1对1 服务闭环（下单/支付/接单/计量/实结/取消三�
     await scheduler.tick('normal');
     expect((await oooRow(orderId))!['status']).toBe('SETTLED');
     expect((await outboxPayloads(ONE_ON_ONE_SETTLED_TOPIC)).length).toBe(before);
+
+    // W4 #45-① 四路钉子（少补已付 net=prepaid+diff）：F3 结算行构成基=100（含补差实收）
+    await relay.tick();
+    expect((await settlementByRefRaw(pool, 'one_on_one', orderId))!).toMatchObject({
+      gross: '100.00',
+      net: '100.00',
+    });
   });
 
   it('补差 15min 未付：executor 按已服务比例结算（settle=prepaid）+OneOnOneDiffUnpaid→G1 信用（W3-11 档=user_cancel_early -5）', async () => {
@@ -881,6 +897,12 @@ describe('D6 1对1 服务闭环（下单/支付/接单/计量/实结/取消三�
     // 事件重放幂等：G1 uq_credit_events_idem 短路（重投零新流水）
     await relay.tick();
     expect((await creditEventRowsRaw(pool, 'user', userId)).length).toBe(1);
+
+    // W4 #45-① 四路钉子（少补超时 net=prepaid）：F3 结算行构成基=50（按已服务比例收敛）
+    expect((await settlementByRefRaw(pool, 'one_on_one', orderId))!).toMatchObject({
+      gross: '50.00',
+      net: '50.00',
+    });
   });
 
   // ===========================================================================
@@ -974,6 +996,9 @@ describe('D6 1对1 服务闭环（下单/支付/接单/计量/实结/取消三�
     await expect(
       orders.cancel(other.order.id, { role: 'user', actorUserId: user + 1 }),
     ).rejects.toMatchObject({ code: ErrorCode.RoleForbidden });
+
+    // W4 #45-①：①全退（PAID/ACCEPTED 两档）与超时轨道均无保留额——零结算事件
+    expect(await outboxPayloads(ONE_ON_ONE_SETTLED_TOPIC)).toHaveLength(0);
   });
 
   it('取消②：text 开始后按已完成轮次实结（settle=单价×轮次）退差——1 轮 settle=prepaid 退 0（PARTIAL_REFUNDED/NONE）', async () => {
@@ -1002,6 +1027,26 @@ describe('D6 1对1 服务闭环（下单/支付/接单/计量/实结/取消三�
     const poId = Number((await oooRow(orderId))!['payment_order_id']);
     expect(await refundsOfKey(poId, `refund/po-${poId}/ooo-cancel`)).toBeUndefined();
     expect(await refundsOfKey(poId, `refund/po-${poId}/ooo-cancel-partial`)).toBeUndefined();
+
+    // W4 #45-① 取消②保留额 F3 定向出口：net=consumed×unit_price=50、gross=prepaid=50
+    //（settle 封顶=prepaid、refund=0 形态亦属 PARTIAL_REFUNDED——保留额=prepaid 全额出）
+    const settled = await outboxPayloads(ONE_ON_ONE_SETTLED_TOPIC);
+    expect(settled).toHaveLength(1);
+    expect(settled[0]).toMatchObject({
+      order_id: orderId,
+      gross: '50.00',
+      net: '50.00',
+      lawyer_id: expect.any(Number),
+      firm_id: FIRM_ID,
+      payment_order_id: poId,
+    });
+    // 真链集成（W3 T3 桩转正形态）：真订单取消②→事件→F3 消费→结算行构成基=net 落位
+    await relay.tick();
+    expect(await countSettlementsByRef(pool, 'one_on_one', orderId)).toBe(1);
+    expect((await settlementByRefRaw(pool, 'one_on_one', orderId))!).toMatchObject({
+      gross: '50.00',
+      net: '50.00',
+    });
   });
 
   it('取消③：voice consumed=0（未满首个 15min）收 1 单位 50% 退其余（部分键）；consumed≥1 实结封顶 prepaid（NONE）', async () => {
@@ -1026,6 +1071,14 @@ describe('D6 1对1 服务闭环（下单/支付/接单/计量/实结/取消三�
     expect(partial).toBeDefined();
     expect(partial['cash_amount']).toBe('50.00');
     expect(partial['reason']).toBe('OOO_CANCEL');
+    // W4 #45-① 取消③保留额出口：net=保留额=floor(unit/2)=50（分值向下取整与 cancel 解算同口径）、gross=prepaid=100
+    const settledZero = await outboxPayloads(ONE_ON_ONE_SETTLED_TOPIC);
+    expect(settledZero).toHaveLength(1);
+    expect(settledZero[0]).toMatchObject({
+      order_id: zero.order.id,
+      gross: '100.00',
+      net: '50.00',
+    });
 
     // consumed=2（901s）：settle=200 封顶 prepaid=100 → 退 0（取消无补差出边——类注口径）
     const over = await createOrder(user, await seedRoom(lawyer), 'voice', 'strategy');
@@ -1036,6 +1089,15 @@ describe('D6 1对1 服务闭环（下单/支付/接单/计量/实结/取消三�
     expect(cancelledOver.order.status).toBe('PARTIAL_REFUNDED');
     expect(cancelledOver.refund.kind).toBe('NONE');
     expect(cancelledOver.refund.amount).toBe('0.00');
+    // 保留额=prepaid−0=100（封顶形态）→ 第二条定向出口事件（outboxPayloads 按 event_id 排序
+    // 非写入序——双事件并存按 order_id 定位断言）
+    const settledOver = await outboxPayloads(ONE_ON_ONE_SETTLED_TOPIC);
+    expect(settledOver).toHaveLength(2);
+    expect(settledOver.find((e) => e['order_id'] === over.order.id)).toMatchObject({
+      order_id: over.order.id,
+      gross: '100.00',
+      net: '100.00',
+    });
   });
 
   it('取消②边界：text 开始后 0 完成轮次（仅用户问未答）=服务未交付全退（FULL 键）', async () => {
@@ -1281,6 +1343,14 @@ describe('D6 1对1 服务闭环（下单/支付/接单/计量/实结/取消三�
       `refund/po-${created.payment_order.id}/ooo-cancel-partial`,
     );
     expect(refundRows[0]!['cash_amount']).toBe('50.00'); // 部分键+50 额——B-1 回归钉
+
+    // W4 #45-①：B-1 重入流经步骤三——保留额事件恰一条（终态再重试=回执不补发）
+    const settled = await outboxPayloads(ONE_ON_ONE_SETTLED_TOPIC);
+    expect(settled).toHaveLength(1);
+    expect(settled[0]).toMatchObject({ order_id: id, gross: '100.00', net: '50.00' });
+    const third = await orders.cancel(id, { role: 'user', actorUserId: user });
+    expect(third.deduplicated).toBe(true);
+    expect(await outboxPayloads(ONE_ON_ONE_SETTLED_TOPIC)).toHaveLength(1);
   });
 
   it('H-1 双确认多退崩溃窗：ooo-settle 受理在册→默认确认尊重共识值（系统计量不覆盖，退款恰一张）', async () => {
@@ -1318,5 +1388,79 @@ describe('D6 1对1 服务闭环（下单/支付/接单/计量/实结/取消三�
     expect(refundRows[0]!['cash_amount']).toBe('60.00'); // 幂等重放恰一张同额
     const settled = await outboxPayloads(ONE_ON_ONE_SETTLED_TOPIC);
     expect(settled.at(-1)).toMatchObject({ order_id: id, net: '40.00' });
+  });
+
+  it('I-1 RefundCompleted 收敛腿保留额出口：取消步骤二后崩溃窗注入 REFUND_SUCCESS→CANCELLED 收敛 PARTIAL_REFUNDED+同事务恰一条保留额事件（net=prepaid−refund_amount）', async () => {
+    const lawyer = nextLawyer();
+    await seedLawyer(lawyer);
+    const user = nextUser();
+    await seedUser(user);
+    const created = await createOrder(user, await seedRoom(lawyer), 'voice'); // prepaid=100
+    const id = created.order.id;
+    await paySuccess(created.payment_order.id);
+    await orders.accept(id, { actorLawyerId: lawyer });
+    await orders.recordDuration(id, 0); // IN_SERVICE+consumed=0 → ③ 半价：refund=50/保留额=50
+
+    // 崩溃窗模拟（B-1 同法）：F2 受理首调炸→步骤一 CANCELLED+refund_amount=50.00 已提交、
+    // 步骤二受理未达——此后不经客户端重试，F2 退款完成回调先行到达（RefundCompleted 收敛轨）
+    const spy = vi
+      .spyOn(app.get(RefundService), 'accept')
+      .mockRejectedValueOnce(new Error('simulated crash'));
+    await expect(orders.cancel(id, { role: 'user', actorUserId: user })).rejects.toThrow(
+      'simulated crash',
+    );
+    expect((await oooRow(id))!['status']).toBe('CANCELLED');
+    expect((await oooRow(id))!['refund_amount']).toBe('50.00');
+    spy.mockRestore();
+
+    // 步骤二的 F2 受理由退款完成回调承载（直调同键同额——cancel 步骤二原参数，H-1 先例）
+    await app.get(RefundService).accept({
+      order_id: created.payment_order.id,
+      user_id: user,
+      cash: '50.00',
+      points: 0,
+      reason: 'OOO_CANCEL',
+      idempotency_key: `refund/po-${created.payment_order.id}/ooo-cancel-partial`,
+    });
+    await refundSuccess(created.payment_order.id); // REFUND_SUCCESS→F2 DONE→RefundCompleted→D6 收敛
+
+    // 收敛腿（CANCELLED→PARTIAL_REFUNDED）同事务出保留额事件：恰一条、net=100−50=50
+    //（禁 ?? prepaid 回退：取消单 settle_amount 列恒 null——裸传会把构成基虚增为 100）
+    expect((await oooRow(id))!['status']).toBe('PARTIAL_REFUNDED');
+    const settled = await outboxPayloads(ONE_ON_ONE_SETTLED_TOPIC);
+    expect(settled).toHaveLength(1);
+    expect(settled[0]).toMatchObject({
+      order_id: id,
+      gross: '100.00',
+      net: '50.00',
+      firm_id: FIRM_ID,
+    });
+
+    // 客户端 cancel 迟到重试：终态早退回执（deduplicated）——不双发
+    const resumed = await orders.cancel(id, { role: 'user', actorUserId: user });
+    expect(resumed.deduplicated).toBe(true);
+    expect(await outboxPayloads(ONE_ON_ONE_SETTLED_TOPIC)).toHaveLength(1);
+  });
+
+  it('I-1 RefundCompleted 收敛腿重放不双发：正常 cancel 步骤三已出保留额事件→迟至退款回调收敛=幂等短路零补发', async () => {
+    const lawyer = nextLawyer();
+    await seedLawyer(lawyer);
+    const user = nextUser();
+    await seedUser(user);
+    const created = await createOrder(user, await seedRoom(lawyer), 'voice'); // prepaid=100
+    const id = created.order.id;
+    await paySuccess(created.payment_order.id);
+    await orders.accept(id, { actorLawyerId: lawyer });
+    await orders.recordDuration(id, 0);
+
+    // 正常取消：步骤三终态化已出保留额事件（net=50）
+    const cancelled = await orders.cancel(id, { role: 'user', actorUserId: user });
+    expect(cancelled.order.status).toBe('PARTIAL_REFUNDED');
+    expect(await outboxPayloads(ONE_ON_ONE_SETTLED_TOPIC)).toHaveLength(1);
+
+    // 退款完成回调迟至：RefundCompleted→advanceRefundCompleted 见 PARTIAL_REFUNDED=幂等短路
+    await refundSuccess(created.payment_order.id);
+    expect((await oooRow(id))!['status']).toBe('PARTIAL_REFUNDED');
+    expect(await outboxPayloads(ONE_ON_ONE_SETTLED_TOPIC)).toHaveLength(1);
   });
 });

@@ -631,17 +631,19 @@ describe('F3 消费契约（M1-W3 T8 消费方定型，R-W2-A 口径；生产方
     expect(payload.gross).toBe('100.00');
   });
 
-  it('OneOnOneSettled：topic=fulfillment.one_on_one.settled，{order_id, lawyer_id, firm_id, gross, net, payment_order_id}（F3 §3 {order_id, gross, net} 逐字 + 归属/指令定位增补；net=D6 实结参考价，F3 构成以 gross 为基）', () => {
+  it('OneOnOneSettled：topic=fulfillment.one_on_one.settled，{order_id, lawyer_id, firm_id, gross, net, payment_order_id}（F3 §3 {order_id, gross, net} 逐字 + 归属/指令定位增补；net=结算构成基（实结净额/取消②③保留额）、gross=预付参考不参与构成——W4 #45-① 闭合，payload shape 不变）', () => {
     expect(ONE_ON_ONE_SETTLED_TOPIC).toBe('fulfillment.one_on_one.settled');
     const payload: OneOnOneSettledPayload = {
       order_id: 501,
       lawyer_id: 9101,
       firm_id: 31,
-      gross: '100.00',
-      net: '100.00',
+      gross: '100.00', // 预付全额参考
+      net: '40.00', // 构成基（多退形态：实结 40、退差 60 在 D6/F2 侧）
       payment_order_id: 9002,
     };
     expect(payload.order_id).toBe(501);
+    expect(payload.gross).toBe('100.00');
+    expect(payload.net).toBe('40.00');
   });
 
   it('TicketResolved：topic=ops.ticket.resolved，{ticket_id, ref_type, ref_id}（H3 工单关闭 → F3 HOLD 释放；W3=合成事件桩）', () => {

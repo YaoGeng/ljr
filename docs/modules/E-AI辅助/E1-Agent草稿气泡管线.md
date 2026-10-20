@@ -33,7 +33,7 @@ agent_review_logs(id PK, draft_id, lawyer_id, action varchar(12), edited_content
 MQ 消息 → 脱敏层（NER+规则：姓名/证件/电话/地址→占位符，同训练管线同源）→ 敏感话术硬拦（承诺结果/包赢类词表 H5：命中即不生成、返回拦截提示）→ 意图/聚类 → RAG（pgvector，E3 知识库）→ LLM（境内供应商 ⚠）→ 气泡推送（占位符在律师端还原显示）→ 律师动作 → AgentReviewLog。
 
 ## 5. 接口契约
-| POST | /drafts/{id}/action | {action: send|edit_send|discard, edited_content?} | {status} | 409 EXPIRED | 幂等键=draft+action
+| POST | /drafts/{id}/action | {action: send|edit_send|discard, edited_content?} | {status} | 409 EXPIRED；403 非会话成员（PIA 评审 I-3 修复环：三动作统一 fail-closed 成员门，discard 此前无门） | 幂等键=draft+action
 | WSS  | lawyer/drafts | 推送 | {draft_id, target_user, question_digest, content, placeholders} | - | -
 健康检查：GET /agent/health（降级态透出）。
 
@@ -60,7 +60,7 @@ MQ 消息 → 脱敏层（NER+规则：姓名/证件/电话/地址→占位符�
 ## 10. 验收清单
 - [x] 脱敏层：PII 回归集 0 漏杀（进入 LLM 的载荷抽检断言）（证据：commits 9b60e9d、d335477，task-7-report §8；M2-W3 管线沿用+CapturingLlmAdapter 全载荷零 PII 抽检断言）
 - [x] 敏感话术命中不生成（M2-W3 T4：legal_industry BLOCK 集=WordDictService.currentBlockWords 消费；命中→零草稿零 DraftGenerated+draft_blocked 帧仅律师；词表后置到达=第二道门用例）
-- [x] 发送动作走 D5 律师链路（隔离断言通过）（M2-W3 T4：action→ConversationService.sendMessage 律师链路真跑（成员门+风控+发号）；隔离双钉=行为断言（管线全程 fulfillment 零新增行）+源面静态扫描（agent-assist 禁 fulfillment 写形态）；评审修复环=action 单事务行锁前置（并发双发收窄为崩溃窗））
+- [x] 发送动作走 D5 律师链路（隔离断言通过）（M2-W3 T4：action→ConversationService.sendMessage 律师链路真跑（成员门+风控+发号）；隔离双钉=行为断言（管线全程 fulfillment 零新增行）+源面静态扫描（agent-assist 禁 fulfillment 写形态）；评审修复环=action 单事务行锁前置（并发双发收窄为崩溃窗）；E1 PIA 评审（M2-W4 T3）修复环=action 三动作统一显式成员门（draft.conversation_id 经 fulfillment 导出面 assertAccess，listDrafts 同款 fail-closed——discard 此前全程无门：任意持律师 JWT 者可跨房销毁他人草稿+污染 agent_review_logs 归属；门置于幂等/状态判定前=非成员不可探测草稿态））
 - [x] 降级态律师端可见且手打不受阻（M2-W3 T4：LLM/管线段失败→agent_degraded 帧仅律师+不烧 relay 重试+下一条消息自愈；GET /agent/health 透出降级态；故障注入用例）
 - [x] P95 ≤8s（压测：10 房间×5 用户并发提问）（M2-W3 T4：mock 期各段打点 segment_ms 四键+总 latency_ms 落库断言（分段和≤总）；脱敏段 ≤1s=M1 既有；10×5 真并发压测=M5 真供应商接入时随 D11 换装补（mock 期耗时毫秒级，压测无鉴别力——注记）
 - [x] AgentReviewLog 三动作+耗时落库（H4 可算采用率）（M2-W3 T4：agent_review_logs 表落 V48+UNIQUE(draft_id,action) 幂等+review_ms；H4 草稿采用率桩→真（（send|edit_send）÷generated 事件口径）；评审修复环=R-04 标记管线级强制+listDrafts per-room 归属门）

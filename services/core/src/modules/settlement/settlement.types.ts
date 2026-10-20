@@ -92,10 +92,16 @@ export interface EnterSettlementInput {
   readonly ref_id: number;
   readonly lawyer_id: number;
   readonly firm_id: number;
-  /** 入账总额快照（F1 冻结额口径） */
+  /** 结算构成基（settlements.gross 列承载，参数名不改——W4-1 裁决）：场次=入账总额快照
+   *  （F1 冻结额口径）；one_on_one=OneOnOneSettled.net（实结净额/取消②③保留额，W4 #45-①
+   *  ——载荷 gross 字段=预付参考不进本面） */
   readonly gross: Money;
   /** F1 支付单 id（/pay/split 指令定位；恢复重驱动持久绑定） */
   readonly payment_order_id: number;
+  /** 构成模式（§3 share_mode 列；缺省 FULL_TO_LAWYER）：RoomClosed 建行回查 D3 缺席判定
+   *  在册时传 ABSENCE_7030（M2-W4 T2-B1：判定先于关房的主流时序标记不丢）；OneOnOneSettled
+   *  不传（1对1 无缺席分成）——既有「关房先→判定后」markAbsenceShare 标记路不变，双覆盖 */
+  readonly share_mode?: ShareMode;
 }
 
 /** RUN_SETTLE 结果（§5 内部指令；幂等键=ref_type+ref_id） */

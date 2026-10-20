@@ -36,7 +36,7 @@ import type { PaymentOrderView } from '../payment/payment.types';
 import { countLedgersByDirection, getPaymentOrderById } from '../payment/order-fixture';
 import { seedFirmMerchant, setFirmMerchantStatus } from '../payment/firm-merchant.fixture';
 import { countJobLogsByResult } from '../schedule/job-fixture';
-import { OpenTicketGate } from './settlement.gate';
+import { OpenTicketGate, SessionAbsenceGate } from './settlement.gate';
 import { SettlementConsumer, createRoomClosedHandler } from './settlement.consumer';
 import { SettlementJobExecutors } from './settlement.executors';
 import { SettlementService } from './settlement.service';
@@ -47,7 +47,11 @@ import { SettlementService } from './settlement.service';
  *   - AttendanceAdjudicated（D3=M2 合成桩）→ R-03 缺席 70/30 触发位；
  *   - FirmMerchantSuspended/Activated（A3b 真事件）→ R-07 挂起/恢复重驱动；
  *   - TicketResolved（H3=M2 合成桩）→ HOLD 释放；
- *   - SETTLE_HOLD_RELEASE（I2 真通路：scheduler tick 时间注入）→ 24h 到期自动放行（§10-1）。
+ *   - SETTLE_HOLD_RELEASE（I2 真通路：scheduler tick 时间注入）→ 24h 到期自动放行（§10-1）；
+ *   - M2-W4 T1（#45-①）：OneOnOneSettled 构成基=net（⑪ 净额落 gross 列+费率×构成基恒等/
+ *     ⑫ net 非法防御）；RoomClosed 场次链 gross 基不动（①-⑩ 回归）；
+ *   - M2-W4 T2-B1：RoomClosed 建行回查 SessionAbsenceGate（⑬ 源在册→ABSENCE_7030/
+ *     null·false→FULL_TO_LAWYER 缺省；真实源 E2E=m2-w4-merged-acceptance 链①真实时序）。
  */
 
 const DAY = Date.UTC(2026, 9, 16, 8, 0, 0);
@@ -81,6 +85,7 @@ describe('F3 事件消费端（需 PG）', () => {
   let scheduler: SchedulerService;
   let executors: ScheduleExecutorRegistry;
   let settlements: SettlementService;
+  let absenceGate: SessionAbsenceGate;
   let relay: OutboxRelayService;
   let wechat: MockChannelAdapter;
   let alipay: MockChannelAdapter;
@@ -118,7 +123,8 @@ describe('F3 事件消费端（需 PG）', () => {
   const getRow = async (refType: string, refId: number) =>
     (
       await pool.query<Record<string, unknown>>(
-        `SELECT id::int AS id, status, hold_reason, share_mode, net::text AS net
+        `SELECT id::int AS id, status, hold_reason, share_mode, net::text AS net,
+           gross::text AS gross, penalty::text AS penalty, platform_fee::text AS platform_fee
            FROM settlement.settlements WHERE ref_type = $1 AND ref_id = $2`,
         [refType, refId],
       )
@@ -205,10 +211,12 @@ describe('F3 事件消费端（需 PG）', () => {
       merchants,
       payment,
     );
+    // T2-B1：缺席判定闸（本 spec 无源=恒 false→FULL_TO_LAWYER 缺省；⑬ 注册桩源验证回查位）
+    absenceGate = new SessionAbsenceGate();
     // 退避零化：重试路径（F-2 READY 滞留重驱动）在测试内即时可达
     relay = new OutboxRelayService(poolSvc, { batch: 50, maxRetry: 2, backoffMs: () => 0 });
     new SettlementJobExecutors(executors, settlements).onModuleInit();
-    new SettlementConsumer(relay, settlements).onModuleInit();
+    new SettlementConsumer(relay, settlements, absenceGate).onModuleInit();
   });
 
   afterAll(async () => {
@@ -220,6 +228,7 @@ describe('F3 事件消费端（需 PG）', () => {
   });
   afterEach(async () => {
     await truncateAll(pool);
+    await pool.query(`DELETE FROM settlement.fee_versions WHERE rate <> 0.0000`); // 自定义费率夹具自清（⑪；种子参照数据不污染后续用例）
     wechat.fault = null;
     alipay.fault = null;
   });
@@ -400,7 +409,7 @@ describe('F3 事件消费端（需 PG）', () => {
   });
 
   it('⑧ handler 工厂直调：非注册 topic 显性拒绝（防错接）', async () => {
-    const handler = createRoomClosedHandler(settlements);
+    const handler = createRoomClosedHandler(settlements, absenceGate);
     await expect(
       handler({ id: 1, eventId: 'e', topic: 'trade.session.failed', payload: {}, retryCount: 0 }, {
         query: async () => ({ rows: [], rowCount: 0 }),
@@ -469,5 +478,106 @@ describe('F3 事件消费端（需 PG）', () => {
     expect((await getRow('session', 808))!.status).toBe('SETTLED');
     expect((await getPaymentOrderById(pool, order.id))['status']).toBe('SPLIT');
     expect(await countJobLogsByResult(pool, 'SETTLE_HOLD_RELEASE', 'DONE')).toBe(1); // 重试补齐 DONE（log 只记真实发生的重试）
+  });
+
+  it('⑪ W4 #45-① 净额构成基：OneOnOneSettled net≠gross → 结算行构成基（gross 列）=net；platform_fee=rate×构成基建行固化；Σsplits=net=gross列−penalty（RoomClosed 场次链仍 gross 基=①回归）', async () => {
+    await seedFirmMerchant(pool, FIRM, 'ACTIVE');
+    await pool.query(
+      `INSERT INTO settlement.fee_versions (rate, effective_at) VALUES (0.0500, now())`,
+    ); // 5% 版本区分构成基口径（换基前 fee=5.00、换基后=2.00；afterEach 自清）
+    const order = await createPaidOrder('100.00'); // F1 预付单 100（gross=预付参考）
+    const payload: OneOnOneSettledPayload = {
+      order_id: 511,
+      lawyer_id: LAWYER,
+      firm_id: FIRM,
+      gross: '100.00', // 预付全额参考（不参与构成——多退 60 在 D6/F2 侧完成）
+      net: '40.00', // 构成基=实结净额（W4-1）
+      payment_order_id: order.id,
+    };
+    await recordEvent(ONE_ON_ONE_SETTLED_TOPIC, payload);
+    await relay.tick();
+    expect(await getRow('one_on_one', 511)).toMatchObject({
+      status: 'HOLD',
+      gross: '40.00', // settlements.gross 列承载构成基=net（one_on_one 行语义，W4-1）
+      platform_fee: '2.00', // floor(40×5%)=费率×构成基建行固化（换基前口径=floor(100×5%)=5.00）
+      penalty: '0.00',
+      net: '40.00', // 构成恒等式：net=gross列−penalty（fee 为净额构成项）
+    });
+
+    // 驱动到 SETTLED：分账构成 Σsplits===net（38 律所+2 平台=40）
+    await travelCreated(511);
+    const held = await getRow('one_on_one', 511);
+    await travelJob(held!.id as number);
+    await scheduler.tick();
+    expect((await getRow('one_on_one', 511))!.status).toBe('SETTLED');
+    const splitEvents = await pool.query<{ payload: Record<string, unknown> }>(
+      `SELECT payload FROM platform.outbox WHERE topic = $1`,
+      [SPLIT_SETTLED_TOPIC],
+    );
+    expect(splitEvents.rows[0]!.payload).toMatchObject({
+      ref_id: 511,
+      net: '40.00',
+      fee: '2.00',
+    });
+    expect(splitEvents.rows[0]!.payload['splits']).toEqual([
+      { payee_type: 'lawyer_firm', payee_id: FIRM, amount: '38.00' },
+      { payee_type: 'platform', payee_id: 0, amount: '2.00' },
+    ]);
+  });
+
+  it('⑫ W4 净额载荷防御：net 缺失/非两位小数/非正 → 抛错进重试轨道不落行（gross 合法亦拒，不静默回退）', async () => {
+    const order = await createPaidOrder('100.00');
+    const base = {
+      lawyer_id: LAWYER,
+      firm_id: FIRM,
+      gross: '100.00',
+      payment_order_id: order.id,
+    };
+    await recordEvent(ONE_ON_ONE_SETTLED_TOPIC, {
+      ...base,
+      order_id: 512,
+    } as unknown as OneOnOneSettledPayload); // net 缺失
+    await recordEvent(ONE_ON_ONE_SETTLED_TOPIC, {
+      ...base,
+      order_id: 513,
+      net: '40.0',
+    } as unknown as OneOnOneSettledPayload); // 非两位小数
+    await recordEvent(ONE_ON_ONE_SETTLED_TOPIC, {
+      ...base,
+      order_id: 514,
+      net: '0.00',
+    } as unknown as OneOnOneSettledPayload); // 非正
+    const tick = await relay.tick();
+    expect(tick.retried).toBe(3);
+    const n = await pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM settlement.settlements WHERE ref_type = 'one_on_one'`,
+    );
+    expect(n.rows[0]!.n).toBe(0);
+  });
+
+  it('⑬ T2-B1 建行回查：SessionAbsenceGate 源在册 true→ABSENCE_7030 建行；null（场次缺）/false=FULL_TO_LAWYER 缺省（真实源 E2E=m2-w4 链①真实时序）', async () => {
+    await seedFirmMerchant(pool, FIRM, 'ACTIVE');
+    absenceGate.registerSource({
+      // 桩源（AttendanceAbsenceSource 同形）：809 在册/810 场次缺（null）/其余 false
+      sessionUserAbsenceAdjudicated: async (sessionId: number) =>
+        sessionId === 809 ? true : sessionId === 810 ? null : false,
+    });
+    const order = await createPaidOrder('100.00');
+    await recordEvent(
+      ROOM_CLOSED_TOPIC,
+      roomClosed({ session_id: 809, payment_order_id: order.id }),
+    );
+    await recordEvent(
+      ROOM_CLOSED_TOPIC,
+      roomClosed({ session_id: 810, payment_order_id: order.id }),
+    );
+    await recordEvent(
+      ROOM_CLOSED_TOPIC,
+      roomClosed({ session_id: 811, payment_order_id: order.id }),
+    );
+    await relay.tick();
+    expect(await getRow('session', 809)).toMatchObject({ share_mode: 'ABSENCE_7030' });
+    expect(await getRow('session', 810)).toMatchObject({ share_mode: 'FULL_TO_LAWYER' }); // null 收敛
+    expect(await getRow('session', 811)).toMatchObject({ share_mode: 'FULL_TO_LAWYER' }); // 无判定
   });
 });

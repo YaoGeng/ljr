@@ -531,8 +531,9 @@ export interface RefundFailedPayload {
 // 本批生产方定型契约，出箱即止；G1 消费 SettlementDebtIncurred 发暂停接单限制令=M2 联调）。
 // schema=settlement（分账状态域，架构 §3.2）。金额一律 Money 字符串（NUMERIC 禁 float）。
 // 消费契约（消费方定型，R-W2-A 口径；生产方 D1/D6/D3/H3=M2 import 同一契约联调对齐）：
-//   RoomClosed / OneOnOneSettled / TicketResolved 三件 W3 无生产方=合成事件桩（测试直投
-//   outbox 沿 T2/T6 先例）；AttendanceAdjudicated/SessionCancelled 契约已在 D3/D4 段定型
+//   RoomClosed / TicketResolved 两件 W3 无生产方=合成事件桩（测试直投 outbox 沿 T2/T6 先例）；
+//   OneOnOneSettled 已由 D6 于 M2-W3 T2 转真生产（构成基语义 M2-W4 #45-① 翻转见下方 payload
+//   注记）；AttendanceAdjudicated/SessionCancelled 契约已在 D3/D4 段定型
 //   （D4 调用方经 F3 内部命令 APPLY_PENALTY 扣减——R-W3-A：W3 带金额入参，快照回查=M2 换装位）；
 //   FirmMerchantActivated/Suspended 为 A3b 真事件（上方段）。
 // ---------------------------------------------------------------------------
@@ -619,19 +620,21 @@ export interface RoomClosedPayload {
   readonly payment_order_id: number;
 }
 
-/** 1对1 结算完成（D6 §6 生产，M2 落位 → F3 结算进 PENDING；W3=F3 合成事件桩）。
+/** 1对1 结算完成（D6 §6 生产 → F3 结算进 PENDING；M2-W3 T2 已转真生产——W3 合成桩口径作废）。
  *  载荷 {order_id, gross, net} 为 F3 §3 逐字 + lawyer_id/firm_id/payment_order_id 增补
- *  （结算行归属与 F1 分账指令定位，契约定型注记）。net=D6 实结参考价：F3 构成计算以 gross
- *  （预付冻结额）为基（多退少补差额退款在 D6/F1 完成，M2 联调对齐位——报告偏差节同口径）。 */
+ *  （结算行归属与 F1 分账指令定位，契约定型注记）。构成基语义 M2-W4 #45-① 翻转：net=结算
+ *  构成基（实结净额/取消②③保留额——F3 构成与平台费按此计算，settlements.gross 列承载），
+ *  gross=预付全额参考（多退少补/取消退差在 D6/F2 完成，不参与构成；payload shape 不变=
+ *  非破坏性对齐）。 */
 export const ONE_ON_ONE_SETTLED_TOPIC = 'fulfillment.one_on_one.settled';
 
 export interface OneOnOneSettledPayload {
   readonly order_id: number;
   readonly lawyer_id: number;
   readonly firm_id: number;
-  /** 预付全额（F3 结算 gross 与构成基数） */
+  /** 预付全额（参考快照：不参与 F3 构成——构成基=net，W4 #45-①） */
   readonly gross: Money;
-  /** D6 实结参考价（F3 构成不消费——见事件注记） */
+  /** 结算构成基（实结净额/取消②③保留额：F3 构成计算与平台费基数，W4 #45-①） */
   readonly net: Money;
   readonly payment_order_id: number;
 }
@@ -985,7 +988,8 @@ export interface AbsenceShareDanglingPayload {
 // ---------------------------------------------------------------------------
 // M2-W3 1对1 与 AI 管线批（T0 契约冻结，执行计划附录 A.1）：本段 D6 五新 topic（E1 两 topic
 // 随 T4 在本段追加）；OneOnOnePaid（D5 W1 消费钉形）/ OneOnOneSettled（F3 W2 定型）既有契约
-// 不重定义——D6 本批转真生产。载荷铁律延续：金额 Money 字符串禁 float、禁明文内容/凭据。
+// 不重定义——D6 本批转真生产（OneOnOneSettled 构成基语义于 M2-W4 T1 翻转：net=构成基/
+// gross=预付参考，见 F3 段 payload 注记）。载荷铁律延续：金额 Money 字符串禁 float、禁明文内容/凭据。
 // ---------------------------------------------------------------------------
 
 /** 律师接单（D6 §6 生产 → I1 通知（联调后置）、H4 管道；附录 A.1 冻结形状）。

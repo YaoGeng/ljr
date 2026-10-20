@@ -55,7 +55,11 @@ import { WSS_AUTH_TIMEOUT_MS, DEFAULT_WSS_AUTH_TIMEOUT_MS } from './conversation
 import { AttendanceController } from './attendance.controller';
 import { AttendanceConsumer } from './attendance.consumer';
 import { AttendanceJobExecutors } from './attendance.executors';
-import { AttendanceService } from './attendance.service';
+import {
+  AttendanceAbsenceRegistration,
+  AttendanceAbsenceSource,
+  AttendanceService,
+} from './attendance.service';
 import { ATTENDANCE_CONFIG, attendanceConfigFromEnv } from './attendance.config';
 import { CancellationController } from './cancellation.controller';
 import { CancellationConsumer } from './cancellation.consumer';
@@ -115,6 +119,10 @@ import { ONE_ON_ONE_CONFIG, oneOnOneConfigFromEnv } from './one-on-one.config';
     AttendanceConsumer,
     AttendanceJobExecutors,
     { provide: ATTENDANCE_CONFIG, useFactory: attendanceConfigFromEnv },
+    // T2-B1：缺席判定源适配器 + 生产注册件（onModuleInit registerSource 进 F3 SessionAbsenceGate
+    // ——闸自 SettlementModule 导出注入；settlement 依赖树不含 fulfillment 无环保持）
+    AttendanceAbsenceSource,
+    AttendanceAbsenceRegistration,
     // D4 取消与违约（M2-W2 T3）：规则引擎（纯函数在 cancellation.engine）+ 应用服务 +
     // AttendanceAdjudicated（lawyer absent）/RoomOpenFailed 消费端 + d4 审批回调注册
     CancellationService,

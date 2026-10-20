@@ -58,6 +58,7 @@ import { SETTLEMENT_MACHINE, type SettlementStatus } from './settlement.machine'
 import { OpenTicketGate } from './settlement.gate';
 import {
   SETTLEMENT_REF_TYPES,
+  SHARE_MODES,
   centsToMoney,
   composeSplits,
   dbNumericToCents,
@@ -149,6 +150,16 @@ function assertRefType(v: string): SettlementRefType {
   return v as SettlementRefType;
 }
 
+function assertShareMode(v: string): ShareMode {
+  if (!SHARE_MODES.includes(v as ShareMode)) {
+    throw new AppError(
+      ErrorCode.InvalidArgument,
+      `share_mode 越域（${SHARE_MODES.join('|')}）：${String(v)}`,
+    );
+  }
+  return v as ShareMode;
+}
+
 function assertPenaltyKey(key: string): string {
   // 域前缀约束（R-W3-A 裁决注记）：保证金腿派生键=首段换 deposit——非 penalty/ 键会与之撞向
   if (!isValidIdempotencyKey(key) || !key.startsWith('penalty/')) {
@@ -190,6 +201,9 @@ export class SettlementService {
     if (grossCents <= 0) {
       throw new AppError(ErrorCode.InvalidArgument, `gross 须为正金额：${input.gross}`);
     }
+    // 构成模式缺省 FULL_TO_LAWYER（T2-B1 纯加法：RoomClosed 回查 D3 判定在册时传 ABSENCE_7030）
+    const shareMode =
+      input.share_mode === undefined ? 'FULL_TO_LAWYER' : assertShareMode(input.share_mode);
 
     return this.pool.withTransaction(async (uow) => {
       // R-06：生效费率版本（effective_at<=now() 最新一条；种子 0% 兜底，缺失=硬错误不静默）
@@ -202,10 +216,20 @@ export class SettlementService {
            (ref_type, ref_id, lawyer_id, firm_id, gross, penalty, platform_fee, fee_version_id,
             net, share_mode, payment_order_id, escrow_status, status)
          VALUES ($1, $2, $3, $4, $5::numeric, 0, $6::numeric, $7, $5::numeric,
-                 'FULL_TO_LAWYER', $8, 'PAID', 'PENDING')
+                 $9, $8, 'PAID', 'PENDING')
          ON CONFLICT (ref_type, ref_id) DO NOTHING
          RETURNING ${ROW_COLS}`,
-        [refType, refId, lawyerId, firmId, input.gross, centsToMoney(feeCents), fee.id, orderId],
+        [
+          refType,
+          refId,
+          lawyerId,
+          firmId,
+          input.gross,
+          centsToMoney(feeCents),
+          fee.id,
+          orderId,
+          shareMode,
+        ],
       );
       if (claim.rows.length === 0) {
         const prev = await this.getByRefInTx(uow, refType, refId);

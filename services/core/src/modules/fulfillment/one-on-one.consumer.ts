@@ -8,7 +8,8 @@
  *   ② RefundCompleted（payment.refund.completed，F2 真生产；与 C3 收敛消费器/G1-H4 同 topic
  *      扇出并存）：按退款单定位支付单 → ooo/o{id}/pay 形态 → advanceRefundCompleted
  *      （LAWYER_TIMEOUT→REFUNDED / CANCELLED→REFUNDED|PARTIAL_REFUNDED——取消受理崩溃窗口
- *      兜底；已终态幂等短路）。
+ *      兜底，非 full 腿同事务出保留额事件（修复环 I-1，与 cancel 步骤三互斥不双发）；
+ *      已终态幂等短路）。
  *   ③ MessageSent（fulfillment.conversation.message_sent，D5 生产不变——与 E1=W3 T4 新消费
  *      扇出并存）：one_on_one 会话消息 → onMessageSent（text 锚=W3-8：accept 后首条用户消息
  *      触发 IN_SERVICE；轮次=消息表确定性重算——用户问+律师答=1 轮，consumed_units 增量维护）。
