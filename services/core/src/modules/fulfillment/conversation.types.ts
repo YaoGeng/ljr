@@ -85,12 +85,28 @@ export interface SendMessageInput {
   readonly senderRole: WssSenderRole;
   readonly content: string;
   readonly mention?: MentionTarget;
+  /**
+   * 客户端幂等键（M2-W3 T5 可选）：WSS send 的 msg_client_id——携带时消息落库事务内同写
+   * fulfillment.message_receipts（命中=重复 → 整事务回滚零新行）。网关判重入口=
+   * sendMessageDedup；直调 sendMessage（E1 草稿动作链）缺省无判重。
+   */
+  readonly dedupKey?: string;
 }
+
+/** sendMessageDedup 入参（M2-W3 T5：dedupKey 必携——持久回执面判重入口） */
+export interface SendMessageDedupInput extends SendMessageInput {
+  readonly dedupKey: string;
+}
+
+/** sendMessageDedup 出参：新消息 | 重复命中（回放首访 seq——ack 面零新消息零新广播） */
+export type SendMessageDedupResult =
+  | { readonly message: MessageView; readonly deduplicated: false }
+  | { readonly deduplicated: true; readonly messageSeq: number };
 
 /** 发送结果（WSS ack 面：{type:'sent', seq}） */
 export interface SendMessageResult {
   readonly message: MessageView;
-  /** true=同 msg_client_id 重放（网关 LRU 命中），未产生新消息行 */
+  /** true=同 msg_client_id 重放（持久回执面命中，M2-W3 T5），未产生新消息行 */
   readonly deduplicated: boolean;
 }
 

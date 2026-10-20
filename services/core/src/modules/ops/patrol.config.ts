@@ -11,7 +11,12 @@ import type { InjectionToken } from '@nestjs/common';
 export interface PatrolConfig {
   /** 巡检周期毫秒（架构 §7.2「分钟级」→ 默认 60s；RISK_PATROL job 自投间隔）⚠决策位 */
   readonly intervalMs: number;
-  /** ①已支付未退款窗口毫秒（架构 §7.2：>10min；锚=实体终态迁移时刻 status_since） */
+  /**
+   * ①已支付未退款窗口毫秒（架构 §7.2：>10min；锚=实体终态迁移时刻 status_since）。
+   * 口径注记（M2-W3 T5，I-1 接线后）：拒绝/超时两路已有 F2 全额退款消费（T1）+PENDING 积分
+   * sweep（T5）——孤儿窗收窄为「事件出箱后 relay 未投递」段，本阈值剩余语义=投递滞后告警
+   * （阈值事实源仍是架构 §7.2 默认 10min，不改判定只注记）。
+   */
   readonly paidNotRefundedMs: number;
   /** ②活跃锁超龄窗口毫秒（架构 §7.2：>24h；slot 过去时刻/TTL 残留/实体终态残留三谓词共用） */
   readonly staleLockMs: number;

@@ -839,25 +839,40 @@ export class SessionService {
   }
 
   /**
-   * D1 开房回查锚（M2-W1 T1 纯读导出位，加法）：场次存在且非终态=仍有效可开——ROOM_OPEN
-   * 执行器 recheck 消费（I2 目录 recheckAnchor「room 状态与开房结果」的场次侧前置半边）。
+   * D1 开房回查锚（M2-W1 T1 纯读导出位）：场次存在且非终态=仍有效可开——ROOM_OPEN 执行器
+   * recheck 消费（I2 目录 recheckAnchor「room 状态与开房结果」的场次侧前置半边）。
    * 终态集词汇（SESSION_TERMINAL_STATUSES）不外泄——封装为本布尔面，D1 免 import 本模块机器件。
    *
-   * 时序假设（T1 评审 Minor-3 注记，W1 口径——**禁收紧行为**，会破坏现有 FULL 场次开房链）：
-   * 非终态即可开含 CREATED/FULL——依赖 ENROLL_DEADLINE 截止 job 先行流标兜底（enroll_deadline
-   * 恒早于 slot_start，C1 创建校验钉住），slot_start 时刻 CREATED 理论不可达；FULL→CONFIRMED
-   * 推进生产者=W2 D 域批定型。收紧面（如仅 CONFIRMED+ 可开）随 W2 复核，本批不改。
+   * **复合守卫（M2-W3 T5 收口，W2 终审 N-4 逐字）**：openable = 非终态 AND（status != 'CREATED'
+   * OR 存在 PAID enrollment OR ENROLL_DEADLINE job 在册）——收紧只作用在 CREATED 态：
+   *   - 幽灵场次（CREATED、无 PAID 报名、无在册截止 job——临期转化路径坏孪生/流标 job 丢失
+   *     漂移形态）不再开房（recheck=false → ROOM_OPEN job CANCELLED 兜底）；
+   *   - 临期转化承接（createConvertedB2C 条件预写不注册截止 job，但迁移参与者 PAID 在册）
+   *     与正常 CREATED 场次（创建同事务预写 ENROLL_DEADLINE）均合法放行；
+   *   - 成团链 CONFIRMED/FULL/OPEN/IN_SERVICE 等非 CREATED 非终态不受收紧（历史开房链不动）。
+   * 「job 在册」经 schedule 域导出面 hasActiveJob（非终态 PENDING|RUNNING 计数，禁跨 schema
+   * join）；PAID 半边=本域 enrollments 直查（ref_type='session' 锚）。
    *
-   * **M2-W2 T4 修复环 M-2 注记**：上述「slot_start 时刻 CREATED 理论不可达」假设已被临期
-   * 转化路径打破——createConvertedB2C 对缺省截止已过的转化**条件预写**（不注册 ENROLL_DEADLINE
-   * job），合法产生「截止已过、无流标 job、CREATED 持续至 slot_start」的迁移承接场次（迁移
-   * 参与者在册，绝不容流标）——本面非终态即放行正是该形态的开房前提，口径以本注记为准。
+   * 历史（W1→W2 口径链，备查）：T1 评审 Minor-3 曾「禁收紧行为」防破坏 FULL 开房链；M-2 注记
+   * 揭示临期转化合法产生「截止已过无 job 的 CREATED 承接场次」——两者由本复合守卫统一裁决
+   * （非白名单化：CREATED 态以 PAID/job 在册为放行证据，其余非终态不收紧）。
    */
   async sessionOpenable(exec: SqlExecutor, sessionId: number): Promise<boolean> {
-    const status = await this.statusOf(exec, assertPositiveInt(sessionId, 'session_id'));
-    return (
-      status !== null && !(SESSION_TERMINAL_STATUSES as readonly SessionStatus[]).includes(status)
+    const id = assertPositiveInt(sessionId, 'session_id');
+    const status = await this.statusOf(exec, id);
+    if (status === null) return false; // 不存在 → false
+    if ((SESSION_TERMINAL_STATUSES as readonly SessionStatus[]).includes(status)) {
+      return false; // 终态 → false
+    }
+    if (status !== 'CREATED') return true; // 成团链/其余非终态：不受 CREATED 收紧
+    // CREATED 态收紧（N-4）：PAID 报名在册（本域直查）OR 截止 job 在册（schedule 导出面）
+    const paid = await exec.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM trade.enrollments
+        WHERE ref_type = 'session' AND ref_id = $1 AND pay_status = 'PAID'`,
+      [id],
     );
+    if ((paid.rows[0]?.n ?? 0) > 0) return true;
+    return this.scheduler.hasActiveJob(exec, 'ENROLL_DEADLINE', 'session', id);
   }
 
   /**
@@ -876,8 +891,10 @@ export class SessionService {
    * 耦合声明（头注）：ENROLL_DEADLINE 流标执行器异常进重试退避窗时，CREATED 场次的 REMIND_24H
    * （due=slot_start−24h，与 deadline 同刻同源）若先行拾取会对即将 FAILED 的场次发出幽灵提醒
    * ——本半边在流标 job 终态化之前先行拦截（R-03 幽灵提醒禁令）。成团链（FULL/CONFIRMED/OPEN/
-   * IN_SERVICE）不受截止窗影响恒可提醒；sessionOpenable 本身**不收紧**（T1 评审 Minor-3 禁令，
-   * 开房链口径不动）——本面为 D2 专用独立导出。
+   * IN_SERVICE）不受截止窗影响恒可提醒；**sessionOpenable 已于 M2-W3 T5 对 CREATED 收紧
+   * （N-4 复合守卫：PAID 在册 OR 截止 job 在册——开房链口径）**，本面防御半边与之同向
+   * （截止已过即拦提醒），两面独立导出不变。临期转化场次的提醒缺口=D2/I1 联调裁定项
+   * （M2-W2 T4 M-2 注记回指，未随 N-4 收口消解）。
    *
    * **M2-W2 T4 修复环 M-2 注记**：临期转化路径（createConvertedB2C 条件预写）合法产生「截止
    * 已过、无 ENROLL_DEADLINE job」的 CREATED 迁移承接场次——本防御半边对这类场次的 REMIND

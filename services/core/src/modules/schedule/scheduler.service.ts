@@ -445,6 +445,29 @@ export class SchedulerService {
     return id === undefined ? null : Number(id);
   }
 
+  /**
+   * 锚点在册检查只读导出面（M2-W3 T5 纯加法）：jobType+ref 锚的非终态（PENDING|RUNNING）
+   * job 计数 >0。「在册」口径与 registerJob 幂等集（ux_schedule_jobs_active 部分唯一索引）
+   * 同源——DONE/CANCELLED/FAILED 终态不算在册。消费方=C1 sessionOpenable 复合守卫
+   * （W2 终审 N-4：幽灵 CREATED 场次的 ENROLL_DEADLINE 兜底半边；trade→schedule 跨域
+   * 只经本面查询，禁 join）。exec 形态=调用方事务句柄（recheck uow 内同快照）。
+   */
+  async hasActiveJob(
+    exec: SqlExecutor,
+    jobType: ScheduleJobType,
+    refType: string,
+    refId: number,
+  ): Promise<boolean> {
+    this.assertJobRef(jobType, refType, refId); // 入参与注册面同校验（I2 全集/键宽/正整数）
+    const res = await exec.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM schedule.schedule_jobs
+        WHERE job_type = $1 AND ref_type = $2 AND ref_id = $3
+          AND status IN ('PENDING', 'RUNNING')`,
+      [jobType, refType, refId],
+    );
+    return (res.rows[0]?.n ?? 0) > 0;
+  }
+
   // ---------- 内部件 ----------
 
   /** 抢占一条到期 job（FOR UPDATE SKIP LOCKED；priority 通道只扫 ROOM_OPEN；exclude=本轮已尝试） */

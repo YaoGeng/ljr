@@ -5,7 +5,7 @@ import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { WsAdapter } from '@nestjs/platform-ws';
 import type { Pool } from 'pg';
-import { REMINDER_DISPATCHED_TOPIC } from '@ljr/shared';
+import { REMINDER_DISPATCHED_TOPIC, ROOM_OPENED_TOPIC } from '@ljr/shared';
 import { ensureTestDatabase, truncateAll } from '../../infrastructure/testing/db';
 import { PgPoolService } from '../../infrastructure/sql';
 import { OutboxRelayService } from '../../infrastructure/outbox/outbox-relay.service';
@@ -18,8 +18,9 @@ import {
   roomRowOfSessionRaw,
 } from '../fulfillment/fulfillment-fixture';
 import { seedPaidEnrollmentRaw, seedSessionAtRaw, sessionStatusRaw } from '../trade/trade-fixture';
+import { createRoomOpenedHandler } from './reminder.consumer';
 import { ReminderModule } from './reminder.module';
-import { SESSION_REMIND_TEMPLATE_CODE } from './reminder.service';
+import { ReminderDispatchService, SESSION_REMIND_TEMPLATE_CODE } from './reminder.service';
 import { NotifyDispatcherService } from './notify-dispatcher.service';
 import { deleteTemplateRaw } from './notify-fixture';
 
@@ -341,6 +342,33 @@ describe('D2 提醒服务（四档/作废/幂等重放/房间内提醒/NO_EXECUT
 
     // REMIND_1MIN 的个人通知照发（房间消息与站内信并存）
     expect(await remindNotifications()).toHaveLength(1);
+  });
+
+  it('T5 系统消息判重键（M2-W3 T5，W2 评审「系统消息无判重键」收口）：RoomOpened 同事件重投 → room-opened:{event_id} 回执面判重，房间消息恰一行', async () => {
+    const slotStart = new Date(Date.now() - 6 * MIN);
+    const sessionId = await seedSessionAtRaw(pool, 9301, 'CONFIRMED', slotStart, 'text');
+    const room = await openRoomViaScheduler(sessionId, slotStart);
+
+    // 直调 handler 两次（同 eventId=relay at-least-once 重投形态；效果与 SENT 同事务外的
+    // 崩溃窗等价物）——第二次经 postInternalMessage dedupKey 回执面判重零新行
+    const handler = createRoomOpenedHandler(app.get(ReminderDispatchService));
+    const event = {
+      id: 1,
+      eventId: 'e-t5-room-opened',
+      topic: ROOM_OPENED_TOPIC,
+      payload: {
+        room_id: room.id,
+        session_id: sessionId,
+        grace_end: room.grace_end.toISOString(),
+      },
+      retryCount: 0,
+    };
+    await handler(event, pool as never);
+    await handler({ ...event, id: 2 }, pool as never); // 重投：同 eventId 异投递行
+
+    const messages = await roomMessages(room.id);
+    expect(messages).toHaveLength(1); // 恰一行（重投零新行）
+    expect(messages[0]!.content).toContain('宽限期已开始');
   });
 
   it('NO_EXECUTOR 消失并验（04 §8 #33 关闭证据）：REMIND×4/ROOM_OPEN/GRACE_END/REMIND_GRACE_END 全触发 → schedule_job_log 零 NO_EXECUTOR 行', async () => {

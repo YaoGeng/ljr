@@ -359,4 +359,22 @@ describe('D1 房间生命周期（开房/宽限锚/失败分支/幂等/GRACE_END
     expect(delayed[0]!.jobType).toBe('ROOM_OPEN');
     expect(typeof delayed[0]!.jobId).toBe('number');
   });
+
+  it('N-4 幽灵场次不开房（M2-W3 T5）：CREATED 无 PAID 报名且无在册截止 job → recheck=false → ROOM_OPEN CANCELLED，零房间行零事件', async () => {
+    const slotStart = new Date(Date.now() - 5_000);
+    const sessionId = await seedSessionAtRaw(pool, 9301, 'CREATED', slotStart, 'text');
+    // fixture 只落 sessions 行（无 job 预写/无报名）= 幽灵形态
+
+    await registerJob('ROOM_OPEN', 'session', sessionId, slotStart);
+    const ticked = await scheduler.tick('priority');
+    expect(ticked.cancelled).toBe(1); // recheck=false → CANCELLED 无操作
+    expect(ticked.done).toBe(0);
+
+    const count = await pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM fulfillment.rooms WHERE session_id = $1`,
+      [sessionId],
+    );
+    expect(count.rows[0]!.n).toBe(0); // 零房间行
+    expect(await outboxPayloads(ROOM_OPENED_TOPIC)).toHaveLength(0); // 零事件
+  });
 });

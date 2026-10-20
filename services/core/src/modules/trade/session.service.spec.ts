@@ -18,6 +18,7 @@ import { CREDIT_RULES_KEY } from '../credit/credit.types';
 import { IDENTITY_CONFIG, type IdentityConfig } from '../identity/identity.config';
 import { seedLawyerProfile } from '../identity/lawyer-fixture';
 import { LawyerQualificationService } from '../identity/lawyer.service';
+import { seedPaidEnrollmentRaw, seedSessionAtRaw } from './trade-fixture';
 import { RuleCenterService } from '../ops/rule-center.service';
 import { PricingConfigService } from '../pricing/pricing.service';
 import { SLOT_ABUSE_DETECTED_TOPIC } from '../schedule/slot-lock.events';
@@ -699,5 +700,57 @@ describe('C1 领域层（开团事务/幂等/R-01/R-04/R-05/截止流标/终态 
       .get(PgPoolService)
       .withTransaction((uow) => app.get(SlotLockService).activeStatusOf(uow, 'session', view.id));
     expect(lockStatus).toBeNull();
+  });
+
+  // ===========================================================================
+  // sessionOpenable 复合守卫（M2-W3 T5；W2 终审 N-4：ROOM_OPEN 对幽灵 CREATED 场次收紧）
+  // ===========================================================================
+
+  it('sessionOpenable 复合守卫（N-4）：幽灵 CREATED（无 PAID 无在册截止 job）→ false；有 PAID 无 job（临期转化形态）/在册截止 job → true；非 CREATED 非终态不受收紧 → true；终态 → false', async () => {
+    // ① 幽灵场次：CREATED 且无 PAID 报名且无在册 ENROLL_DEADLINE job（M-2 注记形态的坏孪生：
+    //    截止已过、无流标 job 兜底、零迁移参与者）——不再开房
+    const ghost = await seedSessionAtRaw(pool, 9101, 'CREATED', hourAfter(2));
+    await expect(sessions.sessionOpenable(pool, ghost)).resolves.toBe(false);
+
+    // ② 有 PAID 无 job（临期转化承接形态：createConvertedB2C 条件预写不注册截止 job，
+    //    迁移参与者 PAID 在册——N-4 明文放行路径）
+    const paidSess = await seedSessionAtRaw(pool, 9101, 'CREATED', hourAfter(2));
+    await seedPaidEnrollmentRaw(pool, 'session', paidSess, {
+      userId: 9201,
+      cash: '50.00',
+      points: 0,
+      unitPrice: '50.00',
+    });
+    await expect(sessions.sessionOpenable(pool, paidSess)).resolves.toBe(true);
+
+    // ③ 有在册截止 job 无 PAID（正常 CREATED 场次形态：创建即同事务预写 ENROLL_DEADLINE；
+    //    job 写入经 schedule 导出面 registerJob——禁跨 schema 直写，schema-refs 纪律）
+    const jobSess = await seedSessionAtRaw(pool, 9101, 'CREATED', hourAfter(2));
+    await scheduler.registerJob(pool, {
+      jobType: 'ENROLL_DEADLINE',
+      refType: 'session',
+      refId: jobSess,
+      dueAt: hourAfter(1),
+    });
+    await expect(sessions.sessionOpenable(pool, jobSess)).resolves.toBe(true);
+
+    // ③-b 截止 job 已终态（被作废）= 不在册：CREATED 无 PAID 回到 false（「在册」=非终态口径）
+    await scheduler.cancelJob(pool, {
+      jobType: 'ENROLL_DEADLINE',
+      refType: 'session',
+      refId: jobSess,
+    });
+    await expect(sessions.sessionOpenable(pool, jobSess)).resolves.toBe(false);
+
+    // ④ 非 CREATED 非终态（成团链 CONFIRMED）：收紧只在 CREATED 态——无 job 无 PAID 仍可开
+    const confirmed = await seedSessionAtRaw(pool, 9101, 'CONFIRMED', hourAfter(2));
+    await expect(sessions.sessionOpenable(pool, confirmed)).resolves.toBe(true);
+
+    // ⑤ 终态回归半边：FAILED → false（原有口径不动）
+    const failedSess = await seedSessionAtRaw(pool, 9101, 'FAILED', hourAfter(2));
+    await expect(sessions.sessionOpenable(pool, failedSess)).resolves.toBe(false);
+
+    // ⑥ 不存在 → false（原有口径不动）
+    await expect(sessions.sessionOpenable(pool, 999_999_999)).resolves.toBe(false);
   });
 });

@@ -83,6 +83,8 @@ import {
   type MessageView,
   type RecordingConsentInput,
   type RecordingConsentResult,
+  type SendMessageDedupInput,
+  type SendMessageDedupResult,
   type SendMessageInput,
   type SenderRole,
 } from './conversation.types';
@@ -99,6 +101,36 @@ const RECORDING_CONSENT_VERSION = 'v1';
 
 /** system 消息 sender_id 锚（identity 域无系统账号；0=平台锚，DB bigint NOT NULL 承载） */
 export const SYSTEM_SENDER_ID = 0;
+
+/** 回执面 dedup_key 列宽（V50 varchar(128)——服务层校验与列宽同源） */
+const DEDUP_KEY_MAX_LEN = 128;
+
+/**
+ * 回执键冲突内部信号（M2-W3 T5）：消息落库事务内 INSERT message_receipts 命中在册键
+ * （并发同键双发败者/前置检查后的竞态窗）——抛出即整事务回滚（零新行零新事件），
+ * sendMessageDedup 捕获后读回执行回放首访 ack。非 AppError（不面向 HTTP/relay 轨道）。
+ */
+class MessageReceiptConflictError extends Error {
+  constructor(
+    readonly conversationId: number,
+    readonly dedupKey: string,
+  ) {
+    super(`消息回执键在册（重复客户端消息）：conversation=${conversationId} key=${dedupKey}`);
+  }
+}
+
+/** dedup_key 形态收口（1-128 字符，V50 列宽同源；客户端 msg_client_id/系统消息生成侧键共用） */
+function assertDedupKey(raw: string): string {
+  if (typeof raw !== 'string' || raw.length === 0 || raw.length > DEDUP_KEY_MAX_LEN) {
+    throw new AppError(
+      ErrorCode.InvalidArgument,
+      `dedup_key 须为 1-${DEDUP_KEY_MAX_LEN} 字符（V50 回执面列宽同源）：${JSON.stringify(
+        typeof raw === 'string' ? `${raw.slice(0, 16)}${raw.length > 16 ? '…' : ''}` : raw,
+      )}`,
+    );
+  }
+  return raw;
+}
 
 interface ConversationRow {
   readonly id: string;
@@ -312,6 +344,8 @@ export class ConversationService {
   async sendMessage(input: SendMessageInput): Promise<MessageView> {
     const conversationId = assertPositiveInt(input.conversationId, 'conversation_id');
     const senderId = assertPositiveInt(input.senderId, 'sender_id');
+    // dedupKey（可选，M2-W3 T5）：携带时消息落库事务内同写回执（判重入口=sendMessageDedup）
+    const dedupKey = input.dedupKey === undefined ? null : assertDedupKey(input.dedupKey);
     if (input.senderRole !== 'user' && input.senderRole !== 'lawyer') {
       throw new AppError(
         ErrorCode.RoleForbidden,
@@ -352,7 +386,8 @@ export class ConversationService {
     }
     const riskFlag: 'PASS' | 'REVIEW' = verdict.action === 'REVIEW' ? 'REVIEW' : 'PASS'; // MARK→PASS（词表标记面=W2 人审闭环，risk_flag 词汇无 MARK）
 
-    // 3) 单事务：发号+落库+MessageSent（载荷无 content）
+    // 3) 单事务：发号+落库+MessageSent（载荷无 content）+回执（dedupKey 携带时同事务落
+    //    message_receipts——命中在册键=重复 → 整事务回滚，M2-W3 T5）
     const message = await this.pool.withTransaction(async (uow) => {
       const seqRow = await uow.query<{ next_seq: string }>(
         `UPDATE fulfillment.conversations SET next_seq = next_seq + 1 WHERE id = $1 RETURNING next_seq`,
@@ -386,12 +421,54 @@ export class ConversationService {
           risk_flag: riskFlag,
         } satisfies MessageSentPayload,
       });
+      if (dedupKey !== null) {
+        await this.insertReceipt(uow, conversationId, dedupKey, seq);
+      }
       return view;
     });
 
     // 4) 进程内广播（已 commit；dev 顺序=先持久后广播）
     this.hub.publish(conversationId, { type: 'message', conversation_id: conversationId, message });
     return message;
+  }
+
+  /**
+   * 客户端幂等判重入口（M2-W3 T5，W2 复审 §3-④收口；WSS send 的 msg_client_id 承载）：
+   * 在册回执 → {deduplicated:true, 首访 seq}（零新消息零新事件零广播——ack 回放面）；
+   * 未在册 → sendMessage（dedupKey 透传，落库事务内同写回执）。并发同键竞态败者由
+   * MessageReceiptConflictError 收敛（整事务回滚后读执行回放）。判重态全在 DB（V50
+   * message_receipts）——换连接/进程重启均生效，取代 M2-W1 的 per-connection LRU 形态。
+   */
+  async sendMessageDedup(input: SendMessageDedupInput): Promise<SendMessageDedupResult> {
+    const conversationId = assertPositiveInt(input.conversationId, 'conversation_id');
+    const dedupKey = assertDedupKey(input.dedupKey);
+    const existing = await this.receiptSeqOf(conversationId, dedupKey);
+    if (existing !== null) {
+      // 回放路径成员门（T5 评审建议-3 防守位）：前成员持旧 (conversation_id,msg_client_id)
+      // 探测 seq 面——回放 ack 前过同一成员门（send 首访同款），代价=单查
+      const conversation = await this.getConversation(conversationId);
+      if (!conversation) {
+        throw new AppError(ErrorCode.NotFound, `会话 ${conversationId} 不存在`);
+      }
+      await this.assertMembership(conversation, input.senderId);
+      return { deduplicated: true, messageSeq: existing };
+    }
+    try {
+      const message = await this.sendMessage({ ...input, dedupKey });
+      return { message, deduplicated: false };
+    } catch (e) {
+      if (e instanceof MessageReceiptConflictError) {
+        const winner = await this.receiptSeqOf(conversationId, dedupKey);
+        if (winner === null) {
+          throw new AppError(
+            ErrorCode.InternalError,
+            `回执键冲突但执行不可读（不应触达）：conversation=${conversationId} key=${dedupKey}`,
+          );
+        }
+        return { deduplicated: true, messageSeq: winner };
+      }
+      throw e;
+    }
   }
 
   /**
@@ -414,6 +491,13 @@ export class ConversationService {
     readonly senderRole: 'system' | 'agent';
     readonly content: string;
     readonly mention?: MentionTarget;
+    /**
+     * 系统消息判重键（M2-W3 T5 可选，W2 评审「系统消息无判重键」收口）：relay 消费路径
+     * （D2 RoomOpened 等）传事件锚形态键（如 room-opened:{event_id}）——at-least-once 重投
+     * 窗的重复落消息行经 V50 回执面收敛（在册=幂等回读原消息零新行零新事件）；job 执行器
+     * 路径（REMIND 系列）效果与 job DONE 同事务天然幂等，缺省不传。
+     */
+    readonly dedupKey?: string;
     /** 同事务承载（job 执行器/事件消费路径）；缺省=自开事务 */
     readonly uow?: SqlExecutor;
   }): Promise<MessageView> {
@@ -433,9 +517,18 @@ export class ConversationService {
     if (input.mention !== undefined && !isMentionTarget(input.mention)) {
       throw new AppError(ErrorCode.InvalidArgument, `mention 须为 agent|lawyer`);
     }
+    const dedupKey = input.dedupKey === undefined ? null : assertDedupKey(input.dedupKey);
     const conversation = await this.getConversation(conversationId);
     if (!conversation) {
       throw new AppError(ErrorCode.NotFound, `会话 ${conversationId} 不存在`);
+    }
+    // 判重前置读（T5）：在册=幂等回读原消息（relayed 重投面）；竞态窗败者由事务内回执
+    // INSERT 冲突信号回滚（自持事务回滚零残留；uow 形态上抛由调用方事务决定重试收敛）
+    if (dedupKey !== null) {
+      const existingSeq = await this.receiptSeqOf(conversationId, dedupKey);
+      if (existingSeq !== null) {
+        return this.readMessageBySeq(conversationId, existingSeq);
+      }
     }
     const write = async (exec: SqlExecutor): Promise<MessageView> => {
       const seqRow = await exec.query<{ next_seq: string }>(
@@ -469,6 +562,9 @@ export class ConversationService {
           risk_flag: 'PASS',
         } satisfies MessageSentPayload,
       });
+      if (dedupKey !== null) {
+        await this.insertReceipt(exec, conversationId, dedupKey, seq);
+      }
       return view;
     };
     const message = input.uow ? await write(input.uow) : await this.pool.withTransaction(write);
@@ -614,6 +710,59 @@ export class ConversationService {
   // ===========================================================================
   // 内部读导出面（agent-assist 专用，M2-W3 T4；A.4「fulfillment→agent-assist 消息内容读」）
   // ===========================================================================
+
+  // ===========================================================================
+  // 回执面内部件（M2-W3 T5：V50 message_receipts——客户端/系统消息持久判重）
+  // ===========================================================================
+
+  /**
+   * 回执落库（调用方消息落库事务内）：命中在册键（并发同键竞态败者）→ 抛
+   * MessageReceiptConflictError 整事务回滚（零新行零新事件——判重与消息落库原子）。
+   */
+  private async insertReceipt(
+    uow: SqlExecutor,
+    conversationId: number,
+    dedupKey: string,
+    messageSeq: number,
+  ): Promise<void> {
+    const res = await uow.query<{ conversation_id: string }>(
+      `INSERT INTO fulfillment.message_receipts (conversation_id, dedup_key, message_seq)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (conversation_id, dedup_key) DO NOTHING
+       RETURNING conversation_id`,
+      [conversationId, dedupKey, messageSeq],
+    );
+    if (res.rows.length === 0) {
+      throw new MessageReceiptConflictError(conversationId, dedupKey);
+    }
+  }
+
+  /** 回执读：在册=首访消息 seq；无行=null（判重前置读/竞态败者读执行回放） */
+  private async receiptSeqOf(conversationId: number, dedupKey: string): Promise<number | null> {
+    const res = await this.pool.query<{ message_seq: number }>(
+      `SELECT message_seq::int AS message_seq FROM fulfillment.message_receipts
+        WHERE conversation_id = $1 AND dedup_key = $2`,
+      [conversationId, dedupKey],
+    );
+    const seq = res.rows[0]?.message_seq;
+    return seq === undefined ? null : seq;
+  }
+
+  /** 按 (conversation_id, seq) 回读消息行（postInternalMessage 幂等回读原消息；缺行=漂移显性化） */
+  private async readMessageBySeq(conversationId: number, seq: number): Promise<MessageView> {
+    const res = await this.pool.query<MessageRow>(
+      `SELECT ${MESSAGE_COLS} FROM fulfillment.messages WHERE conversation_id = $1 AND seq = $2`,
+      [conversationId, seq],
+    );
+    const row = res.rows[0];
+    if (!row) {
+      throw new AppError(
+        ErrorCode.InternalError,
+        `回执在册而消息行不可读（冷存/漂移，不应触达）：conversation=${conversationId} seq=${seq}`,
+      );
+    }
+    return toMessageView(row);
+  }
 
   /**
    * 消息回查（agent-assist 专用内部接口，无 HTTP；E1 消费 MessageSent 后回查消息内容的

@@ -11,9 +11,10 @@
  *   重试轨道不静默），通过则零动作记日志（C5 任务报告裁定口径）。
  *
  * 事务形态：消费效果经 relay 认领事务的 uow（效果与 SENT 标记同事务——conversation.consumer
- * 同款 relay-uow 形态）。幂等=relay inbox 的 SENT 标记（一事件恰一次投递）；at-least-once
- * 崩溃窗重投可能重复落消息行（messages 无系统消息判重键，W1 接受——REMIND_GRACE_END 重放
- * 同口径，头注声明；W2 评审随回执表一并收口）。
+ * 同款 relay-uow 形态）。幂等=relay inbox 的 SENT 标记（一事件恰一次投递）+ 系统消息判重键
+ * （M2-W3 T5 收口，W2 评审遗留项）：RoomOpened 消费传 dedupKey=room-opened:{event_id}——
+ * at-least-once 重投窗经 V50 持久回执面（fulfillment 域 message_receipts 表）判重（重投零
+ * 新消息行；REMIND 执行器路径效果与 job DONE 同事务天然幂等，不传键）。
  */
 import { AppError, ErrorCode, RESCHEDULE_CONFIRMED_TOPIC, ROOM_OPENED_TOPIC } from '@ljr/shared';
 import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
@@ -52,7 +53,13 @@ export function createRoomOpenedHandler(reminders: ReminderDispatchService): Out
         `RoomOpened 载荷缺 room_id/session_id/grace_end 最小集或 grace_end 非可解析时刻（进重试轨道，不静默丢弃）`,
       );
     }
-    await reminders.postGraceStartedReminder(uow, payload.room_id, payload.grace_end);
+    await reminders.postGraceStartedReminder(
+      uow,
+      payload.room_id,
+      payload.grace_end,
+      // M2-W3 T5：事件锚判重键（relay at-least-once 重投窗——V50 回执面，重投零新消息行）
+      `room-opened:${event.eventId}`,
+    );
     logger.log(`宽限开始房间消息已发：room=${payload.room_id} session=${payload.session_id}`);
   };
 }

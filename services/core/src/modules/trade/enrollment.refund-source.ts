@@ -9,9 +9,10 @@
  * 清单口径（shared RefundSource 契约逐字，两源同表同形态仅 ref_type 分流）：该业务实体
  * **PAID** enrollment 的 [{payment_order_id, user_id, cash_amount, points_amount}]——仅已支付
  * （未支付无款可退，流标静默跳过；其积分清场走 sweepPendingOnFail 的 UNFREEZE 轨道，
- * R-W3-O）。**拒绝/超时路径的 PENDING 冻结积分清场未接线=已知缺口**（LAWYER_REJECTED
- * 无 sweep 消费——仅「晚到支付→refundIfRejected」一条补救线，从不支付=冻结滞留；
- * T1 评审 I-1 发现，登记 M2-W3 T5 批内收口+04 §8）。支付单定位=F1 幂等键
+ * R-W3-O）。**拒绝/超时路径的 PENDING 冻结积分清场已接线**（M2-W3 T5：enrollment.consumer
+ * createLawyerRejectedSweepHandler 消费 LAWYER_REJECTED → sweepPendingOnFail('groupbuy',
+ * group_id)——T1 评审 I-1 登记项兑现，先前「仅晚到支付→refundIfRejected 一条补救线」缺口
+ * 收口）。支付单定位=F1 幂等键
  * enroll/e{id}/pay（报名↔支付单唯一关联口径，enrollments 无支付单列）；PAID 行订单不可读
  * =数据漂移，抛错整批进重试轨道（不静默缺行——资损不变量）。
  */

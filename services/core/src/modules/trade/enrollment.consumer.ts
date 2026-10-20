@@ -7,7 +7,11 @@
  *   ② SessionFailed（trade.session.failed，C1 真事件；与 F2 批量退款消费器同 topic 扇出并存）：
  *      PENDING 未支付清场（R-W3-O——UNFREEZE 解冻；F1 单保持 CREATED 不发明关单指令）。
  *   ③ RefundCompleted（payment.refund.completed，F2 真生产）：enrollment →REFUNDED 终态收敛
- *      （PAID→REFUNDED 主链/PENDING→REFUNDED 兜底；已终态短路幂等）。
+ *      （PAID→REFUNDED 主链/PENDING→REFUNDED 兜底；已终态短路）。
+ *   ④ LawyerRejected（trade.group_buy.lawyer_rejected，M2-W3 T5=I-1 登记项兑现；C2 超时自动拒
+ *      与 C4 显式拒同 topic）：该团 PENDING 冻结积分清场（sweepPendingOnFail('groupbuy',
+ *      group_id)——载荷键=group_id 非 id，注意映射；与 F2 全额退款/G1 -5 消费同 topic 三扇出
+ *      并存，集合不相互扰：F2 退 PAID 清单、本面解冻 PENDING、G1 记律师信用）。
  *   **不注册** RESTRICTION_ISSUED / CREDIT_EVENT_EMITTED 消费者（简报裁决：入口拉取校验已足，
  *   w2-smoke 的 RI/CEE noop 维持 TODO(H4) 不动——报告注明）。
  *
@@ -20,9 +24,11 @@ import {
   AppError,
   ErrorCode,
   GROUP_BUY_EXPIRED_TOPIC,
+  LAWYER_REJECTED_TOPIC,
   PAYMENT_CALLBACK_INBOXED_TOPIC,
   REFUND_COMPLETED_TOPIC,
   SESSION_FAILED_TOPIC,
+  type LawyerRejectedPayload,
   type RefundCompletedPayload,
   type SessionFailedPayload,
 } from '@ljr/shared';
@@ -149,6 +155,43 @@ export function createEnrollSweepHandler(enrollments: EnrollmentService): Outbox
   };
 }
 
+/**
+ * LawyerRejected PENDING 冻结积分清场 handler（M2-W3 T5=I-1 登记项兑现）：拒绝/超时（C2 12h
+ * 确认超时 via_timeout=true / C4 显式拒 via_timeout=false 同 topic）后该团 PENDING 报名的
+ * 冻结积分不再有「晚到支付」承接面——UNFREEZE 解冻回摆（R-W3-O 同款 sweep；F1 单保持
+ * CREATED）。载荷={group_id, lawyer_id, via_timeout}（**group_id 非 id**——与 SessionFailed/
+ * GroupBuyExpired 的 id 键不同源，映射错误会把整型 lawyer_id 当 ref 消费，防御校验钉住）。
+ * 幂等=unfreeze 台账判重（UNFREEZE 在册即 deduplicated 短路——报名行保持 PENDING 不改态，
+ * 事件重投会重选同批行但逐行被台账短路）；与 F2 全额退款（PAID 清单）/G1 信用消费并存
+ * 三扇出互不扰（集合不相交）。
+ */
+export function createLawyerRejectedSweepHandler(enrollments: EnrollmentService): OutboxHandler {
+  const logger = new Logger('EnrollRejectSweep');
+  return async (event: RelayEvent): Promise<void> => {
+    if (event.topic !== LAWYER_REJECTED_TOPIC) {
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `拒绝清场消费器收到未注册 topic：${event.topic}`,
+      );
+    }
+    const payload = (event.payload ?? {}) as Partial<LawyerRejectedPayload>;
+    if (!isPositiveInt(payload.group_id)) {
+      throw new AppError(
+        ErrorCode.InvalidArgument,
+        `LawyerRejected 载荷缺 group_id（进重试轨道，不静默丢弃）`,
+      );
+    }
+    const { swept, failed } = await enrollments.sweepPendingOnFail('groupbuy', payload.group_id);
+    if (failed > 0) {
+      throw new AppError(
+        ErrorCode.OutboxHandlerFailed,
+        `LawyerRejected 未支付清场部分失败（groupbuy=${payload.group_id}）：swept=${swept} failed=${failed}`,
+      );
+    }
+    logger.log(`LAWYER_REJECTED 未支付清场完成：groupbuy=${payload.group_id} 解冻单数=${swept}`);
+  };
+}
+
 /** RefundCompleted 收敛 handler：按退款单定位支付单 → 报名 →REFUNDED 终态（幂等短路） */
 export function createRefundCompletedHandler(
   enrollments: EnrollmentService,
@@ -196,13 +239,18 @@ export class EnrollmentConsumer implements OnModuleInit {
 
   onModuleInit(): void {
     // 同 topic 多 handler 扇出由 relay 承接（PaymentCallbackInboxed=F2 两 handler 并存三扇出；
-    // SessionFailed=F2 批量退款 handler 并存；GroupBuyExpired=R-W3-O 清场扩展，报告偏差节）
+    // SessionFailed=F2 批量退款 handler 并存；GroupBuyExpired=R-W3-O 清场扩展，报告偏差节；
+    // LawyerRejected=F2 全额退款+G1 信用+本模块 PENDING 清场三扇出——I-1 登记项 T5 兑现）
     this.relay.registerHandler(
       PAYMENT_CALLBACK_INBOXED_TOPIC,
       createEnrollPayCallbackHandler(this.enrollments, this.payment),
     );
     this.relay.registerHandler(SESSION_FAILED_TOPIC, createEnrollSweepHandler(this.enrollments));
     this.relay.registerHandler(GROUP_BUY_EXPIRED_TOPIC, createEnrollSweepHandler(this.enrollments));
+    this.relay.registerHandler(
+      LAWYER_REJECTED_TOPIC,
+      createLawyerRejectedSweepHandler(this.enrollments),
+    );
     this.relay.registerHandler(
       REFUND_COMPLETED_TOPIC,
       createRefundCompletedHandler(this.enrollments, this.payment),

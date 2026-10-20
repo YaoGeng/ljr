@@ -16,12 +16,15 @@
  *   C→S {type:'pull', conversation_id, after_seq?, limit?}   断线增量（HTTP 读路径同源）
  *   C→S {type:'recording-consent', conversation_id, accept}  录制前置信令（R-03 双门）
  *   S→C auth_ok/auth_failed/joined（含回填 backfill ≤200）/left/message（广播）/sent（ack，
- *                                                deduplicated 标记=LRU 命中）/messages（pull）/
+ *                                                deduplicated 标记=持久回执面命中，T5）/messages（pull）/
  *                                                recording_consent/recording_started/error
  *                                                （{code, message, reply_to}，reply_to=客户端帧 type）
  *
- * 客户端幂等（§5 msg_client_id）：per-connection 内存 LRU（近 256 条）——同 id 重发回放首访
- * ack（deduplicated:true）零新消息零新广播；DB 列持久幂等=W2 评审裁量（D5 §3 无该列禁自加）。
+ * 客户端幂等（§5 msg_client_id）：持久回执面（M2-W3 T5，V50 fulfillment.message_receipts——
+ * W2 复审 §3-④收口）：send 路径判重走 ConversationService.sendMessageDedup——在册回执回放
+ * 首访 ack（deduplicated:true，seq=回执行的 message_seq）零新消息零新广播；判重与消息落库
+ * 同一事务（命中=重复 → 整事务回滚）；键域=(conversation_id, msg_client_id)——换连接/进程
+ * 重启均生效（M2-W1 的 per-connection LRU 形态已删，全周期判重取代崩溃窗判重）。
  *
  * presence：join/leave/断连（隐式离场）→ PresenceJoined/Left 出箱（at-least-once；D3=W2 消费；
  * at=服务器接收时刻）。join 门（顺序=I-3）：会话存在（404）→ room 型经 fulfillment 自有
@@ -54,9 +57,6 @@ import { MAX_PULL_LIMIT, type ConversationView } from './conversation.types';
 export const WSS_AUTH_TIMEOUT_MS = Symbol('WSS_AUTH_TIMEOUT_MS');
 export const DEFAULT_WSS_AUTH_TIMEOUT_MS = 10_000;
 
-/** 客户端幂等 LRU 容量（§5 msg_client_id：per-connection 近 256 条去重） */
-export const MSG_CLIENT_ID_LRU_SIZE = 256;
-
 /** WSS close code（鉴权失败/超时；4xxx=应用语义） */
 const CLOSE_UNAUTHORIZED = 4401;
 
@@ -65,11 +65,13 @@ interface WssIdentity {
   readonly role: 'user' | 'lawyer';
 }
 
-/** per-connection 状态：鉴权后身份 + 已 join 会话集 + msg_client_id LRU */
+/**
+ * per-connection 状态：鉴权后身份 + 已 join 会话集（M2-W3 T5：msg_client_id ackCache LRU
+ * 已删——判重态全在 V50 持久回执面，连接态不再承载幂等语义）
+ */
 interface ConnectionState {
   identity: WssIdentity | null;
   readonly joined: Set<number>;
-  readonly ackCache: Map<string, Record<string, unknown>>;
 }
 
 interface ClientFrame {
@@ -116,7 +118,7 @@ export class ConversationGateway {
 
   /** 连接建立：未鉴权态 + 鉴权超时门（超时/失败 → close 4401） */
   handleConnection(client: WebSocket, _req: IncomingMessage): void {
-    this.states.set(client, { identity: null, joined: new Set(), ackCache: new Map() });
+    this.states.set(client, { identity: null, joined: new Set() });
     const timer = setTimeout(() => {
       const state = this.states.get(client);
       if (state && state.identity === null) {
@@ -354,7 +356,7 @@ export class ConversationGateway {
   }
 
   // ===========================================================================
-  // send（发送链入口；幂等 LRU；伪造角色拒）
+  // send（发送链入口；msg_client_id 持久回执判重；伪造角色拒）
   // ===========================================================================
 
   private async handleSend(
@@ -385,15 +387,40 @@ export class ConversationGateway {
       typeof frame.msg_client_id === 'string' && frame.msg_client_id.length > 0
         ? frame.msg_client_id
         : null;
-    // 客户端幂等：LRU 命中 → 回放首访 ack（deduplicated=true），零新消息零新广播
-    if (msgClientId !== null) {
-      const cached = state.ackCache.get(msgClientId);
-      if (cached) {
-        this.send(client, { ...cached, deduplicated: true });
+    try {
+      // 客户端幂等（M2-W3 T5）：持久回执面判重（在册=回放首访 ack，零新消息零新广播）；
+      // 未携 msg_client_id=直发（E1 律师链路同款 sendMessage）
+      if (msgClientId !== null) {
+        const result = await this.conversations.sendMessageDedup({
+          conversationId: frame.conversation_id,
+          senderId: state.identity!.userId,
+          senderRole: state.identity!.role,
+          content: typeof message.content === 'string' ? message.content : '',
+          mention:
+            message.mention === undefined || message.mention === null
+              ? undefined
+              : (message.mention as 'agent' | 'lawyer'),
+          dedupKey: msgClientId,
+        });
+        if (result.deduplicated) {
+          this.send(client, {
+            type: 'sent',
+            conversation_id: frame.conversation_id,
+            seq: result.messageSeq,
+            msg_client_id: msgClientId,
+            deduplicated: true,
+          });
+          return;
+        }
+        this.send(client, {
+          type: 'sent',
+          conversation_id: frame.conversation_id,
+          seq: result.message.seq,
+          msg_client_id: msgClientId,
+          deduplicated: false,
+        });
         return;
       }
-    }
-    try {
       const sent = await this.conversations.sendMessage({
         conversationId: frame.conversation_id,
         senderId: state.identity!.userId,
@@ -404,32 +431,13 @@ export class ConversationGateway {
             ? undefined
             : (message.mention as 'agent' | 'lawyer'),
       });
-      const ack: Record<string, unknown> = {
+      this.send(client, {
         type: 'sent',
         conversation_id: frame.conversation_id,
         seq: sent.seq,
-      };
-      if (msgClientId !== null) {
-        ack.msg_client_id = msgClientId;
-        this.rememberAck(state, msgClientId, ack);
-      }
-      this.send(client, { ...ack, deduplicated: false });
+      });
     } catch (e) {
       this.sendAppError(client, e, 'send');
-    }
-  }
-
-  /** LRU 记忆（Map 插入序=LRU 序；超容量逐出最旧） */
-  private rememberAck(
-    state: ConnectionState,
-    msgClientId: string,
-    ack: Record<string, unknown>,
-  ): void {
-    state.ackCache.delete(msgClientId);
-    state.ackCache.set(msgClientId, ack);
-    if (state.ackCache.size > MSG_CLIENT_ID_LRU_SIZE) {
-      const oldest = state.ackCache.keys().next().value;
-      if (oldest !== undefined) state.ackCache.delete(oldest);
     }
   }
 

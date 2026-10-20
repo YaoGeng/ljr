@@ -86,6 +86,7 @@ export const TEST_DB_TABLES = [
   'fulfillment.rooms',
   'fulfillment.conversations',
   'fulfillment.messages',
+  'fulfillment.message_receipts',
   'fulfillment.consent_records',
   'fulfillment.attendances',
   'fulfillment.one_on_one_orders',

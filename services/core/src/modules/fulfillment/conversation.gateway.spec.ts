@@ -32,7 +32,7 @@ import { seedOooOrderRaw } from './one-on-one-fixture';
  * D5 WSS 网关集成（需 PG；真实 ws 客户端连 ws://127.0.0.1:<临时端口>/ws——简报指定形态）：
  *   鉴权（⚠W1-6 首帧 auth/未 auth 拒/坏 token 关/10s 超时关——超时经 WSS_AUTH_TIMEOUT_MS override
  *   缩短）、发送链顺序（BLOCKED 拒：403 回执+其他成员零收到+零落库）、seq 广播一致、
- *   客户端幂等（msg_client_id LRU 去重）、迟到 join 回填 200、presence 出箱（join/leave/断连）、
+ *   客户端幂等（msg_client_id 持久回执去重——V50 message_receipts，M2-W3 T5 换装）、迟到 join 回填 200、presence 出箱（join/leave/断连）、
  *   room 型 join 门（OPEN 放行/终态拒 + C-1 成员门：非成员拒/场次律师放行）、
  *   C-1 发送门（PAID 成员可 send/非成员 403）、I-1 帧与长度上限（>64KB 连接被拒/超 8000 字符 400）、
  *   I-3 join 顺序（presence 失败→error 帧+零订阅残留）、伪造 sender_role 拒（agent/system/越权
@@ -418,6 +418,45 @@ describe('D5 WSS 网关（首帧 auth/send 链/join 回填/presence/幂等/conse
     await user.expectSilence();
     await lawyer.expectSilence();
     expect(await messageCount(conv.conversation_id)).toBe(1);
+  });
+
+  it('T5 持久回执面：换连接（进程重启语义——判重态全在 DB 非内存）同 msg_client_id 重发 → 仍 deduplicated=true 回放原 seq；回执行在册恰一', async () => {
+    const conv = await conversations.ensureConversation('private', 605);
+    const first = await authed(USER_A, 'user');
+    await join(first, conv.conversation_id);
+    first.send({
+      type: 'send',
+      conversation_id: conv.conversation_id,
+      msg_client_id: 'client-restart-1',
+      message: { content: '首访消息' },
+    });
+    const mine = await first.collect(['sent', 'message']);
+    expect(mine.sent).toMatchObject({ type: 'sent', seq: 1, deduplicated: false });
+    first.terminate(); // 断连（连接态随生命周期回收——LRU 时代判重态即丢失）
+
+    // 新连接（等价于新 gateway 实例重建 states 后的判重路径）：持久面仍命中
+    const second = await authed(USER_A, 'user');
+    await join(second, conv.conversation_id);
+    second.send({
+      type: 'send',
+      conversation_id: conv.conversation_id,
+      msg_client_id: 'client-restart-1',
+      message: { content: '首访消息（重发）' },
+    });
+    const replay = await second.next();
+    expect(replay).toMatchObject({
+      type: 'sent',
+      seq: 1,
+      msg_client_id: 'client-restart-1',
+      deduplicated: true,
+    });
+    expect(await messageCount(conv.conversation_id)).toBe(1); // 恰一行
+    const receipt = await pool.query<{ n: number; message_seq: number }>(
+      `SELECT count(*)::int AS n, max(message_seq)::int AS message_seq
+         FROM fulfillment.message_receipts WHERE conversation_id = $1 AND dedup_key = $2`,
+      [conv.conversation_id, 'client-restart-1'],
+    );
+    expect(receipt.rows[0]).toEqual({ n: 1, message_seq: 1 }); // 回执恰一、seq 锚=首访
   });
 
   // --------------------------------------------------------------------------

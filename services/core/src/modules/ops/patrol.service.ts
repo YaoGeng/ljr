@@ -179,6 +179,12 @@ export class PatrolService {
    * ① PAID_NOT_REFUNDED：trade 候选集 → 逐单经 F1 幂等键定位支付单 → F2 退款单核对。
    * 在途（REQUESTED|PROCESSING）/已完成（DONE）不算未发起；仅 FAILED 终局退款=资损未消除
    * 仍检出（reason=REFUND_ALL_FAILED）；支付单不可读=数据漂移显性化（reason=ORDER_MISSING）。
+   *
+   * 孤儿窗口径注记（M2-W3 T5，I-1 接线后复核——只更新口径不改判定/阈值）：拒绝/超时两路
+   * （C2 12h 确认超时自动拒+C4 律师显式拒同 topic）现均有 F2 全额退款消费收敛（T1）+PENDING
+   * 冻结积分 sweep 收敛（T5 createLawyerRejectedSweepHandler）——「终态后 PAID 无人退」的
+   * 孤儿窗收窄为「事件出箱后 relay 未投递」段（退避重试轨道内自然收敛，巡检 10min 阈值
+   * paidNotRefundedMs 覆盖的剩余语义=投递滞后告警而非消费缺位）；判定 SQL 与阈值不动。
    */
   private async detectPaidNotRefunded(): Promise<PatrolDetectionResult> {
     const candidates = await this.enrollmentPatrol.findRefundDueCandidates({

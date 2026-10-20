@@ -6,7 +6,8 @@
  * 经 ScheduleExecutorRegistry.register 注册（onModuleInit，session.executors/
  * rule-center.executors 同形态）。执行语义（I2 §4）：业务写经 ctx.uow 与 job DONE 同事务；
  * recheck=false → CANCELLED 无操作（R-02 幂等回查锚点=实体状态）。
- *   ROOM_OPEN recheck=场次仍有效可开（经 trade 导出面 sessionOpenable：终态/不存在→false）；
+ *   ROOM_OPEN recheck=场次仍有效可开（经 trade 导出面 sessionOpenable：终态/不存在→false；
+ *   M2-W3 T5 起复合守卫 N-4——幽灵 CREATED（无 PAID 报名且无在册截止 job）亦 false）；
  *   幂等兜底=rooms.session_id UNIQUE + openRoomForSession 入口短路（重放无副作用）。
  *   GRACE_END recheck=room 仍 OPEN（终态/不存在→false——close 先到/开房失败行无宽限语义）。
  */

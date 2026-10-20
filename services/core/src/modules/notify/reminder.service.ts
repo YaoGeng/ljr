@@ -186,16 +186,22 @@ export class ReminderDispatchService {
   // 房间内同步提醒（§2：宽限开始/结束前 1min——@Agent 名义非法律意见）
   // ===========================================================================
 
-  /** 宽限开始消息（RoomOpened 事件消费承载；graceEndIso=事件载荷 grace_end 透传） */
+  /**
+   * 宽限开始消息（RoomOpened 事件消费承载；graceEndIso=事件载荷 grace_end 透传）。
+   * dedupKey（M2-W3 T5 可选）=消费方事件锚形态键（room-opened:{event_id}）——relay
+   * at-least-once 重投窗的系统消息判重收口（V50 message_receipts 回执面）。
+   */
   async postGraceStartedReminder(
     uow: SqlExecutor,
     roomId: number,
     graceEndIso: string,
+    dedupKey?: string,
   ): Promise<RoomReminderResult> {
     await this.postAgentRoomMessage(
       uow,
       roomId,
       `【@Agent】房间已开放，宽限期已开始（至 ${graceEndIso}），请尽快进入房间。${AGENT_DISCLAIMER}`,
+      dedupKey,
     );
     return { room_id: roomId, posted: true };
   }
@@ -217,11 +223,13 @@ export class ReminderDispatchService {
   /**
    * 会话确保+@Agent 名义内部消息（postInternalMessage 头注声明的许可面之一：D2 房间内提醒；
    * uow 形态=效果与 job DONE/relay SENT 同事务）。开房同事务已建 room 会话——ensure 幂等回读。
+   * dedupKey（M2-W3 T5 可选）透传 postInternalMessage 判重（消费路径事件锚形态键）。
    */
   private async postAgentRoomMessage(
     uow: SqlExecutor,
     roomId: number,
     content: string,
+    dedupKey?: string,
   ): Promise<void> {
     const conv = await this.conversations.ensureConversation('room', roomId, { uow });
     await this.conversations.postInternalMessage({
@@ -230,6 +238,7 @@ export class ReminderDispatchService {
       content,
       mention: 'agent',
       uow,
+      dedupKey,
     });
   }
 

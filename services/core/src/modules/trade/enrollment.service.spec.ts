@@ -10,6 +10,7 @@ import {
   ErrorCode,
   GROUP_BUY_EXPIRED_TOPIC,
   GROUP_BUY_REACHED_TOPIC,
+  LAWYER_REJECTED_TOPIC,
   REFUND_COMPLETED_TOPIC,
   SESSION_FAILED_TOPIC,
   SESSION_FULL_TOPIC,
@@ -24,6 +25,7 @@ import {
 } from '../benefits/points-fixture';
 import { PointsService } from '../benefits/points.service';
 import { seedRestriction } from '../credit/credit-fixture';
+import { CREDIT_RULES_KEY } from '../credit/credit.types';
 import { IdentityTokenService } from '../identity/identity.token.service';
 import { IDENTITY_CONFIG, type IdentityConfig } from '../identity/identity.config';
 import { RealnameService } from '../identity/realname.service';
@@ -37,6 +39,7 @@ import {
 import { PAYMENT_CONFIG } from '../payment/payment.config';
 import { PaymentGatewayService } from '../payment/payment.gateway.service';
 import { RefundService } from '../payment/refund.service';
+import { RuleCenterService } from '../ops/rule-center.service';
 import { PricingConfigService } from '../pricing/pricing.service';
 import { EnrollmentService } from './enrollment.service';
 import { enrollmentOrderKey } from './enrollment.types';
@@ -180,6 +183,15 @@ describe('C3 报名与支付成团（成团原子守卫/闸口/快照/终态协�
   };
 
   const tick = (): Promise<unknown> => relay.tick();
+
+  /** 投递清空（本用例布景事件多，单轮 batch=10 不够——drain 至整轮零动作：dispatched/retried/
+   *  dead 全 0 才停，重试轨事件（无 handler 布景事件）不阻断 drain 前行） */
+  const drainRelay = async (): Promise<void> => {
+    for (let i = 0; i < 8; i += 1) {
+      const r = await relay.tick();
+      if (r.dispatched === 0 && r.retried === 0 && r.dead === 0) break;
+    }
+  };
 
   // ---- 断言夹具（跨域读一律经 owner 夹具：benefits/payment 表名禁内联，schema-refs 纪律；
   //      本模块表 trade.* 与平台横切表 platform.* 直读合法） ----
@@ -837,6 +849,93 @@ describe('C3 报名与支付成团（成团原子守卫/闸口/快照/终态协�
     expect(await getPointsBalance(pool, joiner2)).toBe(800); // 解冻原额回摆
     const row2 = await enrollmentOf(j2.enrollment_id);
     expect(row2['pay_status']).toBe('PENDING'); // R-W3-O：保持 PENDING（晚到回调走退款分支）
+  });
+
+  it('I-1 登记项兑现（M2-W3 T5）：LAWYER_REJECTED（载荷 group_id）→ 该团 PENDING 冻结积分 sweep 解冻（UNFREEZE 台账恰一）+他人团/他 session 不受扰+重放幂等（unfreeze 台账判重短路）', async () => {
+    const lawyer = nextLawyer();
+    await seedPricing(lawyer, { session_total: '100.00', accept_min: 2, accept_max: 3 });
+    // G1 同 topic 扇出前提：credit.rules 生效版本（lawyer_reject_timeout -5 档——缺规则 G1
+    // handler 抛错会把整事件打入重试轨道，本面 sweep 随扇出序受害）
+    const rules = app.get(RuleCenterService);
+    await poolSvc.withTransaction((uow) =>
+      rules.createLexiconVersion(uow, {
+        ruleKey: CREDIT_RULES_KEY,
+        version: 1,
+        content: {
+          violation: {
+            window_days: 30,
+            threshold: 2,
+            restriction_by_owner: {
+              user: { kind: 'BAN_JOIN', days: 7 },
+              lawyer: { kind: 'SUSPEND_TAKE_7D', days: 7 },
+            },
+          },
+          actions: { lawyer_reject_timeout: { delta: -5 } },
+        },
+        effectiveAt: new Date(Date.now() - HOUR),
+      }),
+    );
+    const publishGb = async (): Promise<{ id: number }> => {
+      const initiator = nextUser();
+      await seedUser(initiator);
+      const gb = await groupBuys.create({
+        initiator_id: initiator,
+        lawyer_id: lawyer,
+        specialty: 'labor_arbitration',
+        slot_start: new Date(Date.now() + 25 * HOUR),
+        sub_min: 2,
+        sub_max: 3,
+        question_tags: ['劳动仲裁时效'],
+      });
+      return { id: (gb.group_buy as unknown as { id: number }).id };
+    };
+    const userWithPoints = async (ref: string): Promise<number> => {
+      const u = nextUser();
+      await seedUser(u);
+      await points.grant({ user_id: u, points: 1_000, kind: 'COMPENSATION', ref });
+      return u;
+    };
+    const injectRejected = async (groupId: number): Promise<void> => {
+      await pool.query(
+        `INSERT INTO platform.outbox (event_id, topic, payload, status)
+         VALUES (gen_random_uuid(), $1, $2::jsonb, 'PENDING')`,
+        [
+          LAWYER_REJECTED_TOPIC,
+          JSON.stringify({ group_id: groupId, lawyer_id: lawyer, via_timeout: false }),
+        ],
+      );
+    };
+
+    // 布局：目标团 PENDING 冻结 300 + 他人团 PENDING 冻结 200 + 他 session PENDING 冻结 100
+    const gbTarget = await publishGb();
+    const targetUser = await userWithPoints('t5:lr-a');
+    const targetEnroll = await enroll('groupbuy', gbTarget.id, targetUser, 300);
+    expect(await getPointsBalance(pool, targetUser)).toBe(700); // 冻结 300
+    const gbOther = await publishGb();
+    const otherGbUser = await userWithPoints('t5:lr-b');
+    await enroll('groupbuy', gbOther.id, otherGbUser, 200);
+    const sessOther = await createSession(lawyer, { capacity: 4, unit_price: '30.00' });
+    const otherSessUser = await userWithPoints('t5:lr-c');
+    await enroll('session', sessOther.id, otherSessUser, 100);
+
+    // 拒绝事件（C4 显式拒形态；载荷键=group_id 非 id）→ relay 投递 → sweep 消费
+    await injectRejected(gbTarget.id);
+    await drainRelay();
+
+    // 该团 PENDING：冻结积分解冻回摆（UNFREEZE 台账恰一）+ pay_status 保持 PENDING（三态词汇无「钱没收」终态）
+    expect(await getPointsBalance(pool, targetUser)).toBe(1_000);
+    expect(await countPointsTxnsByKind(pool, targetUser, 'UNFREEZE')).toBe(1);
+    expect((await enrollmentOf(targetEnroll.enrollment_id))['pay_status']).toBe('PENDING');
+
+    // 他人团/他 session 的 PENDING 冻结不受扰
+    expect(await getPointsBalance(pool, otherGbUser)).toBe(800); // 仍冻结 200
+    expect(await getPointsBalance(pool, otherSessUser)).toBe(900); // 仍冻结 100
+
+    // 重放幂等（at-least-once 重投）：报名行保持 PENDING 会被重选——逐行被 UNFREEZE 台账判重短路，余额不双计、台账不增行
+    await injectRejected(gbTarget.id);
+    await drainRelay();
+    expect(await getPointsBalance(pool, targetUser)).toBe(1_000);
+    expect(await countPointsTxnsByKind(pool, targetUser, 'UNFREEZE')).toBe(1);
   });
 
   // ===========================================================================

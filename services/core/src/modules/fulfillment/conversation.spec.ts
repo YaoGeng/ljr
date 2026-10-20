@@ -670,6 +670,106 @@ describe('D5 会话与消息服务面（发送链/seq/补拉/consent 双门/撤�
   });
 
   // ===========================================================================
+  // 客户端幂等持久回执面（M2-W3 T5，W2 复审 §3-④：msg_client_id 内存 LRU →
+  // fulfillment.message_receipts 持久判重——全周期含进程重启；系统消息 dedup_key 同面收口）
+  // ===========================================================================
+
+  it('T5 回执面 sendMessageDedup：同 dedup_key 重发 → deduplicated=true 回放原 seq；恰一行一事件一回执；跨会话同 key 不判重（键域=(conversation_id,dedup_key)）', async () => {
+    const conv = await conversations.ensureConversation('private', 610);
+    const first = await conversations.sendMessageDedup({
+      conversationId: conv.conversation_id,
+      senderId: USER_A,
+      senderRole: 'user',
+      content: '幂等消息',
+      dedupKey: 'client-t5-a',
+    });
+    expect(first.deduplicated).toBe(false);
+    const firstSeq = first.deduplicated === false ? first.message.seq : -1; // 判别联合收窄
+    expect(firstSeq).toBeGreaterThan(0);
+
+    // 同键重发（网络重试/断线重连语义）：回放原 seq，零新行零新事件
+    const second = await conversations.sendMessageDedup({
+      conversationId: conv.conversation_id,
+      senderId: USER_A,
+      senderRole: 'user',
+      content: '幂等消息（重发）',
+      dedupKey: 'client-t5-a',
+    });
+    expect(second).toEqual({ deduplicated: true, messageSeq: firstSeq });
+
+    const count = await pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM fulfillment.messages WHERE conversation_id = $1`,
+      [conv.conversation_id],
+    );
+    expect(count.rows[0]!.n).toBe(1); // 恰一行（重发载荷不同也不落第二行）
+    expect(await outboxPayloads(MESSAGE_SENT_TOPIC)).toHaveLength(1); // 恰一事件
+
+    // 回执面在册：首访消息 seq 锚
+    const receipt = await pool.query<{ message_seq: number }>(
+      `SELECT message_seq::int AS message_seq FROM fulfillment.message_receipts
+        WHERE conversation_id = $1 AND dedup_key = $2`,
+      [conv.conversation_id, 'client-t5-a'],
+    );
+    expect(receipt.rows[0]).toEqual({ message_seq: firstSeq });
+
+    // 跨会话同 key=另一会话首访（键域含 conversation_id，非全局键）
+    const conv2 = await conversations.ensureConversation('private', 611);
+    const third = await conversations.sendMessageDedup({
+      conversationId: conv2.conversation_id,
+      senderId: USER_A,
+      senderRole: 'user',
+      content: '另一会话首访',
+      dedupKey: 'client-t5-a',
+    });
+    expect(third.deduplicated).toBe(false);
+  });
+
+  it('T5 回执面入参校验：dedup_key 空/超 128 列宽 → 400（回执面键形态收口）', async () => {
+    const conv = await conversations.ensureConversation('private', 612);
+    await expect(
+      conversations.sendMessageDedup({
+        conversationId: conv.conversation_id,
+        senderId: USER_A,
+        senderRole: 'user',
+        content: 'x',
+        dedupKey: '',
+      }),
+    ).rejects.toMatchObject({ code: ErrorCode.InvalidArgument });
+    await expect(
+      conversations.sendMessageDedup({
+        conversationId: conv.conversation_id,
+        senderId: USER_A,
+        senderRole: 'user',
+        content: 'x',
+        dedupKey: 'k'.repeat(129),
+      }),
+    ).rejects.toMatchObject({ code: ErrorCode.InvalidArgument });
+  });
+
+  it('T5 回执面 postInternalMessage dedupKey：同键重放回读原消息（同 seq）零新行零新事件（W2 评审「系统消息无判重键」收口——D2 消费 relay 重投窗）', async () => {
+    const conv = await conversations.ensureConversation('private', 613);
+    const first = await conversations.postInternalMessage({
+      conversationId: conv.conversation_id,
+      senderRole: 'system',
+      content: '【@Agent】房间已开放，宽限期已开始',
+      dedupKey: 'room-opened:event-t5',
+    });
+    const replay = await conversations.postInternalMessage({
+      conversationId: conv.conversation_id,
+      senderRole: 'system',
+      content: '【@Agent】房间已开放，宽限期已开始',
+      dedupKey: 'room-opened:event-t5',
+    });
+    expect(replay.seq).toBe(first.seq); // 幂等回读原消息
+    const count = await pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM fulfillment.messages WHERE conversation_id = $1`,
+      [conv.conversation_id],
+    );
+    expect(count.rows[0]!.n).toBe(1);
+    expect(await outboxPayloads(MESSAGE_SENT_TOPIC)).toHaveLength(1);
+  });
+
+  // ===========================================================================
   // 撤回删除（R-04：TrainingConsentRevoked 消费 → 物理删 hot 语料 + TrainingDataPurged 回执）
   // ===========================================================================
 
