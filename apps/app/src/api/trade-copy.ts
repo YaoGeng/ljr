@@ -58,6 +58,32 @@ export function groupBuyStatusCopy(status: string): TradeStatusCopy {
 }
 
 // ---------------------------------------------------------------------------
+// C2 拼团状态 · 律师视角（M3-W2 T4：接单大厅/认领转化语境——与上方用户视角表并列；
+// PENDING_LAWYER=live 焦点档=大厅主操作位，REJECTED=failed 危险档（信用 -5 链））
+// ---------------------------------------------------------------------------
+
+const LAWYER_GROUP_BUY_STATUS_COPY: Readonly<Record<GroupBuyStatus, TradeStatusCopy>> = {
+  PUBLISHED: { label: '拼团中 · 可认领转化', tone: 'open' },
+  REACHED: { label: '已成团 · 待确认', tone: 'grouped' },
+  PENDING_LAWYER: { label: '待你确认（12h 窗）', tone: 'live' },
+  CONFIRMED: { label: '已接单 · 履约场次已生成', tone: 'grouped' },
+  CONVERTED: { label: '已认领 · 转为 B2C 场次', tone: 'grouped' },
+  EXPIRED: { label: '已流标 · 用户退款', tone: 'failed' },
+  REFUNDED: { label: '已退款', tone: 'finished' },
+  REJECTED: { label: '已婉拒 · 用户退款', tone: 'failed' },
+};
+
+/** 律师视角拼团状态徽标（接单大厅卡/认领转化语境；未知值回退原码——fail-visible） */
+export function lawyerGroupBuyStatusCopy(status: string): TradeStatusCopy {
+  return (
+    LAWYER_GROUP_BUY_STATUS_COPY[status as GroupBuyStatus] ?? {
+      label: status,
+      tone: 'finished',
+    }
+  );
+}
+
+// ---------------------------------------------------------------------------
 // A2 实名状态（§4：NONE→PENDING→VERIFIED/FAILED 可重提）
 // ---------------------------------------------------------------------------
 

@@ -252,6 +252,9 @@ importers:
       typescript:
         specifier: ~5.9.3
         version: 5.9.3
+      ws:
+        specifier: ^8.22.0
+        version: 8.22.0
 
   packages/shared:
     devDependencies:

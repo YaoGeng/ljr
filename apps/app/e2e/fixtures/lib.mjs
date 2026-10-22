@@ -94,6 +94,14 @@ export function psqlFirst(statement) {
   return psql(statement).split(/\r?\n/)[0] ?? '';
 }
 
+/** INSERT ... RETURNING 首行判值（M3-W2 T1）：psql -t -A 在 RETURNING 0 行时仍打印命令
+ *  标签（如 INSERT 0 0）——标签行=无返回行（ON CONFLICT 跳过），返回 ''；非标签行=真值。
+ *  修正口径：原各夹具 `=== ''` 判空在冲突路径永假（首行恒为标签串），exists(kept) 回显失真；
+ *  数据行为不变，仅回显/取值修正。 */
+export function returningRow(firstLine) {
+  return /^(INSERT|UPDATE|DELETE|SELECT) /.test(firstLine) ? '' : firstLine;
+}
+
 /** Buffer → bytea 字面量（`\x` + hex，pg 十六Hex转义形态） */
 export function byteaLiteral(buf) {
   return `'\\x${buf.toString('hex')}'`;

@@ -229,6 +229,85 @@ export function UserIcon({ color, size = 22 }: IconProps) {
   );
 }
 
+/** 工作台：三柱走势条（律师端统计面板，M3-W2 T1） */
+export function DashboardIcon({ color, size = 22 }: IconProps) {
+  return (
+    <View style={[styles.canvas, { width: size, height: size }]}>
+      <View
+        style={{
+          width: size * 0.76,
+          height: size * 0.68,
+          flexDirection: 'row',
+          alignItems: 'flex-end',
+          justifyContent: 'space-between',
+          borderBottomWidth: Math.max(1.5, size * 0.07),
+          borderBottomColor: color,
+          paddingBottom: Math.max(1, size * 0.03),
+        }}
+      >
+        <View
+          style={{
+            width: size * 0.14,
+            height: size * 0.34,
+            backgroundColor: color,
+            borderRadius: 1,
+          }}
+        />
+        <View
+          style={{
+            width: size * 0.14,
+            height: size * 0.52,
+            backgroundColor: color,
+            borderRadius: 1,
+          }}
+        />
+        <View
+          style={{
+            width: size * 0.14,
+            height: size * 0.66,
+            backgroundColor: color,
+            borderRadius: 1,
+          }}
+        />
+      </View>
+    </View>
+  );
+}
+
+/** 接单大厅：双人形（多人拼单响应面，M3-W2 T1） */
+export function UsersIcon({ color, size = 22 }: IconProps) {
+  const head = (d: number, mt: number, ml?: number) => (
+    <View
+      style={{
+        width: d,
+        height: d,
+        borderRadius: d / 2,
+        backgroundColor: color,
+        marginTop: mt,
+        ...(ml !== undefined ? { marginLeft: ml } : null),
+      }}
+    />
+  );
+  return (
+    <View style={[styles.canvas, { width: size, height: size }]}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
+        {head(size * 0.26, size * 0.04)}
+        {head(size * 0.3, size * 0.02, size * 0.06)}
+      </View>
+      <View
+        style={{
+          width: size * 0.8,
+          height: size * 0.3,
+          borderTopLeftRadius: size * 0.4,
+          borderTopRightRadius: size * 0.4,
+          backgroundColor: color,
+          marginTop: size * 0.05,
+        }}
+      />
+    </View>
+  );
+}
+
 /** 返回：左尖括号（旋转边框方块） */
 export function BackIcon({ color, size = 22 }: IconProps) {
   const bw = Math.max(2, size * 0.11);

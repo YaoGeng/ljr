@@ -35,6 +35,24 @@ export function sessionStatusCopy(status: string): SessionStatusCopy {
 }
 
 // ---------------------------------------------------------------------------
+// 终态集（M3-W2 T5）：core session.machine SESSION_TERMINAL_STATUSES 实文镜像
+// （FAILED/CANCELLED/FINISHED/SETTLED——HOLD 非终态：结算挂起仍可被取消路径收敛）。
+// 消费方=律师场次看板动作门控（取消钮对终态隐藏——core isTerminalStatus 为权威闸，
+// 此为 UX 前置，同 W1「报名闸」双层口径）。
+// ---------------------------------------------------------------------------
+
+export const SESSION_TERMINAL_STATUSES: readonly SessionStatus[] = [
+  'FAILED',
+  'CANCELLED',
+  'FINISHED',
+  'SETTLED',
+];
+
+export function isSessionTerminal(status: string): boolean {
+  return (SESSION_TERMINAL_STATUSES as readonly string[]).includes(status);
+}
+
+// ---------------------------------------------------------------------------
 // 报名关闭说明（评审 I2：非报名中态按状态链分组——FAILED/CANCELLED 不得落入
 // 「满员成团」句式；单源出，视图禁散写三元）
 // ---------------------------------------------------------------------------

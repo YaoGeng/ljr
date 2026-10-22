@@ -1,7 +1,8 @@
 /**
- * 五 tab 应用壳（M3-W1 T1 建/T4 收口）：顶栏（App 名 + 用户态 + 登出）+ tab 内容 + 底部五 tab 栏。
- * 推栈路由存在时整块内容区切换为推栈页（顶栏变返回+标题）。
- * 五 tab 视图已全落位（T4 后无 tab 占位）；屏映射集中在本文件，禁止散建第二张路由表。
+ * 应用壳（M3-W1 T1 建/T4 收口/W2 T1 扩 role 感知）：顶栏（App 名 + 用户态 + 登出）+ tab 内容
+ * + 底部 tab 栏（user 五 tab ↔ lawyer 四 tab——session.activeRole 驱动；律师 tab 视图为
+ * M3-W2 T2~T6 施工占位）。推栈路由存在时整块内容区切换为推栈页（顶栏变返回+标题）。
+ * 用户端五 tab 视图已全落位；屏映射集中在本文件，禁止散建第二张路由表。
  */
 import type { ReactElement } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -10,10 +11,18 @@ import { logout } from '../api/session';
 import { useSession } from '../api/useSession';
 import { BackIcon, LogoutIcon } from '../components/icons';
 import { colors, fontSize, fontWeight, radius, spacing } from '../design/tokens';
-import { TAB_ROUTES, stackRouteTitle } from '../navigation/routes';
+import { tabRoutesForRole, stackRouteTitle } from '../navigation/routes';
 import { NavigationProvider, useNavigation, type TabKey } from '../navigation/router';
 import { EnrollmentScreen } from './EnrollmentScreen';
 import { HomeScreen } from './HomeScreen';
+import { LawyerBoardScreen } from './LawyerBoardScreen';
+import { LawyerCreateSessionScreen } from './LawyerCreateSessionScreen';
+import { LawyerDraftsScreen } from './LawyerDraftsScreen';
+import { LawyerHallScreen } from './LawyerHallScreen';
+import { LawyerPricingScreen } from './LawyerPricingScreen';
+import { LawyerScheduleScreen } from './LawyerScheduleScreen';
+import { LawyerSessionsScreen } from './LawyerSessionsScreen';
+import { LawyerWorkScreen } from './LawyerWorkScreen';
 import { MeScreen } from './MeScreen';
 import { MessagesScreen } from './MessagesScreen';
 import { MyEnrollmentsScreen } from './MyEnrollmentsScreen';
@@ -26,16 +35,21 @@ import { SessionDetailScreen } from './SessionDetailScreen';
 import { SessionListScreen } from './SessionListScreen';
 import { TrainingConsentScreen } from './TrainingConsentScreen';
 
-/** tab → 屏组件映射（T4：五 tab 全落位；未登记键回退占位） */
+/** tab → 屏组件映射（user 五 tab=T4 全落位；lawyer=工作台/场次管理/接单大厅落位） */
 const TAB_SCREENS: Readonly<Record<TabKey, () => ReactElement>> = {
   home: () => <HomeScreen />,
   sessions: () => <SessionListScreen />,
   publish: () => <PublishScreen />,
   messages: () => <MessagesScreen />,
   me: () => <MeScreen />,
+  lawyerWork: () => <LawyerWorkScreen />,
+  // T5 落位（M3-W2）：公开面 CREATED 列表（#48-① 如实承载）+按 ID 直达看板
+  lawyerSessions: () => <LawyerSessionsScreen />,
+  lawyerHall: () => <LawyerHallScreen />,
+  lawyerMe: () => <MeScreen />,
 };
 
-/** 推栈 → 屏组件映射（T4：+我的报名/我的拼团/通知偏好；未登记键回退占位） */
+/** 推栈 → 屏组件映射（T4：+我的报名/我的拼团/通知偏好；T2：+时间表；未登记键回退占位） */
 const STACK_SCREENS: Readonly<
   Record<string, (p: { readonly params?: Readonly<Record<string, unknown>> }) => ReactElement>
 > = {
@@ -46,11 +60,21 @@ const STACK_SCREENS: Readonly<
   myEnrollments: () => <MyEnrollmentsScreen />,
   myGroupBuys: () => <MyGroupBuysScreen />,
   notificationPrefs: () => <NotificationPrefsScreen />,
+  lawyerSchedule: () => <LawyerScheduleScreen />,
+  // T3 落位（M3-W2）：C1 B2C 七键表单+B2 锁错误态；FREE 时段预选经 params.slot_start
+  lawyerCreateSession: (p) => <LawyerCreateSessionScreen params={p.params} />,
+  // T3 落位（M3-W2）：B3 默认价格与 1对1 配置 + C6 改价申请子面
+  lawyerPricing: () => <LawyerPricingScreen />,
+  // T5 落位（M3-W2）：D1/D3 只读聚合看板+关房/取消；params={id}（场次号，任意态详情可达）
+  lawyerBoard: (p) => <LawyerBoardScreen params={p.params} />,
+  // T6 落位（M3-W2）：E1 草稿气泡审查（GET /agent/drafts+三动作）；params={room_id}（看板跳转带入）
+  lawyerDrafts: (p) => <LawyerDraftsScreen params={p.params} />,
 };
 
 export function AppShell() {
+  const session = useSession();
   return (
-    <NavigationProvider>
+    <NavigationProvider role={session.activeRole}>
       <ShellFrame />
     </NavigationProvider>
   );
@@ -72,6 +96,8 @@ function StackBody({
 function ShellFrame() {
   const nav = useNavigation();
   const session = useSession();
+  const role = session.activeRole;
+  const tabRoutes = tabRoutesForRole(role);
   const TabBody = TAB_SCREENS[nav.tab];
   const top = nav.top;
 
@@ -115,7 +141,7 @@ function ShellFrame() {
       <View style={styles.body}>{top ? <StackBody route={top} /> : <TabBody />}</View>
 
       <View style={styles.tabbar}>
-        {TAB_ROUTES.map(({ key, title, Icon }) => {
+        {tabRoutes.map(({ key, title, Icon }) => {
           const active = !top && nav.tab === key;
           return (
             <Pressable

@@ -23,21 +23,37 @@ const API_ERROR_COPY: Readonly<Partial<Record<ErrorCode | AppClientErrorCodeValu
   E_ACCOUNT_BANNED: '账号当前不可登录，请联系客服',
   E_UNAUTHORIZED: '登录已失效，请重新登录',
   E_REFRESH_EXPIRED: '登录已失效，请重新登录',
+  // A1 switch-role（§5 403 ROLE_NOT_HELD——目标角色未授予，M3-W2 T1）
+  E_ROLE_NOT_HELD: '当前账号未持有该角色',
   // 通用
   E_NOT_FOUND: '请求的内容不存在',
   E_CONFLICT: '操作冲突，请刷新后重试',
   E_INTERNAL: '服务开小差了，请稍后重试',
-  // C3 报名支付（§5：402/403/409 三态）
+  // C3 报名支付（§5：402/403/409 三态）；E_RESTRICTED 为 C1 律师开团/C2 用户发团/C3 报名
+  // 多语境共用码（G1 限制令族 BAN_PUBLISH/BAN_JOIN）——文案取全语境中性形（评审修复环 I-2：
+  // 「停接」系律师侧词汇且漏「报名」，用户侧语境回退）
   E_REALNAME_REQUIRED: '报名前需完成实名认证',
-  E_RESTRICTED: '当前账号被限制拼单，暂不可操作（如有疑问请联系客服）',
+  E_RESTRICTED: '当前账号受平台限制令影响，暂不可开团/发起拼团/报名（如有疑问请联系客服）',
   E_FULL_OR_DEADLINE: '名额已满或已过报名截止时间，请选择其他场次',
   E_ENROLL_DUP_KEY: '已存在进行中的报名，请勿重复提交',
-  // C2 发起拼团（§5：409/400/403）
-  E_SLOT_TAKEN: '该咨询时段已被占用，请更换时间',
+  // C2 发起拼团（§5：409/400/403）；M3-W2 T3 起与 C1 律师开团共用语境——文案取双语境中性形
+  E_SLOT_TAKEN: '该咨询时段已被占用（时段占用锁生效中），请更换时间',
   E_GROUP_BUY_DUP_KEY: '同一时段已有进行中的拼团，请勿重复发起',
-  E_OUT_OF_RANGE: '拼团人数超出该律师接受的范围，请调整人数',
+  E_OUT_OF_RANGE: '超出允许的范围（人数/价格区间），请调整后重试',
   E_ACCEPT_RANGE_UNSET: '该律师尚未配置拼团接受人数范围，暂不可对其发起拼团',
   E_REACHED_LOCKED: '该拼团已成团锁定，不再接受新加入',
+  // C1 B2C 开团（§5：409/403/400/429——M3-W2 T3 扩码）
+  E_SESSION_DUP_KEY: '该时段已有进行中的开团且配置不一致（相同配置重复提交将返回原场次）',
+  E_ENROLL_DEADLINE_INVALID: '临期场次须手动设置晚于当前且早于开始的报名截止时间',
+  // B3/C6 价格配置与改价（B3 §5 409 IN_GROUP_CHANGE / C6 §5 409 PAST_24H——M3-W2 T3 扩码）
+  E_IN_GROUP_CHANGE: '有进行中的拼团或场次，默认价格修改须提交改价申请',
+  E_PAST_24H: '改价已超过 24 小时撤销窗口，不可撤销',
+  // C4 律师响应（§5：409 三态 + 403 角色门——M3-W2 T4 扩码）。三 409 均为状态不符
+  // （已被响应/超窗自动拒绝/未成团）→ 文案统一指向「刷新列表」收口
+  E_NOT_REACHED: '该拼团未进入待确认状态（未成团或已被处理），请刷新列表',
+  E_NOT_PENDING: '该拼团不在待确认状态（已被响应或已超窗），请刷新列表',
+  E_NOT_CONVERTIBLE: '该拼团当前状态不可认领转化（仅拼团中/已成团/待确认可转）',
+  E_ROLE_FORBIDDEN: '需以律师身份操作，请先在「我的」页切换角色',
   // A2 实名/授权
   E_INVALID_ID: '身份证号或姓名格式有误，请检查后重试',
   E_VERSION_MISMATCH: '授权协议版本已更新，请刷新后重试',

@@ -11,7 +11,14 @@
 // 密钥口径：列加密/盲索引经 core dist IdentityCryptoService 运行时实例（见 lib.mjs 头注）。
 import { createHash } from 'node:crypto';
 import process from 'node:process';
-import { byteaLiteral, coreIdentityCrypto, psql, psqlFirst, sqlString } from './lib.mjs';
+import {
+  byteaLiteral,
+  coreIdentityCrypto,
+  psql,
+  psqlFirst,
+  returningRow,
+  sqlString,
+} from './lib.mjs';
 
 const LAWYER_PHONE = '13900000001'; // dev 夹具律师号（大陆 11 位；明文仅存于本夹具与请求入参）
 const LAWYER_LICENSE = 'LJR-FIXTURE-LICENSE-0001'; // 虚构执业证号（列加密+盲索引落库）
@@ -89,13 +96,15 @@ psql(
 
 // ---- B3 价格配置（M3-W1 T3 增量：发团流 resolvePublishPlan 依赖——session_total 模式 +
 //      accept 范围 2..6 + 1对1 三通道区间合法；INSERT-only 守卫无版本行才插=幂等） ----
-const pricingInserted = psqlFirst(
-  `INSERT INTO pricing.price_versions
-     (lawyer_id, version, session_total, accept_min, accept_max, one_on_one_prices)
-   SELECT ${lawyerId}, 1, 600.00, 2, 6,
-          '{"text":{"per_round":"80.00"},"voice":{"per_15min":"100.00"},"video":{"per_15min":"150.00"}}'::jsonb
-   WHERE NOT EXISTS (SELECT 1 FROM pricing.price_versions WHERE lawyer_id = ${lawyerId})
-   RETURNING id;`,
+const pricingInserted = returningRow(
+  psqlFirst(
+    `INSERT INTO pricing.price_versions
+       (lawyer_id, version, session_total, accept_min, accept_max, one_on_one_prices)
+     SELECT ${lawyerId}, 1, 600.00, 2, 6,
+            '{"text":{"per_round":"80.00"},"voice":{"per_15min":"100.00"},"video":{"per_15min":"150.00"}}'::jsonb
+     WHERE NOT EXISTS (SELECT 1 FROM pricing.price_versions WHERE lawyer_id = ${lawyerId})
+     RETURNING id;`,
+  ),
 );
 const pricing = pricingInserted === '' ? 'exists(kept)' : 'v1(600.00, 2..6)';
 

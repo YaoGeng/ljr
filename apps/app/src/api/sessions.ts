@@ -82,8 +82,9 @@ function isIsoString(v: unknown): v is string {
   return typeof v === 'string' && !Number.isNaN(Date.parse(v));
 }
 
-/** 行形状校验（宽进严出：未知枚举值放行原样——展示层映射表负责回退显示原码） */
-function parseSessionView(raw: unknown): SessionView {
+/** 行形状校验（宽进严出：未知枚举值放行原样——展示层映射表负责回退显示原码）；
+ *  M3-W2 T3 起导出——lawyer-sessions.ts（POST /sessions 出参 {session} 解包）复用同一解析 */
+export function parseSessionView(raw: unknown): SessionView {
   if (typeof raw !== 'object' || raw === null) throw badShape('行非对象');
   const r = raw as Record<string, unknown>;
   if (!isNonNegInt(r['id']) || r['id'] === 0) throw badShape('id 非正整数');

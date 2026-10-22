@@ -5,6 +5,7 @@
 //   0. 预检：PG 5435 存活、core/shared dist 已构建、目标端口未被占（防连到旧 core 造成假绿）
 //   1. 夹具造数（不依赖 core：直插 PG——先种后起服可避开 core 列表 30s 进程内缓存回旧数据）：
 //      seed-question-tree → seed-sessions（解析 stdout 拿报名中场次 id）→
+//      seed-room（房间 OPEN 底座：J11/J12）→ seed-groupbuy（C2B 响应链：J10——M3-W2 T7 增量）→
 //      mint+seed-notifications 幂等演示（J1 手机号连跑两次：inserted=2 → 0）
 //   2. 生成 dev 支付模拟凭据（secret=node:crypto 随机，零字面量；MCH_ID=dev 通道标识非凭据）
 //   3. 起 core（env 同注 LJR_PAYMENT_WECHAT_MCH_ID+SECRET 双变量——缺一回落 mock 值，T3 实证）
@@ -101,6 +102,19 @@ const createdSession = seed.sessions.find((s) => s.status === 'CREATED');
 if (!createdSession) die('seed-sessions 未产出 CREATED 场次');
 const SESSION_ID = createdSession.id;
 
+// M3-W2 T7 增量：seed-room（房间 OPEN 底座——J11 看板/J12 气泡链）+ seed-groupbuy
+// （C2B 响应链——J10 confirm 消费）。两夹具均 id 稳定式幂等（重跑复位规范态，E2E 坐标不漂移）。
+const roomOut = JSON.parse(runFixture('seed-room.mjs', []));
+log(
+  'fixture',
+  `seed-room → session=${roomOut.session_id} room=${roomOut.room_id} conversation=${roomOut.conversation_id} verify=${roomOut.verify}`,
+);
+const gbOut = JSON.parse(runFixture('seed-groupbuy.mjs', []));
+log('fixture', `seed-groupbuy → pending_gb=${gbOut.pending_gb_id} verify=${gbOut.verify}`);
+if (!roomOut.session_id || !roomOut.room_id || !roomOut.conversation_id || !gbOut.pending_gb_id) {
+  die('seed-room/seed-groupbuy 坐标缺失（stdout 形状异常）');
+}
+
 // 幂等演示（J1 手机号）：通知首种=2，重跑=0（夹具可重复执行的直接证据，进运行输出留档）
 const J1_PHONE = '13800003001';
 runFixture('mint-login.mjs', [J1_PHONE, '111111', '--realname']);
@@ -125,6 +139,47 @@ const sp = {};
 for (const p of slotParts) if (p.type !== 'literal') sp[p.type] = p.value;
 const SLOT_DATE = `${sp.year}-${sp.month}-${sp.day}`;
 const SLOT_TIME = `${sp.hour}:${sp.minute}`;
+
+// J9 开团时段（B2 律师+slot 占用锁 → 逐跑唯一）：未来 30-300 天随机日 + 整点（8-21 时），
+// 时钟秒粒度取日偏移避免同分钟双跑同 slot；硬避开夹具固定 slot（seed-sessions 三场 +
+// seed-room 12-26 + seed-groupbuy 律师 1 三团——同律师同时段 B2 锁 409）。
+const FORBIDDEN_LAWYER_SLOTS = new Set([
+  '2026-12-18 20:00', // seed-sessions CREATED
+  '2026-11-20 19:00', // seed-sessions FULL（19:30 半点——整点生成天然避开，防御性保留日期位）
+  '2026-10-30 20:00', // seed-sessions IN_SERVICE
+  '2026-12-26 20:00', // seed-room（房间 OPEN 底座）
+  '2026-12-28 19:00', // seed-groupbuy PENDING_LAWYER
+  '2027-01-08 19:00', // seed-groupbuy PUBLISHED（律师 1）
+  '2027-01-09 19:00', // seed-groupbuy 第二律师（不同律师不占锁，防御性保留）
+]);
+function lawyerSlotCandidate(nowMs) {
+  // 时钟秒粒度（双跑必异）+ randomBytes 抖动（防双跑恰逢周期对齐）→ 逐跑唯一 slot；
+  // 日期取上海日界，时刻=8-21 整点任选（SLOT_DATE+SLOT_TIME 组合即上海墙钟语义）
+  const dayOffset = 30 + ((Math.floor(nowMs / 1000) + randomBytes(2).readUInt16BE(0)) % 271);
+  const hour = 8 + ((Math.floor(nowMs / 60000) + randomBytes(1)[0]) % 14);
+  const d = new Date(nowMs + dayOffset * 24 * 3600 * 1000);
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+  const q = {};
+  for (const p of parts) if (p.type !== 'literal') q[p.type] = p.value;
+  return { date: `${q.year}-${q.month}-${q.day}`, time: `${String(hour).padStart(2, '0')}:00` };
+}
+let lawyerSlot = lawyerSlotCandidate(Date.now());
+let lawyerSlotGuard = 0;
+while (
+  FORBIDDEN_LAWYER_SLOTS.has(`${lawyerSlot.date} ${lawyerSlot.time}`) &&
+  lawyerSlotGuard < 271
+) {
+  lawyerSlotGuard += 1;
+  lawyerSlot = lawyerSlotCandidate(Date.now() + lawyerSlotGuard * 86_400_000);
+}
+if (FORBIDDEN_LAWYER_SLOTS.has(`${lawyerSlot.date} ${lawyerSlot.time}`)) {
+  die('J9 开团时段生成失败（禁用 slot 集无法避开——不可达防御位）');
+}
 
 // ---- 2. dev 支付模拟凭据（随机 secret，零字面量；不写任何文件） ----
 const PAY_SECRET = randomBytes(32).toString('hex');
@@ -234,6 +289,16 @@ const pw = spawn('npx', ['playwright', 'test', '--config', 'e2e/playwright.confi
     E2E_PHONE_PUBLISHER: PUBLISHER_PHONE,
     E2E_SLOT_DATE: SLOT_DATE,
     E2E_SLOT_TIME: SLOT_TIME,
+    // M3-W2 T7 律师端旅程坐标（夹具 stdout → env 注入，不落文件；ws 直连 core 不经反代）
+    E2E_LAWYER_PHONE: '13900000001',
+    E2E_LAWYER_USER_ID: String(roomOut.lawyer_user_id),
+    E2E_MEMBER_PHONE: '13900000101',
+    E2E_ROOM_SESSION_ID: String(roomOut.session_id),
+    E2E_ROOM_ID: String(roomOut.room_id),
+    E2E_CONVERSATION_ID: String(roomOut.conversation_id),
+    E2E_CORE_WS_URL: `ws://127.0.0.1:${CORE_PORT}/ws`,
+    E2E_LAWYER_SLOT_DATE: lawyerSlot.date,
+    E2E_LAWYER_SLOT_TIME: lawyerSlot.time,
   },
   stdio: ['ignore', 'inherit', 'inherit'],
   shell: true,

@@ -75,3 +75,9 @@ export function formatMonthDayTime(iso: string): string {
   const p = shanghaiParts(iso);
   return `${p.month}-${p.day} ${p.hour}:${p.minute}`;
 }
+
+/** → '20:32'（纯时分：时间表周视图时段标/行内时刻位——M3-W2 T2） */
+export function formatTime(iso: string): string {
+  const p = shanghaiParts(iso);
+  return `${p.hour}:${p.minute}`;
+}

@@ -113,7 +113,9 @@ function isIsoString(v: unknown): v is string {
   return typeof v === 'string' && !Number.isNaN(Date.parse(v));
 }
 
-function parseGroupBuy(raw: unknown): GroupBuyView {
+/** GroupBuyView 形状校验+解析（M3-W2 T4 export 化：律师面 lawyer-group-buys.ts 复用单源——
+ *  T3 parseSessionView export 先例；大厅行 joined=number 真值（公开列表恒 null 桩）均收） */
+export function parseGroupBuy(raw: unknown): GroupBuyView {
   if (typeof raw !== 'object' || raw === null) throw badShape('group_buy 非对象');
   const r = raw as Record<string, unknown>;
   if (!isPosInt(r['id'])) throw badShape('group_buy.id 非正整数');

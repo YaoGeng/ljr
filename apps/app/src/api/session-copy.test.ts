@@ -3,7 +3,9 @@ import type { SessionView } from './sessions';
 import {
   SESSION_STATUS_COPY,
   SESSION_STATUS_FILTERS,
+  SESSION_TERMINAL_STATUSES,
   filterSessionsByStatus,
+  isSessionTerminal,
   priceModeCopy,
   roomModeCopy,
   sessionClosedNote,
@@ -74,6 +76,17 @@ describe('场次状态文案映射表（单源，禁散写三元）', () => {
     expect(roomModeCopy('wechat')).toBe('wechat');
     expect(specialtyCopy('labor_arbitration')).toBe('劳动仲裁');
     expect(specialtyCopy('divorce')).toBe('divorce');
+  });
+});
+
+describe('终态集（core session.machine 实文镜像——M3-W2 T5 看板动作门控 UX 前置）', () => {
+  it('终态四态=FAILED/CANCELLED/FINISHED/SETTLED（HOLD 非终态）', () => {
+    expect(SESSION_TERMINAL_STATUSES).toEqual(['FAILED', 'CANCELLED', 'FINISHED', 'SETTLED']);
+    expect(isSessionTerminal('FAILED')).toBe(true);
+    expect(isSessionTerminal('SETTLED')).toBe(true);
+    expect(isSessionTerminal('HOLD')).toBe(false);
+    expect(isSessionTerminal('OPEN')).toBe(false);
+    expect(isSessionTerminal('SOMETHING_NEW')).toBe(false);
   });
 });
 

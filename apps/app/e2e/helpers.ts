@@ -33,8 +33,30 @@ export const PUBLISHER_PHONE = process.env.E2E_PHONE_PUBLISHER ?? '';
 export const SLOT_DATE = process.env.E2E_SLOT_DATE ?? '';
 export const SLOT_TIME = process.env.E2E_SLOT_TIME ?? '';
 
+// ---- M3-W2 T7 律师端旅程坐标（run-e2e.mjs 注入：seed-room/seed-groupbuy 夹具 stdout） ----
+
+/** 夹具律师号（seed-sessions/seed-room/seed-groupbuy 同号幂等；登录默认 user 态→Me 切换律师） */
+export const LAWYER_PHONE = process.env.E2E_LAWYER_PHONE ?? '13900000001';
+/** 律师 user id（J9/J10 API 锚 lawyer 过滤用） */
+export const LAWYER_USER_ID = Number(process.env.E2E_LAWYER_USER_ID ?? 0);
+/** seed-room 在场用户号（J12 用户提问腿：mint → /auth/verify 换 user token → ws 三帧） */
+export const MEMBER_PHONE = process.env.E2E_MEMBER_PHONE ?? '13900000101';
+/** seed-room 场次/房间/会话坐标（J11 看板直达、J12 气泡链） */
+export const ROOM_SESSION_ID = Number(process.env.E2E_ROOM_SESSION_ID ?? 0);
+export const ROOM_ID = Number(process.env.E2E_ROOM_ID ?? 0);
+export const CONVERSATION_ID = Number(process.env.E2E_CONVERSATION_ID ?? 0);
+/** core WSS 直连坐标（serve-e2e 只代理 HTTP 无 /ws upgrade——用户腿不经反代，W2-3/W2-6） */
+export const CORE_WS_URL = process.env.E2E_CORE_WS_URL ?? 'ws://127.0.0.1:3000/ws';
+/** J9 开团随机未来时段（编排器生成：30-300 天随机日+整点，避开夹具固定 slot——B2 锁纪律） */
+export const LAWYER_SLOT_DATE = process.env.E2E_LAWYER_SLOT_DATE ?? '';
+export const LAWYER_SLOT_TIME = process.env.E2E_LAWYER_SLOT_TIME ?? '';
+
 /** 种子场次固定 slot_start（seed-sessions.mjs SESSIONS[0].slotStart，报名中 CREATED 位） */
 const SEED_CREATED_SLOT_START = '2026-12-18T20:00:00+08:00';
+/** seed-room 场次固定 slot_start（seed-room.mjs SLOT_START——房间 OPEN 数据底座，J11/J12 锚） */
+const ROOM_SESSION_SLOT_START = '2026-12-26T20:00:00+08:00';
+/** seed-groupbuy PENDING_LAWYER 团固定 slot_start（seed-groupbuy.mjs PENDING_SLOT——J10 锚） */
+const PENDING_GB_SLOT_START = '2026-12-28T19:00:00+08:00';
 
 /** utils/date.ts shanghaiParts 同款（zh-CN 短周 + h23 + Asia/Shanghai） */
 function shanghaiParts(iso: string): Record<string, string> {
@@ -55,14 +77,23 @@ function shanghaiParts(iso: string): Record<string, string> {
   return parts;
 }
 
-/** 种子场次开场文案（formatDateTime 同形：'12-18 周五 20:00'）——卡片主标题定位锚 */
-export const SEED_SLOT_TEXT = (() => {
-  const p = shanghaiParts(SEED_CREATED_SLOT_START);
+/** 开场文案（utils/date formatDateTime 同形：'12-18 周五 20:00'）——卡片主标题定位锚 */
+export function shanghaiSlotText(iso: string): string {
+  const p = shanghaiParts(iso);
   return `${p['month']}-${p['day']} ${p['weekday'] ?? ''} ${p['hour']}:${p['minute']}`.replace(
     '  ',
     ' ',
   );
-})();
+}
+
+/** 种子场次开场文案（seed-sessions SESSIONS[0]——J2/J3/J6 卡片锚） */
+export const SEED_SLOT_TEXT = shanghaiSlotText(SEED_CREATED_SLOT_START);
+/** seed-room 场次开场文案（J11 看板详情头锚） */
+export const ROOM_SLOT_TEXT = shanghaiSlotText(ROOM_SESSION_SLOT_START);
+/** seed-groupbuy 待确认团开场文案（J10 待响应卡锚） */
+export const PENDING_GB_SLOT_TEXT = shanghaiSlotText(PENDING_GB_SLOT_START);
+/** 夹具固定 slot ISO（API 锚比对用；core 出参 slot_start=UTC ISO——spec 侧经 Date.parse 归一） */
+export const PENDING_GB_SLOT_ISO = PENDING_GB_SLOT_START;
 
 /** 夹具运行结果（mint-login.mjs stdout JSON） */
 export interface MintResult {
@@ -112,6 +143,72 @@ export async function expectTabShell(page: Page, phone: string): Promise<void> {
   }
   const masked = `${phone.slice(0, 3)}****${phone.slice(7)}`;
   await expect(page.getByText(masked)).toBeVisible();
+}
+
+/** 断言律师四 tab 壳可见（switch-role 成功的用户可见态锚；用户专属 tab 不在场） */
+export async function expectLawyerTabShell(page: Page): Promise<void> {
+  for (const title of ['工作台', '场次管理', '接单大厅', '我的']) {
+    await expect(page.getByRole('tab', { name: title })).toBeVisible();
+  }
+  await expect(page.getByRole('tab', { name: '发团' })).toHaveCount(0);
+}
+
+/**
+ * 律师登录旅程（M3-W2 T7，W2-1 真链）：夹具取码 → UI 登录（默认 user 态）→ Me 页
+ * 「切换为律师」→ POST /auth/switch-role 换签 → 律师四 tab 壳。
+ * 返回 mint 结果（user_id 供 API 锚）。
+ */
+export async function loginLawyerViaUi(page: Page, code: string): Promise<MintResult> {
+  const mint = mintLogin(LAWYER_PHONE, code);
+  await loginViaUi(page, LAWYER_PHONE, mint.code);
+  await page.getByRole('tab', { name: '我的' }).click();
+  await expect(page.getByRole('button', { name: '切换为律师' })).toBeVisible();
+  await page.getByRole('button', { name: '切换为律师' }).click();
+  await expectLawyerTabShell(page);
+  return mint;
+}
+
+/** ws 用户腿结果（ws-user.mjs stdout JSON 形状） */
+export interface UserLegResult {
+  readonly ok: boolean;
+  readonly user_id?: number;
+  readonly role?: string;
+  readonly conversation_id?: number;
+  readonly backfill_count?: number;
+  readonly seq?: number;
+  readonly msg_client_id?: string;
+  readonly deduplicated?: boolean;
+  readonly error?: string;
+}
+
+/**
+ * 用户提问腿（W2-6 真链全贯）：Node ws 客户端直连 core /ws——auth→join conversation→
+ * send 三帧（CLI 形态同夹具纪律；回帧断言+超时+teardown 在 lib/ws-user.mjs 内承载）。
+ */
+export function runWsUserLeg(token: string, message: string, clientId: string): UserLegResult {
+  const r = spawnSync(
+    process.execPath,
+    [
+      path.join(E2E_DIR, 'lib', 'ws-user.mjs'),
+      '--ws',
+      CORE_WS_URL,
+      '--token',
+      token,
+      '--conversation',
+      String(CONVERSATION_ID),
+      '--message',
+      message,
+      '--client-id',
+      clientId,
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  const out = (r.stdout ?? '').trim().split(/\r?\n/).pop() ?? '{}';
+  const parsed = JSON.parse(out) as UserLegResult;
+  if (r.status !== 0 || parsed.ok !== true) {
+    throw new Error(`ws 用户腿失败（exit=${String(r.status)}）：${out.slice(0, 300)}`);
+  }
+  return parsed;
 }
 
 /** API 锚点：夹具码换 token（经同源反代 → 真实 core） */

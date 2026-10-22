@@ -5,6 +5,7 @@ import {
   enrollPayStatusCopy,
   enrollRefTypeCopy,
   groupBuyStatusCopy,
+  lawyerGroupBuyStatusCopy,
   payOrderStatusCopy,
   realnameStatusCopy,
   refundStatusCopy,
@@ -26,6 +27,30 @@ describe('交易/身份状态文案映射表（单一事实源，≥8 用例）'
   it('拼团未知状态回退原码（fail-visible 不吞新枚举）', () => {
     expect(groupBuyStatusCopy('SOMETHING_NEW')).toEqual({
       label: 'SOMETHING_NEW',
+      tone: 'finished',
+    });
+  });
+
+  it('M3-W2 T4 律师视角拼团八态（接单大厅/认领转化语境）+ 未知回退', () => {
+    expect(lawyerGroupBuyStatusCopy('PENDING_LAWYER')).toEqual({
+      label: '待你确认（12h 窗）',
+      tone: 'live',
+    });
+    expect(lawyerGroupBuyStatusCopy('PUBLISHED')).toEqual({
+      label: '拼团中 · 可认领转化',
+      tone: 'open',
+    });
+    expect(lawyerGroupBuyStatusCopy('REACHED').label).toBe('已成团 · 待确认');
+    expect(lawyerGroupBuyStatusCopy('CONFIRMED').label).toBe('已接单 · 履约场次已生成');
+    expect(lawyerGroupBuyStatusCopy('CONVERTED').label).toBe('已认领 · 转为 B2C 场次');
+    expect(lawyerGroupBuyStatusCopy('REJECTED')).toEqual({
+      label: '已婉拒 · 用户退款',
+      tone: 'failed',
+    });
+    expect(lawyerGroupBuyStatusCopy('EXPIRED').tone).toBe('failed');
+    expect(lawyerGroupBuyStatusCopy('REFUNDED').tone).toBe('finished');
+    expect(lawyerGroupBuyStatusCopy('FUTURE_STATE')).toEqual({
+      label: 'FUTURE_STATE',
       tone: 'finished',
     });
   });

@@ -105,9 +105,11 @@ describe('C2 发起拼团 API（POST /group-buys 载荷/形状/错误码）', ()
       question_tags: [],
     };
     for (const [code, expected] of [
-      [ErrorCode.SlotTaken, '该咨询时段已被占用，请更换时间'],
+      // M3-W2 T3：E_SLOT_TAKEN/E_OUT_OF_RANGE 为 C2 用户发团与 C1 律师开团/B3 价格共用码
+      // ——文案改双语境中性形（error-messages 表更新，此处同步钉新文案）
+      [ErrorCode.SlotTaken, '该咨询时段已被占用（时段占用锁生效中），请更换时间'],
       [ErrorCode.GroupBuyDuplicateKey, '同一时段已有进行中的拼团，请勿重复发起'],
-      [ErrorCode.PriceOutOfRange, '拼团人数超出该律师接受的范围，请调整人数'],
+      [ErrorCode.PriceOutOfRange, '超出允许的范围（人数/价格区间），请调整后重试'],
       [ErrorCode.AcceptRangeUnset, '该律师尚未配置拼团接受人数范围，暂不可对其发起拼团'],
     ] as const) {
       stubFetch([
