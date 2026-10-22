@@ -581,6 +581,27 @@ DB.groups=[
   qnote:'去年 3 月入职，一直没签劳动合同，工资微信转账发放，想问双倍工资差额怎么算、能主张多久。'},
  {id:'G-108',by:'匿名用户',lawyer:'L2',topic:'加班费计算与举证',tags:['加班费','举证','劳动仲裁'],start:'10-20 周二 19:30',full:'2026-10-20 19:30',dur:60,range:[3,8],pick:[4,6],min:4,share:225.00,joined:4,deadline:'10-19 19:30',status:'wait',lawyerWait:true},
  {id:'G-109',by:'赵先生',lawyer:'L3',topic:'调岗降薪应对',tags:['调岗降薪','协商变更'],start:'10-14 周三 20:00',full:'2026-10-14 20:00',dur:60,range:[3,8],pick:[3,5],min:3,share:199.67,joined:1,deadline:'10-13 20:00',status:'failed'},
+ /* 批量诉讼拼团（同司团，2026-10-22 产品扩展：同类型 × 同公司） */
+ {id:'G-110',by:'柯小姐',lawyer:'L1',kind:'batch',company:'北京某科技有限公司',topic:'拖欠工资 · 同司批量仲裁',tags:['拖欠工资','经济补偿 N+1'],start:'10-22 周四 20:00',full:'2026-10-22 20:00',dur:90,range:[4,15],pick:[10,15],min:10,share:69.90,joined:6,deadline:'10-21 20:00',status:'pending'},
+];
+/* 快速1对1解答（2026-10-22 产品扩展：律师抢单报价 · 价格不公布 · ≤30min · 双边评分） */
+DB.quickOrders=[
+ {id:'Q-2000',by:'周女士',mine:true,tags:['加班费','仲裁时效'],qnote:'想快速确认加班费的仲裁时效怎么算，需要保留哪些证据。',mode:'text',contact:false,status:'done',award:'L2',amount:150,at:'10-12',rated:true},
+ {id:'Q-2001',by:'周女士',mine:true,tags:['未签劳动合同','双倍工资'],qnote:'去年 3 月入职一直没签劳动合同，工资微信转账发放。想 30 分钟内问清双倍工资差额能主张多久、需要准备什么。',mode:'text',contact:true,status:'collect',at:'10-13',
+  bids:[{lawyer:'L1',amount:120,note:'专注劳动争议 12 年，直接给计算口径与证据清单'},{lawyer:'L3',amount:80,note:'首次咨询友好价，把流程讲成人话'}]},
+];
+/* 律师非诉小单货架（2026-10-22 产品扩展：律师自主定价，价格均为示例虚构） */
+DB.serviceItems={
+ L1:[{id:'SI-1',name:'单独咨询',contents:['咨询'],price:300,delivery:'CHAT',active:true,version:2},
+     {id:'SI-2',name:'咨询 + 诉讼文书',contents:['咨询','诉讼文书'],price:500,delivery:'CHAT_FILE',active:true,version:1},
+     {id:'SI-3',name:'咨询 + 诉讼文书 + 立案指导',contents:['咨询','诉讼文书','立案指导'],price:1500,delivery:'CHAT_FILE',active:true,version:1},
+     {id:'SI-4',name:'案件全程陪跑',contents:['咨询','诉讼文书','证据收集指导','指导立案','程序指导','庭前培训'],price:2500,delivery:'CHAT_FILE',active:true,version:1}],
+ L3:[{id:'SI-5',name:'仲裁文书体检',contents:['诉讼文书'],price:199,delivery:'CHAT_FILE',active:true,version:1}],
+};
+/* 用户的服务单（非诉小单购买记录） */
+DB.myServiceOrders=[
+ {id:'SV-300',lawyer:'L3',name:'仲裁文书体检',price:199,status:'delivered',at:'10-12',snapshot:'诉讼文书 · 会话+文件交付'},
+ {id:'SV-299',lawyer:'L1',name:'单独咨询',price:300,status:'finished',rated:true,at:'10-09',snapshot:'咨询 · 会话交付'},
 ];
 /* 我的报名（用户端） */
 DB.myEnrolls=[
@@ -768,7 +789,7 @@ function groupCard(g,opt={}){
     :g.status==='wait'?`<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();go('u-group',{id:'${g.id}'})">等待确认</button>`
     :`<button class="btn btn-o btn-sm" onclick="event.stopPropagation();go('u-group',{id:'${g.id}'})">查看详情</button>`;
   return `<div class="card pad hov" onclick="go('u-group',{id:'${g.id}'})">
-    <div class="spread"><div class="row">${av(g.by)}<div><div class="row" style="gap:8px"><b style="font-size:13.5px">${g.by}</b>${mine?'<span class="tag acc">我发起的</span>':''}<span class="tag line">C2B 拼团</span></div>
+    <div class="spread"><div class="row">${av(g.by)}<div><div class="row" style="gap:8px"><b style="font-size:13.5px">${g.by}</b>${mine?'<span class="tag acc">我发起的</span>':''}${g.kind==='batch'?`<span class="tag acc">${ic('users',11)} 同司团 · ${esc(g.company||'')}</span>`:'<span class="tag line">C2B 拼团</span>'}</div>
       <span class="tiny muted">指定律师：${lw.name}${lw.tk?'':` · 执业 ${lw.years} 年 · 信用 ${lw.credit} · 成团率 ${lw.grp}`}</span></div></div>${st}</div>
     <div class="h3 mt8">${g.topic}</div>
     <div class="row wrap mt4" style="gap:4px">${g.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>
@@ -867,6 +888,11 @@ VIEWS['u-home']={end:'user',tab:'u-home',render(){
       <div class="tiny muted">「公司拖欠工资三个月，没签合同，怎么办？」</div></div></div>
     <div class="row mt12 wrap" style="gap:8px">${['拖欠工资','违法解除','加班费','未签合同'].map(t=>`<span class="chip" style="padding:4px 12px" onclick="event.stopPropagation();aiAsk('${t}')">${t}</span>`).join('')}</div>
   </div>
+  <div class="grid3 mt8" style="gap:8px">
+    <div class="card pad tc" style="cursor:pointer;padding:12px 6px" onclick="go('u-quick')"><div class="row" style="justify-content:center;color:var(--primary)">${ic('spark',16)}</div><div class="tiny mt4" style="line-height:1.5">快速1对1<br>≤30 分钟 · 律师报价</div></div>
+    <div class="card pad tc" style="cursor:pointer;padding:12px 6px" onclick="go('u-lawyers')"><div class="row" style="justify-content:center;color:var(--primary)">${ic('search',16)}</div><div class="tiny mt4" style="line-height:1.5">找律师<br>非诉小单货架</div></div>
+    <div class="card pad tc" style="cursor:pointer;padding:12px 6px" onclick="go('u-create',{kind:'batch'})"><div class="row" style="justify-content:center;color:var(--primary)">${ic('scale',16)}</div><div class="tiny mt4" style="line-height:1.5">批量诉讼拼团<br>同类型 · 同公司</div></div>
+  </div>
   ${ens.length?`<div class="mt16 mb8 row spread"><span class="h3">我的报名 · 即将开播</span><button class="btn btn-xs btn-ghost" onclick="go('u-orders')">全部 ›</button></div>
   <div class="card acc pad" onclick="go('u-session',{id:'${live.id}'})" style="cursor:pointer">
     <div class="spread"><div class="row"><span class="pill pill-g">已成团 · 周五开播</span><b class="small ellip" style="max-width:210px">${live.title}</b></div></div>
@@ -898,7 +924,17 @@ VIEWS['u-find']={end:'user',render(){
     ${SPECS.map(s=>`<span class="chip ${state.user.spec===s?'on':''}" onclick="specPick('${s}')">${s}</span>`).join('')}
     <span class="tag gray">仅展示审核通过律师</span>
   </div>
-  <div class="card pad hov mt12" style="border-style:dashed;border-width:1.5px;border-color:rgba(62,92,58,.4)" onclick="go('u-create')">
+  <div class="grid2 mt12" style="gap:8px">
+    <div class="card pad hov" style="cursor:pointer" onclick="go('u-quick')">
+      <div class="row"><span style="width:34px;height:34px;border-radius:11px;background:rgba(107,142,90,.14);display:inline-flex;align-items:center;justify-content:center;color:var(--primary);flex-shrink:0">${ic('spark',17)}</span>
+        <div class="grow" style="min-width:0"><b class="small">快速1对1解答</b><div class="tiny muted">≤30 分钟 · 律师抢单报价（价格不公布）</div></div></div>
+    </div>
+    <div class="card pad hov" style="cursor:pointer" onclick="go('u-lawyers')">
+      <div class="row"><span style="width:34px;height:34px;border-radius:11px;background:rgba(107,142,90,.14);display:inline-flex;align-items:center;justify-content:center;color:var(--primary);flex-shrink:0">${ic('search',17)}</span>
+        <div class="grow" style="min-width:0"><b class="small">找律师 · 非诉小单</b><div class="tiny muted">目录筛选 · 服务货架直接购买</div></div></div>
+    </div>
+  </div>
+  <div class="card pad hov mt8" style="border-style:dashed;border-width:1.5px;border-color:rgba(62,92,58,.4)" onclick="go('u-create')">
     <div class="row"><span style="width:38px;height:38px;border-radius:12px;background:rgba(194,94,94,.12);display:inline-flex;align-items:center;justify-content:center;color:var(--accent-dk);flex-shrink:0">${ic('plus',18)}</span>
       <div class="grow" style="min-width:0"><b class="small">发起拼团，让律师来接</b><div class="tiny muted">选律师 → 锁时段 → 定人数与分摊 · 同城同垂直（${state.user.city} · ${state.user.spec}）</div></div>
       <button class="btn btn-p btn-sm" style="flex-shrink:0">去发起</button></div>
@@ -955,9 +991,21 @@ VIEWS['u-lawyer']={end:'user',render(opt={}){
     </div>
     <div class="row mt8" style="gap:8px">${modeTags(lw.modes)}<span class="tag gray">1对1 起 ¥${lw.o2o.ask.text}/次</span></div>
   </div>
+  ${(DB.serviceItems[lw.id]||[]).some(i=>i.active)?`<div class="mt12 mb8 h3">非诉小单 · 服务货架 <span class="tiny muted" style="font-weight:400">· 固定价直接购买（快照）</span></div>
+  <div class="fcol" style="gap:8px">${DB.serviceItems[lw.id].filter(i=>i.active).map(i=>`
+    <div class="card pad"><div class="spread"><div class="grow" style="min-width:0"><b class="small">${i.name}</b>
+      <div class="row mt4 wrap" style="gap:4px">${i.contents.map(c=>`<span class="tag gray">${c}</span>`).join('')}</div>
+      <div class="tiny muted mt4">${i.delivery==='CHAT_FILE'?'平台内会话 + 文件交付':'平台内会话交付'} · 律师接单前可全额退 · 超时未接单自动退款</div></div>
+      <div style="text-align:right;flex-shrink:0"><div class="money" style="font-size:18px"><span class="rmb">¥</span>${i.price}</div>
+      <button class="btn btn-p btn-xs mt4" onclick="buyService('${lw.id}','${i.id}')">购买</button></div></div></div>`).join('')}
+  </div>
+  <div class="tiny muted mt8">货架内容由律师自主配置（B4），价格为示例虚构；购买生成服务单（C8），交付与确认全平台内闭环。</div>`:''}
   <div class="mt12 mb8 h3">正在开团 / 可报名场次</div>
   ${ss.map(s=>sessCard(s)).join('<div class="mt8"></div>')||'<div class="notice plain">暂无进行中场次，可向 TA 发起拼团</div>'}
-  <button class="btn btn-p mt16" style="width:100%" onclick="go('u-create',{lawyer:'${lw.id}'})">${ic('plus',15)} 向 ${lw.name} 发起拼团</button>
+  <div class="grid2 mt16" style="gap:8px">
+    <button class="btn btn-p" onclick="go('u-create',{lawyer:'${lw.id}'})">${ic('plus',15)} 发起拼团</button>
+    <button class="btn btn-o" onclick="go('u-quick')">${ic('spark',15)} 发起快速1对1</button>
+  </div>
   <div class="mt16 mb8 h3">用户评价（节选 · 匿名）</div>
   <div class="card pad"><div class="spread"><b class="small">专业度拆得非常细</b><span class="tiny muted">10-09 场次</span></div>
     <div class="tiny muted mt4">「现场帮我列了证据清单，仲裁请求写法直接能抄作业。」</div>
@@ -1101,9 +1149,10 @@ VIEWS['u-group']={end:'user',render(opt={}){
   return `
   <div class="navbar"><span class="back" onclick="go('u-find')">${ic('left',16)}</span><span class="nt">拼团详情</span><span style="width:34px"></span></div>
   <div class="card pad">
-    <div class="spread"><span class="tag line">C2B · 用户发起</span>${g.status==='pending'?'<span class="pill pill-g">拼团中</span>':g.status==='wait'?'<span class="pill pill-r"><span class="dt"></span>待律师确认</span>':'<span class="pill pill-n">已流标</span>'}</div>
+    <div class="spread">${g.kind==='batch'?`<span class="tag acc">${ic('users',11)} 同司团 · 批量诉讼</span>`:'<span class="tag line">C2B · 用户发起</span>'}${g.status==='pending'?'<span class="pill pill-g">拼团中</span>':g.status==='wait'?'<span class="pill pill-r"><span class="dt"></span>待律师确认</span>':'<span class="pill pill-n">已流标</span>'}</div>
     <div class="h2 mt8">${g.topic}</div>
     <div class="row wrap mt8" style="gap:4px">${g.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>
+    ${g.kind==='batch'?`<div class="notice mt12"><span>${ic('scale',15)}</span><span><b>用人单位锚定：${esc(g.company||'—')}</b><br>加入者须声明同司并通过规范化匹配（首尾空格/全半角括号自动归一）；履约前律师核验劳动关系材料；成员昵称脱敏展示（${esc(g.by)[0]}**）。</span></div>`:''}
     <div class="row mt12" style="cursor:pointer" onclick="go('u-lawyer',{id:'${lw.id}'})">${av(lw.name)}<div class="grow"><b class="small">指定律师：${lw.name}</b><div class="tiny muted">12h 内确认或拒绝 · 拒绝/超时全额退款且律师信用 -5</div>${lw.tk?'':`<div class="tiny muted">执业 ${lw.years} 年 · ${lw.tags[0]} · 信用 ${lw.credit} · 成团率 ${lw.grp}</div>`}</div>${ic('right',14)}</div>
   </div>
   <div class="card pad mt12">
@@ -1129,9 +1178,28 @@ VIEWS['u-group']={end:'user',render(opt={}){
 function joinGroup(gid){
   const g=DB.groups.find(x=>x.id===gid);
   if(!state.user.realname){realnameModal(()=>joinGroup(gid));return;}
+  if(g.kind==='batch'){joinBatchModal(g);return;}
   g.joined++;toast('已按快照价加入拼团 ¥'+g.share.toFixed(2),'ok');
   if(g.joined>=g.min){g.status='wait';toast('达到最低人数，已成团锁人，待律师确认','ok');}
   render();
+}
+/* 同司团加入：用人单位规范化比对（PRD §8.10 / C2 §12 R-09） */
+const normCo=s=>String(s||'').trim().replace(/（/g,'(').replace(/）/g,')').replace(/\s+/g,'');
+function joinBatchModal(g){
+  const m=overlay(`<div class="mask bottom abs"><div class="sheet"><div class="grab"></div>
+    <div class="spread"><span class="m-title">同司校验 · 加入批量拼团</span><button class="m-x" onclick="closeModal(this.closest('.mask'))">${ic('x',14)}</button></div>
+    <div class="notice plain mb12"><span>${ic('users',13)}</span><span>本团用人单位锚定：<b>${esc(g.company)}</b>。请填写你的用人单位，规范化比对一致方可加入；虚假加入经履约核验坐实将扣信用分。</span></div>
+    <div class="field"><label class="label">你的用人单位（对方公司名）</label><input class="input" id="jbCo" placeholder="须与「${esc(g.company)}」一致"></div>
+    <button class="btn btn-p btn-lg mt8" id="jbOk">校验并加入 ${money(g.share.toFixed(2)+' /人')}</button>
+  </div></div>`);
+  m.querySelector('#jbOk').addEventListener('click',()=>{
+    const v=$('#jbCo').value;
+    if(normCo(v)!==normCo(g.company)){toast('与发起团用人单位不一致，无法加入（可核对名称后重试）','warn');return;}
+    closeModal(m);
+    g.joined++;toast('同司校验通过 · 已按快照价加入 ¥'+g.share.toFixed(2),'ok');
+    if(g.joined>=g.min){g.status='wait';toast('达到最低人数，已成团锁人，待律师确认','ok');}
+    render();
+  });
 }
 function cancelGroup(gid){const g=DB.groups.find(x=>x.id===gid);
   confirm2({title:'取消拼团？',body:'子范围人数不可修改，只能取消后重新发起。已支付用户将按原路全额退款（1-3 个工作日）。',okText:'确认取消',danger:true,
@@ -1141,8 +1209,8 @@ function regroup(gid){const g=DB.groups.find(x=>x.id===gid);
   toast('已复制原任务参数：律师 / 时间段 / 子范围 / 标签','ok');go('u-create',{lawyer:g.lawyer,copy:g});
 }
 
-/* ---- 发起拼团（向导） ---- */
-let cg={step:1,lawyer:'L1',slot:null,dur:90,pick:null,tags:new Set(),note:''};
+/* ---- 发起拼团（向导；2026-10-22 增批量同司团模式） ---- */
+let cg={step:1,lawyer:'L1',slot:null,dur:90,pick:null,tags:new Set(),note:'',kind:'std',company:''};
 const CG_SLOTS=[['10-21 周三 19:30','2026-10-21 19:30'],['10-22 周四 14:00','2026-10-22 14:00'],['10-23 周五 20:00','2026-10-23 20:00'],['10-24 周六 10:00','2026-10-24 10:00'],['10-25 周日 15:00','2026-10-25 15:00']];
 const CG_TAGS=['拖欠工资','未签劳动合同','违法解除','加班费','社保未缴','经济补偿 N+1','调岗降薪','竞业限制','工伤','拖欠提成'];
 VIEWS['u-create']={end:'user',render(){
@@ -1153,7 +1221,13 @@ VIEWS['u-create']={end:'user',render(){
   <div class="navbar"><span class="back" onclick="cgBack()">${ic('left',16)}</span><span class="nt">发起拼团</span><span style="width:34px"></span></div>
   <div class="steps">${[1,2,3].map(i=>`<i class="${i<cg.step?'on':i===cg.step?'cur':''}"></i>`).join('')}</div>
   <div class="notice plain mb12"><span>${ic('pin',14)}</span><span>当前 <b>${state.user.city}</b> · 垂直 <b>${state.user.spec}</b>——同城 × 同垂直是成团前提，发布后将携带城市与垂直信息（双维度框架 · 应用全集开放，供给由运营开通）。</span></div>
+  <div class="seg" style="margin:0 0 12px">
+    <button class="${cg.kind!=='batch'?'on':''}" style="flex:1" onclick="cgKind('std')">标准拼团</button>
+    <button class="${cg.kind==='batch'?'on':''}" style="flex:1.4" onclick="cgKind('batch')">${ic('scale',12)} 批量诉讼 · 同司团</button>
+  </div>
   ${cg.step===1?`
+    ${cg.kind==='batch'?`<div class="notice plain mb12"><span>${ic('users',14)}</span><span>同司团：同一案件类型 × <b>同一用人单位</b>组团共用律师。加入者须通过同司声明校验（§8.10），成员昵称脱敏展示。</span></div>
+    <div class="field mb12"><label class="label">用人单位（对方公司名，必填）</label><input class="input" placeholder="如：北京某科技有限公司" value="${esc(cg.company)}" oninput="cg.company=this.value"><div class="hint">将公开展示于团详情以召集同司伙伴；加入时按规范化名称比对（首尾空格/全半角括号自动归一）。</div></div>`:''}
     <div class="h3 mb8">① 选择律师</div>
     <div class="fcol" style="gap:8px">${DB.lawyers.map(l=>`
       <div class="rc ${cg.lawyer===l.id?'on':''}" onclick="cgPick('${l.id}')"><span class="rk"></span>
@@ -1185,25 +1259,28 @@ VIEWS['u-create']={end:'user',render(){
       <div class="err">请至少选择 1 个标签</div></div>
     <div class="field"><label class="label">问题描述（可选，仅律师可见）</label>
       <textarea class="textarea" placeholder="补充时间线、金额、证据情况…" oninput="cg.note=this.value">${esc(cg.note)}</textarea></div>
-    <div class="notice plain"><span>${ic('clock',14)}</span><span>成团截止默认 <b>开始前 24 小时</b>；未达最低人数自动全额退款。</span></div>
+    ${cg.kind==='batch'?`<div class="notice mt12"><span>${ic('users',15)}</span><span><b>同司团规则</b>：用人单位 <b>${esc(cg.company||'（未填写）')}</b>——加入者须声明同司并通过规范化匹配；履约前律师核验劳动关系材料；成员昵称脱敏展示。</span></div>`
+      :`<div class="notice plain"><span>${ic('clock',14)}</span><span>成团截止默认 <b>开始前 24 小时</b>；未达最低人数自动全额退款。</span></div>`}
     <div class="row mt16" style="gap:8px"><button class="btn btn-o grow" onclick="cgStep(2)">上一步</button><button class="btn btn-p grow" onclick="cgPublish()">发布拼团</button></div>`}`;
 }};
 function cgPick(id){cg.lawyer=id;cg.slot=null;cg.pick=null;render();}
+function cgKind(k){cg.kind=k;render();}
 function cgSlot(i){cg.slot=i;render();}
 function cgPickRange(a,b){cg.pick=[a,b];render();}
 function cgTag(t){cg.tags.has(t)?cg.tags.delete(t):cg.tags.add(t);render();}
 function cgStep(n){if(n===2&&!cg.lawyer)return;if(n===3&&cg.slot==null){toast('请先选择时间段','warn');return;}cg.step=n;render();}
 function cgBack(){if(cg.step>1){cg.step--;render();}else go('u-find');}
 function cgPublish(){
+  if(cg.kind==='batch'&&!cg.company.trim()){toast('同司团须填写用人单位名称','warn');return;}
   if(!cg.pick){toast('请选择人数子范围','warn');return;}
   if(!cg.tags.size){toast('请至少选择 1 个问题标签','warn');return;}
   const lw=L(cg.lawyer);const sl=CG_SLOTS[cg.slot];
-  DB.groups.unshift({id:'G-'+(110+DB.groups.length),by:state.user.name,lawyer:lw.id,topic:[...cg.tags].slice(0,2).join(' · ')+' 咨询',tags:[...cg.tags],
+  DB.groups.unshift({id:'G-'+(110+DB.groups.length),by:state.user.name,lawyer:lw.id,kind:cg.kind==='batch'?'batch':undefined,company:cg.kind==='batch'?cg.company.trim():undefined,topic:(cg.kind==='batch'?'同司批量 · ':'')+[...cg.tags].slice(0,2).join(' · ')+' 咨询',tags:[...cg.tags],
     start:sl[0].replace(/^(\d+-\d+) [周一二三四五六日]+ /,'$1 '),full:sl[1],dur:cg.dur,range:lw.range,pick:cg.pick,min:cg.pick[0],
     city:state.user.city,specialty:state.user.spec,
     share:+(lw.total/cg.pick[0]).toFixed(2),joined:1,deadline:'开始前 24h',status:'pending',mine:true,qnote:cg.note});
-  toast('拼团已发布 · 时间段已锁定，快照价已生成','ok');
-  cg={step:1,lawyer:'L1',slot:null,dur:90,pick:null,tags:new Set(),note:''};
+  toast(cg.kind==='batch'?'同司团已发布 · 时间段已锁定 · 仅同司用户可加入（规范化校验）':'拼团已发布 · 时间段已锁定，快照价已生成','ok');
+  cg={step:1,lawyer:'L1',slot:null,dur:90,pick:null,tags:new Set(),note:'',kind:'std',company:''};
   go('u-orders',{tab:'mine'});
 }
 
@@ -1214,7 +1291,7 @@ VIEWS['u-orders']={end:'user',tab:'u-orders',render(opt={}){
   const S=id=>DB.sessions.find(s=>s.id===id);
   return `
   <div class="navbar"><span class="back" onclick="go('u-home')">${ic('left',16)}</span><span class="nt">我的拼单</span><span style="width:34px"></span></div>
-  <div class="seg" style="margin:0 0 12px">${[['enroll','我的报名'],['mine','我的发起']].map(t=>`<button class="${ordTab===t[0]?'on':''}" style="flex:1" onclick="ordTab='${t[0]}';render()">${t[1]}</button>`).join('')}</div>
+  <div class="seg" style="margin:0 0 12px">${[['enroll','我的报名'],['mine','我的发起'],['svc','快速与服务']].map(t=>`<button class="${ordTab===t[0]?'on':''}" style="flex:1" onclick="ordTab='${t[0]}';render()">${t[1]}</button>`).join('')}</div>
   ${ordTab==='enroll'?DB.myEnrolls.map(e=>{const s=S(e.sid),lw=L(s.lawyer);
     const st=e.status==='live'?'<span class="pill pill-r live"><span class="dt"></span>进行中</span>':e.status==='open'?'<span class="pill pill-g">等待成团</span>':e.status==='done'?'<span class="pill pill-n">已结束</span>':'<span class="pill pill-n">已退款</span>';
     return `<div class="card pad hov mt8" onclick="go('u-order',{id:'${e.id}'})">
@@ -1226,7 +1303,7 @@ VIEWS['u-orders']={end:'user',tab:'u-orders',render(opt={}){
         ${e.status==='open'?`<button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();go('u-session',{id:'${s.id}'})">邀请好友</button>`:''}
         <span style="flex:1"></span><span class="tiny muted">详情 ›</span>
       </div></div>`;}).join('')
-  :DB.groups.filter(g=>g.mine).map(g=>`
+  :ordTab==='mine'?DB.groups.filter(g=>g.mine).map(g=>`
     <div class="card pad hov mt8" onclick="go('u-group',{id:'${g.id}'})">
       <div class="spread"><b class="small ellip" style="max-width:230px">${g.topic}</b>${g.status==='pending'?'<span class="pill pill-g">拼团中</span>':'<span class="pill pill-n">已流标</span>'}</div>
       <div class="tiny muted mt4">${g.start} · 分摊 ${money(g.share.toFixed(2))}/人 · 已加入 ${g.joined}/${g.min}（最低）</div>
@@ -1234,9 +1311,47 @@ VIEWS['u-orders']={end:'user',tab:'u-orders',render(opt={}){
         ${g.status==='pending'?`<button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();toast('邀请口令已复制（演示）','ok')">邀请好友</button><button class="btn btn-danger-o btn-xs" onclick="event.stopPropagation();cancelGroup('${g.id}')">取消</button>`:''}
         ${g.status==='failed'?`<button class="btn btn-p btn-xs" onclick="event.stopPropagation();regroup('${g.id}')">一键重新发起</button>`:''}
         <span style="flex:1"></span><span class="tiny muted">详情 ›</span>
-      </div></div>`).join('')||'<div class="notice plain mt12">还没有发起过拼团</div>'}
+      </div></div>`).join('')||'<div class="notice plain mt12">还没有发起过拼团</div>'
+  :uSvcOrders()}
   ${ordTab==='enroll'?`<div class="tiny muted tc mt16">退款均原路退回，1-3 个工作日到账 · 缺席费用不退（规则已在报名页显著提示）</div>`:''}`;
 }};
+/* 快速与服务单页签（2026-10-22 产品扩展） */
+const QO_PILL={collect:'<span class="pill pill-g">征集中</span>',awarded:'<span class="pill pill-g">已选定</span>',paid:'<span class="pill pill-r"><span class="dt"></span>会话中</span>',done:'<span class="pill pill-n">已完成</span>',closed:'<span class="pill pill-n">已关闭</span>'};
+const SV_PILL={paid:'<span class="pill pill-g">待接单</span>',accepted:'<span class="pill pill-r"><span class="dt"></span>服务中</span>',delivered:'<span class="pill pill-g">待确认</span>',finished:'<span class="pill pill-n">已完成</span>',refunded:'<span class="pill pill-n">已退款</span>'};
+function uSvcOrders(){
+  const q=DB.quickOrders.filter(o=>o.mine),sv=DB.myServiceOrders;
+  if(!q.length&&!sv.length)return '<div class="notice plain mt12">还没有快速咨询单或非诉服务单</div>';
+  return q.map(o=>{const lw=o.award?L(o.award):null;
+    return `<div class="card pad hov mt8" onclick="go('u-quick',{tab:'mine'})">
+      <div class="spread"><div class="row"><b class="small ellip" style="max-width:200px">快速1对1 · ${o.tags[0]}</b></div>${QO_PILL[o.status]||''}</div>
+      <div class="tiny muted mt4">${o.status==='collect'?`征集中 · 已收 ${o.bids.length} 份报价（金额仅你可见）`:o.status==='done'?`已完成 · ${lw?lw.name:''} · 一价包干 ${money(o.amount)}（≤30min）`:o.status==='paid'?`会话进行中 · ${lw?lw.name:''} · 30 分钟上限`:'—'}</div></div>`;}).join('')
+  +sv.map(s=>{const lw=L(s.lawyer);
+    return `<div class="card pad hov mt8">
+      <div class="spread"><div class="row">${av(lw.name,'sm')}<b class="small ellip" style="max-width:190px">非诉小单 · ${s.name}</b></div>${SV_PILL[s.status]||''}</div>
+      <div class="tiny muted mt4">${lw.name} · ${money(s.price.toFixed(2))} 快照价 · ${s.snapshot}</div>
+      <div class="row mt8" style="gap:8px">
+        ${s.status==='delivered'?`<button class="btn btn-p btn-xs" onclick="event.stopPropagation();svConfirm('${s.id}')">确认完成</button>`:''}
+        ${s.status==='finished'?`<span class="tag gray">${s.rated?'已互评':'评价开放中（48h 后匿名展示）'}</span>`:''}
+        <span style="flex:1"></span><span class="tiny muted">平台内会话交付 ›</span>
+      </div></div>`;}).join('');
+}
+function svConfirm(svid){const s=DB.myServiceOrders.find(x=>x.id===svid);if(s)s.status='finished';toast('已确认完成 · 未确认 72h 将自动确认；结算 HOLD 24h 后打款律所对公','ok');render();}
+/* 非诉小单购买（快照+直接成功口径 #40） */
+function buyService(lwid,iid){
+  const it=(DB.serviceItems[lwid]||[]).find(x=>x.id===iid);if(!it)return;
+  if(!state.user.realname){realnameModal(()=>buyService(lwid,iid));return;}
+  const lw=L(lwid);
+  const m=overlay(`<div class="mask"><div class="modal pop">
+    <div class="m-head"><span class="m-title">购买非诉小单</span><button class="m-x" onclick="closeModal(this.closest('.mask'))">${ic('x',14)}</button></div>
+    <div class="spread"><b class="small">${esc(it.name)}</b><span class="money" style="font-size:19px"><span class="rmb">¥</span>${it.price}</span></div>
+    <div class="tiny muted mt4">${lw.name} · ${it.contents.join(' / ')}</div>
+    <div class="notice plain mt8"><span>${ic('lock',13)}</span><span>固定价快照：律师接单前可全额退；接单超时自动退款；交付与确认全平台内闭环（不涉出庭代理）。</span></div>
+    <div class="m-foot"><button class="btn btn-o" onclick="closeModal(this.closest('.mask'))">取消</button><button class="btn btn-p" id="svBuyOk">确认支付（开发期直接成功）</button></div></div></div>`);
+  m.querySelector('#svBuyOk').addEventListener('click',()=>{
+    DB.myServiceOrders.unshift({id:'SV-'+(301+DB.myServiceOrders.length),lawyer:lwid,name:it.name,price:it.price,status:'paid',at:'10-13',snapshot:it.contents.join(' · ')+' · '+(it.delivery==='CHAT_FILE'?'会话+文件交付':'会话交付')});
+    closeModal(m);toast('购买成功 · 快照价已锁定，等待律师接单','ok');go('u-orders',{tab:'svc'});
+  });
+}
 
 /* ---- 订单详情 ---- */
 let curOrder='E-3001';
@@ -1422,6 +1537,7 @@ VIEWS['u-me']={end:'user',tab:'u-me',render(){
   <div class="card mt12">
     <div class="lrow" style="cursor:pointer" onclick="go('u-orders')">${ic('doc',17)}<span class="grow small">我的报名</span><span class="tiny muted">4 笔 · 1 场进行中</span>${ic('right',14)}</div>
     <div class="lrow" style="cursor:pointer" onclick="go('u-orders',{tab:'mine'})">${ic('plus',17)}<span class="grow small">我的发起</span><span class="tiny muted">1 个拼团进行中</span>${ic('right',14)}</div>
+    <div class="lrow" style="cursor:pointer" onclick="go('u-orders',{tab:'svc'})">${ic('gift',17)}<span class="grow small">快速与服务单</span><span class="tiny muted">快速单 · 非诉服务单</span>${ic('right',14)}</div>
     <div class="lrow" style="cursor:pointer" onclick="go('u-msg')">${ic('bell',17)}<span class="grow small">消息中心</span><span class="tiny muted">3 条未读</span>${ic('right',14)}</div>
   </div>
   <div class="card mt12">
@@ -1444,6 +1560,122 @@ function consentToggle(sw,k){
   }else{sw.classList.add('on');toast('已授权：本账号房间消息脱敏后可进入训练语料','ok');}
 }
 function switchEnd(end){toast(end==='lawyer'?'演示切换：律师端工作台':'演示切换：Web 运营后台','info');go(end==='lawyer'?'l-work':'a-dash');}
+
+/* ---- 快速1对1解答（2026-10-22 产品扩展：发单 → 律师抢单报价（价格不公布）→ 选定支付 → ≤30min 会话 → 双边评分） ---- */
+let qtTab='post';
+let qo={tags:new Set(),note:'',mode:'text',contact:false};
+const QO_TAGS=['拖欠工资','未签劳动合同','违法解除','加班费','社保未缴','经济补偿 N+1','调岗降薪','仲裁时效','证据清单','离职谈判'];
+VIEWS['u-quick']={end:'user',render(opt={}){
+  if(opt.tab)qtTab=opt.tab;
+  return `
+  <div class="navbar"><span class="back" onclick="go('u-home')">${ic('left',16)}</span><span class="nt">快速1对1解答</span><span style="width:34px"></span></div>
+  <div class="notice plain mb12"><span>${ic('spark',14)}</span><span>发单 → <b>律师抢单报价（价格不公布，仅你可见）</b> → 选定一位支付 → ≤30 分钟会话 → 双边评分。规则见 PRD §6.6/§8.9。</span></div>
+  <div class="seg" style="margin:0 0 12px">${[['post','发起快速单'],['mine','我的快速单']].map(t=>`<button class="${qtTab===t[0]?'on':''}" style="flex:1" onclick="qtTab='${t[0]}';render()">${t[1]}</button>`).join('')}</div>
+  ${qtTab==='post'?`
+    <div class="field"><label class="label">问题标签（Agent 按专项问题树引导，至少 1 个）</label>
+      <div class="row wrap" style="gap:8px">${QO_TAGS.map(t=>`<span class="tagchip ${qo.tags.has(t)?'on':''}" onclick="qoTag('${t}')">${t}</span>`).join('')}</div></div>
+    <div class="field"><label class="label">问题描述</label>
+      <textarea class="textarea" placeholder="一段话说清你的问题：时间线、金额、目前进展…" oninput="qo.note=this.value">${esc(qo.note)}</textarea></div>
+    <div class="field"><label class="label">沟通偏好</label>
+      <div class="row" style="gap:8px">${[['text','msg','文本'],['voice','mic','语音']].map(m=>`<span class="chip ${qo.mode===m[0]?'on':''}" onclick="qoMode('${m[0]}')">${ic(m[1],12)}${m[2]}</span>`).join('')}</div></div>
+    <div class="field"><label class="label">联系方式</label>
+      <div class="grid2" style="gap:8px">
+        <div class="rc ${!qo.contact?'on':''}" onclick="qoContact(false)"><span class="rk"></span><b class="small">隐藏</b><div class="tiny muted">仅平台内会话沟通</div></div>
+        <div class="rc ${qo.contact?'on':''}" onclick="qoContact(true)"><span class="rk"></span><b class="small">明示</b><div class="tiny muted">${esc(state.user.phone)} · 对抢单律师可见</div></div>
+      </div>
+      <div class="hint">明示=对平台审核通过、可报价的律师可见（脱敏+一键查看 · 2026-10-22 已拍板）；平台外收款引导照常风控拦截。</div></div>
+    <div class="notice plain"><span>${ic('clock',14)}</span><span>服务时长固定 <b>≤30 分钟</b>，锚定会话开始时刻、到时自动结束；征报价 24h 未选定自动关闭（未支付零资金占用）。</span></div>
+    <button class="btn btn-p btn-lg mt16" onclick="qoPublish()">${ic('send',15)} 发布咨询单（等待律师报价）</button>`
+  :qoMineList()}`;
+}};
+function qoTag(t){qo.tags.has(t)?qo.tags.delete(t):qo.tags.add(t);render();}
+function qoMode(m){qo.mode=m;render();}
+function qoContact(v){qo.contact=v;render();}
+function qoPublish(){
+  if(!qo.tags.size){toast('请至少选择 1 个问题标签','warn');return;}
+  DB.quickOrders.unshift({id:'Q-'+(2002+DB.quickOrders.length),by:state.user.name,mine:true,tags:[...qo.tags],qnote:qo.note,mode:qo.mode,contact:qo.contact,status:'collect',bids:[],at:'刚刚'});
+  toast('咨询单已发布 · 律师抢单报价中（收到报价将推送通知）','ok');
+  qo={tags:new Set(),note:'',mode:'text',contact:false};qtTab='mine';render();
+}
+function qoMineList(){
+  const list=DB.quickOrders.filter(o=>o.mine);
+  if(!list.length)return '<div class="notice plain mt12">还没有发起过快速咨询单</div>';
+  return list.map(o=>{
+    const oi=DB.quickOrders.indexOf(o),lw=o.award?L(o.award):null;
+    return `<div class="card pad mt8">
+    <div class="spread"><div class="row wrap" style="gap:4px">${o.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>${QO_PILL[o.status]||''}</div>
+    ${o.qnote?`<div class="tiny muted mt8" style="line-height:1.7">${esc(o.qnote)}</div>`:''}
+    ${o.contact?`<div class="tiny muted mt4">${ic('chat',11)} 联系方式已明示（对抢单律师可见）</div>`:''}
+    ${o.status==='collect'?(o.bids.length?`
+      <div class="divider" style="margin:10px 0"></div>
+      <div class="tiny muted mb8">已收 ${o.bids.length} 份报价 · <b>金额仅你可见</b>（律师互相不可见，§8.9 价格不公布）</div>
+      ${o.bids.map((b,bi)=>{const bl=L(b.lawyer);
+        return `<div class="card flat pad mb8" style="background:rgba(255,255,255,.6)">
+        <div class="spread">${av(bl.name,'sm')}<div class="grow" style="margin-left:8px;min-width:0"><b class="small">${bl.name}</b><span class="tiny muted"> · ${bl.firm}</span>
+          <div class="tiny muted">${ic('star',10)}${bl.rate} · 执业 ${bl.years} 年 · ${esc(b.note)}</div></div>
+        <div style="text-align:right;flex-shrink:0"><div class="money" style="font-size:17px"><span class="rmb">¥</span>${b.amount}</div>
+        <button class="btn btn-p btn-xs mt4" onclick="qoAward(${oi},${bi})">选定</button></div></div></div>`;}).join('')}`
+      :'<div class="tiny muted mt8">律师抢单中——收到报价将推送通知（律师端「接单大厅 · 快速单报价」可演示报价）</div>'):''}
+    ${o.status==='paid'?`<div class="notice mt8"><span>${ic('clock',14)}</span><span>会话进行中 · 律师 ${lw?lw.name:''} · 30 分钟上限到时自动结束</span></div>
+      <button class="btn btn-p btn-sm mt8" style="width:100%" onclick="qoFinish(${oi})">${ic('check',13)} 演示：会话已到 30 分钟 → 结束</button>`:''}
+    ${o.status==='done'?`<div class="spread mt8"><span class="tiny muted">成交律师 ${lw?lw.name:''} · 一价包干 ${money(o.amount)}（≤30min）</span>
+      ${o.rated?'<span class="tag gray">已互评 · 双边评分入信用</span>':`<button class="btn btn-p btn-xs" onclick="qoRate(${oi})">去评价</button>`}</div>`:''}
+    ${o.status==='closed'?'<div class="tiny muted mt8">已关闭（超时未选定/已放弃）· 未支付零资金占用</div>':''}
+  </div>`;}).join('');
+}
+function qoAward(oi,bi){
+  const o=DB.quickOrders[oi],b=o.bids[bi];
+  confirm2({title:'选定 '+L(b.lawyer).name+'？',body:'按报价 <b>¥'+b.amount+'</b> 支付后进入 ≤30 分钟 1对1 会话（一价包干）。开始前取消全额退款；律师超时未开始自动退款并扣其信用。',okText:'确认并支付',
+    onOk(){o.award=b.lawyer;o.amount=b.amount;o.status='paid';
+      toast('已选定 · 支付成功（开发期直接成功口径）· 会话已建立','ok');render();}});
+}
+function qoFinish(oi){const o=DB.quickOrders[oi];o.status='done';toast('会话已达 30 分钟上限，自动结束 · 记得双边评价','ok');render();}
+function qoRate(oi){
+  let v=0;
+  const m=overlay(`<div class="mask"><div class="modal pop tc" style="max-width:340px">
+    <div class="m-head"><span class="m-title">评价本次快速咨询</span><button class="m-x" onclick="closeModal(this.closest('.mask'))">${ic('x',14)}</button></div>
+    <div class="small muted">专业度 · 响应速度 · 服务态度 · 整体满意度<br>双边互评 · 可匿名 · 评分入双方信用与排序</div>
+    <div class="tc mt12">${stars(5,0,24,'')}</div>
+    <div class="m-foot"><button class="btn btn-o" onclick="closeModal(this.closest('.mask'))">稍后</button><button class="btn btn-p" id="qoRateOk">提交评价</button></div></div></div>`);
+  m.querySelectorAll('.st').forEach((el,i)=>el.addEventListener('click',()=>{v=i+1;}));
+  m.querySelector('#qoRateOk').addEventListener('click',()=>{
+    if(!v){toast('请先打分','warn');return;}
+    DB.quickOrders[oi].rated=true;closeModal(m);
+    toast('已提交 '+v+' 星评价 · 对方也将评价你（双边评分）','ok');render();});
+}
+
+/* ---- 找律师 · 非诉小单货架入口（2026-10-22 产品扩展，H1 律师目录公开面） ---- */
+VIEWS['u-lawyers']={end:'user',render(){
+  const list=DB.lawyers.filter(l=>l.city===state.user.city);
+  return `
+  <div class="navbar"><span class="back" onclick="go('u-home')">${ic('left',16)}</span><span class="nt">找律师</span><span style="width:34px"></span></div>
+  <div class="row mt8 wrap" style="gap:8px">
+    <span class="chip on" style="cursor:pointer" onclick="cityPicker()">${ic('pin',11.5)} ${state.user.city} ▾</span>
+    ${SPECS.map(s=>`<span class="chip ${state.user.spec===s?'on':''}" onclick="specPick('${s}')">${s}</span>`).join('')}
+    <span class="tag gray">仅展示审核通过律师</span>
+  </div>
+  <div class="notice plain mt8"><span>${ic('info',13)}</span><span>城市 × 垂直筛选（双维度「应用做全套」口径）：无供给维度展示空态与引导，供给开通与密度由运营推进；卡片直达主页查看实力档案与非诉小单货架。</span></div>
+  ${list.length?list.map(lw=>{
+    const items=(DB.serviceItems[lw.id]||[]).filter(i=>i.active);
+    const minP=items.length?Math.min(...items.map(i=>i.price)):null;
+    return `<div class="card pad hov mt8" onclick="go('u-lawyer',{id:'${lw.id}'})">
+      <div class="spread">${av(lw.name,'lg',true)}
+        <div class="grow" style="margin-left:12px;min-width:0">
+          <div class="row" style="gap:8px"><b>${lw.name}</b><span class="tag">${lw.spec}</span><span class="tiny muted">${ic('star',11)}${lw.rate} · 信用 ${lw.credit}</span></div>
+          <div class="tiny muted mt4">${lw.firm} · 执业 ${lw.years} 年 · 成团率 ${lw.grp} · 响应 ${lw.resp}</div>
+          <div class="row mt4 wrap" style="gap:4px">${lw.tags.slice(0,3).map(t=>`<span class="tag gray">${t}</span>`).join('')}</div>
+        </div>${ic('right',16)}</div>
+      <div class="hr-soft"></div>
+      <div class="spread">
+        <div class="row wrap" style="gap:8px">
+          ${items.length?`<span class="tag acc">${ic('gift',11)} 非诉小单 ${items.length} 项 · 起 ${money(minP)}</span>`:'<span class="tag gray">未上架非诉小单</span>'}
+          <span class="tag gray">${ic('spark',11)} 快速单接单中</span>
+        </div>
+        <button class="btn btn-o btn-sm" onclick="event.stopPropagation();go('u-lawyer',{id:'${lw.id}'})">主页 · 货架</button>
+      </div></div>`;}).join('')
+  :`<div class="notice plain mt12">${esc(state.user.city)} · ${esc(state.user.spec)} 暂无同维度律师——应用全集开放不拦截，供给开通与密度由运营推进。</div>
+    <button class="btn btn-o mt8" style="width:100%" onclick="state.user.city='北京';state.user.spec='劳动仲裁';render()">切回 北京 · 劳动仲裁（供给已就绪）</button>`}`;
+}};
 /*==C-END==*/
 /* ==================================================================
    律师端 App（入驻/时间表/开团/响应拼团/房间 AI 工作台/价格/结算）
@@ -1489,7 +1721,7 @@ VIEWS['l-work']={end:'lawyer',tab:'l-work',render(){
     </div>
   </div>
   <div class="grid4 mt12" style="grid-template-columns:repeat(4,1fr)">
-    ${[['spark','草稿待处理','3','l-room'],['users','待确认拼团','1','l-hall'],['star','新评价','2','toastE()'],['wallet','可提现','¥1,860','l-income']]
+    ${[['spark','草稿待处理','3','l-room'],['users','待响应 · 大厅','2','l-hall'],['star','新评价','2','toastE()'],['wallet','可提现','¥1,860','l-income']]
       .map(q=>`<div class="card pad tc" style="cursor:pointer;padding:12px 6px" onclick="${q[3]==='toastE()'?"toast('评价列表（演示）','info')":`go('${q[3]}')`}"><div class="row" style="justify-content:center;gap:4px;color:var(--primary)">${ic(q[0],15)}${q[2]==='3'||q[2]==='1'||q[2]==='2'?`<span class="bdot">${q[2]}</span>`:''}</div><div class="tiny mt4" style="line-height:1.4">${q[1]}</div>${['3','1','2'].includes(q[2])?'':`<b class="small">${q[2]}</b>`}</div>`).join('')}
   </div>
   <div class="card pad mt12">
@@ -1513,9 +1745,10 @@ VIEWS['l-work']={end:'lawyer',tab:'l-work',render(){
     <div class="lrow">${av('柯小姐','sm')}<div class="grow"><b class="small">柯小姐</b><div class="tiny muted">拖欠 + 违法解除双重诉求，事实复杂，建议转 1对1 深度解答</div></div><button class="btn btn-xs btn-p" onclick="toast('已向用户发送 1对1 建议（站内信）','ok')">去建议</button></div>
     <div class="lrow">${av('吴女士','sm')}<div class="grow"><b class="small">吴女士</b><div class="tiny muted">需要文书修改（仲裁申请书），已浏览 1对1 价目</div></div><button class="btn btn-xs btn-p" onclick="toast('已向用户发送 1对1 建议（站内信）','ok')">去建议</button></div>
   </div>
-  <div class="grid2 mt12">
+  <div class="grid3 mt12" style="gap:8px">
     <button class="btn btn-o" onclick="go('l-sched')">${ic('cal',15)} 时间表</button>
     <button class="btn btn-o" onclick="go('l-price')">${ic('coin',15)} 价格配置</button>
+    <button class="btn btn-o" onclick="go('l-services')">${ic('gift',15)} 非诉货架</button>
   </div>`;
 }};
 
@@ -1663,10 +1896,15 @@ VIEWS['l-sessd']={end:'lawyer',render(opt={}){
 
 /* ---- 接单大厅（C2B 响应） ---- */
 let hallLeft=42138;
+let hallTab='c2b';
 VIEWS['l-hall']={end:'lawyer',tab:'l-hall',render(){
   const g=DB.groups.find(x=>x.id==='G-107');
   const hist=[['G-104','加班费举证咨询','已确认 · 10-12 履约完成','ok'],['G-099','年终奖争议','超时未响应 · 自动拒绝 · 信用 -5','bad']];
+  const quicks=DB.quickOrders.filter(o=>o.status==='collect');
+  const batches=DB.groups.filter(x=>x.kind==='batch'&&x.status==='wait');
   return `${lhead('接单大厅')}
+  <div class="seg" style="margin:0 0 12px">${[['c2b','拼团指定'],['quick',`快速单${quicks.length?' · '+quicks.length:''}`],['batch',`同司团${batches.length?' · '+batches.length:''}`]].map(t=>`<button class="${hallTab===t[0]?'on':''}" style="flex:1" onclick="hallTab='${t[0]}';render()">${t[1]}</button>`).join('')}</div>
+  ${hallTab==='c2b'?`
   <div class="card acc pad pop">
     <div class="spread"><span class="tag acc">C2B 拼团指定你接单</span><span class="pill pill-r"><span class="dt"></span>响应剩余 <b id="cd12" style="margin-left:3px">${fmtHms(hallLeft)}</b></span></div>
     <div class="h3 mt8">${g.topic}</div>
@@ -1684,8 +1922,47 @@ VIEWS['l-hall']={end:'lawyer',tab:'l-hall',render(){
     <div style="padding:13px 16px 4px" class="h3">响应记录</div>
     ${hist.map(h=>`<div class="lrow"><div class="grow"><b class="small">${h[1]}</b><div class="tiny muted">${h[0]} · ${h[2]}</div></div><span class="tag ${h[3]}">${h[3]==='ok'?'正常':'扣分'}</span></div>`).join('')}
   </div>
-  <div class="tiny muted tc mt12">双向转化：确认后可将该团转化为公开 B2C 场次，原用户维持快照价迁移，24h 内可申请退款。</div>`;
+  <div class="tiny muted tc mt12">双向转化：确认后可将该团转化为公开 B2C 场次，原用户维持快照价迁移，24h 内可申请退款。</div>`
+  :hallTab==='quick'?hallQuick(quicks):hallBatch(batches)}`;
 }};
+/* 快速单报价（2026-10-22 产品扩展：价格不公布——报价仅发单用户可见） */
+function hallQuick(list){
+  if(!list.length)return '<div class="notice plain mt12">暂无征集中的快速单——新单发布将实时推送本厅</div>';
+  return list.map(o=>`<div class="card acc pad pop">
+    <div class="spread"><span class="tag acc">${ic('spark',11)} 快速咨询单 · ${o.mode==='voice'?'语音':'文本'} · ≤30 分钟</span><span class="pill pill-g">征集中</span></div>
+    <div class="row mt8 wrap" style="gap:4px">${o.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>
+    <div class="card flat pad mt8" style="background:rgba(255,255,255,.6)"><div class="tiny muted mb4">问题描述</div><div class="small" style="line-height:1.7">${esc(o.qnote||'（未补充描述）')}</div></div>
+    <div class="tiny muted mt8">发起人 ${o.by} · ${o.contact?'<span class="tag acc">联系方式已明示</span>':'联系方式隐藏 · 平台内会话沟通'}</div>
+    <div class="notice plain mt8" style="padding:8px 12px">${ic('info',13)}<span><b>报价金额不公布</b>：仅发单用户可见，律师互相不可见；同单仅一个有效报价，被选定前可撤回重报。</span></div>
+    <div class="field mt8"><label class="label">你的报价（元 · 一价包干 ≤30 分钟）</label>
+      <div class="row" style="gap:8px"><input class="input" id="qbAmt-${o.id}" type="number" placeholder="如 99" style="flex:1"><input class="input" id="qbNote-${o.id}" placeholder="一句话说明（可选）" style="flex:1.4"></div></div>
+    <button class="btn btn-p btn-lg mt8" style="width:100%" onclick="hallBid('${o.id}')">提交报价</button>
+  </div>`).join('');
+}
+function hallBid(oid){
+  const o=DB.quickOrders.find(x=>x.id===oid);
+  const amt=+$('#qbAmt-'+oid).value;
+  if(!amt||amt<=0){toast('请输入有效报价金额','warn');return;}
+  if(o.bids.some(b=>b.lawyer==='L1')){toast('同单限一个有效报价：被选定前可撤回重报（演示不再重复提交）','warn');return;}
+  o.bids.push({lawyer:'L1',amount:amt,note:$('#qbNote-'+oid).value||'执业 12 年 · 专注劳动争议'});
+  toast('报价已提交（金额仅发单用户可见）· 被选定后进入 ≤30 分钟会话','ok');render();
+}
+/* 同司团响应（批量拼团成团后进入本厅，12h 口径与拼团一致） */
+function hallBatch(list){
+  if(!list.length)return '<div class="notice plain mt12">暂无待响应同司团——批量拼团成团后进入本厅（演示：可在用户端加入 G-110 至满员触发）</div>';
+  return list.map(g=>`<div class="card pad pop">
+    <div class="spread"><span class="tag acc">${ic('users',11)} 同司团 · 已成团待确认</span><span class="pill pill-r"><span class="dt"></span>响应剩余 11:42:05</span></div>
+    <div class="h3 mt8">${g.topic}</div>
+    <div class="notice plain mt8" style="padding:8px 12px">${ic('scale',13)}<span>用人单位锚定：<b>${esc(g.company)}</b> · 已加入 ${g.joined} 人（同司声明校验通过）· 履约前请核验劳动关系材料，发现不同公司转纠纷工单处理。</span></div>
+    <div class="spread mt8"><span class="tiny muted">分摊额（快照价）</span><span class="money" style="font-size:18px"><span class="rmb">¥</span>${g.share.toFixed(2)}<span class="tiny muted" style="font-weight:400"> /人 · 收入=分摊×实际人数</span></span></div>
+    <div class="row mt12" style="gap:8px">
+      <button class="btn btn-p grow" onclick="hallBatchOk('${g.id}')">${ic('check',15)} 确认接单</button>
+      <button class="btn btn-danger-o" style="flex:0.6" onclick="hallReject()">拒绝</button>
+    </div>
+    <div class="tiny muted mt8">确认/拒绝口径与标准拼团一致（PRD §8.10：拒绝全额退款+信用 -5）。</div>
+  </div>`).join('');
+}
+function hallBatchOk(gid){const g=DB.groups.find(x=>x.id===gid);g.status='ok';toast('已确认接单 · 同司团履约场次已生成（履约前请核验劳动关系材料）','ok');render();}
 function fmtHms(s){const h=String(Math.floor(s/3600)).padStart(2,'0'),m=String(Math.floor(s%3600/60)).padStart(2,'0'),x=String(s%60).padStart(2,'0');return `${h}:${m}:${x}`;}
 function hallAccept(){
   const g=DB.groups.find(x=>x.id==='G-107');g.status='ok';
@@ -1835,6 +2112,55 @@ function pcApply(old){
   else{const cut=(old-nv)/old*100;
     toast(cut<=10?'已提交平台审批（降价 ≤10%）· 审批通过后 24h 内发放积分补偿 · 信用 -15':'已提交平台审批（降价 >10%）· 补偿积分 + 优惠券 · 信用 -30 且停接 3 天','warn');}
 }
+
+/* ---- 非诉小单 · 服务货架配置（2026-10-22 产品扩展，B4/C8） ---- */
+const SI_TAGS=['咨询','诉讼文书','证据收集指导','指导立案','程序指导','庭前培训','合同审查'];
+VIEWS['l-services']={end:'lawyer',render(){
+  const items=DB.serviceItems['L1']||[];
+  return `${lhead('非诉小单 · 服务货架')}
+  <div class="notice plain mb12"><span>${ic('gift',14)}</span><span>把非诉服务商品化：固定内容、固定价格、即买即约。<b>律师自主定价</b>（平台仅防错价区间校验）；修改在售商品生成新版本，已购服务单按快照照常履约。</span></div>
+  <button class="btn btn-p btn-lg" onclick="siEdit(null)">${ic('plus',15)} 新建服务商品</button>
+  <div class="mt12">${items.map(i=>`
+    <div class="card pad" style="${i.active?'':'opacity:.55'}">
+      <div class="spread"><div class="grow" style="min-width:0"><b class="small">${i.name}</b> ${i.active?'<span class="tag acc">在售</span>':'<span class="tag gray">已下架</span>'} <span class="tiny muted">v${i.version||1}</span>
+        <div class="row mt4 wrap" style="gap:4px">${i.contents.map(c=>`<span class="tag gray">${c}</span>`).join('')}</div>
+        <div class="tiny muted mt4">${i.delivery==='CHAT_FILE'?'会话 + 文件交付':'会话交付'}</div></div>
+        <div style="text-align:right;flex-shrink:0"><div class="money" style="font-size:18px"><span class="rmb">¥</span>${i.price}</div>
+        <div class="row mt4" style="gap:6px;justify-content:flex-end">
+          <button class="btn btn-ghost btn-xs" onclick="siEdit('${i.id}')">编辑</button>
+          <button class="btn btn-o btn-xs" onclick="siToggle('${i.id}')">${i.active?'下架':'上架'}</button>
+        </div></div></div></div>`).join('')||'<div class="notice plain">还没有服务商品——先新建一个套餐</div>'}
+  </div>
+  <div class="card pad mt12"><div class="h3 mb8">服务单动态（演示）</div>
+    <div class="lrow">${av('周女士','sm')}<div class="grow"><b class="small">仲裁文书体检 · ¥199</b><div class="tiny muted">已交付 · 待用户确认（72h 自动确认）</div></div><span class="pill pill-g">服务中</span></div>
+    <div class="lrow">${av('柯小姐','sm')}<div class="grow"><b class="small">单独咨询 · ¥300</b><div class="tiny muted">已完成 · 双边互评完成</div></div><span class="pill pill-n">已完成</span></div>
+  </div>
+  <div class="tiny muted tc mt12">价格区间校验 ¥50-5,000（防错价 · 2026-10-22 已拍板 D24）· 名称与描述经风控词库（禁「包赢/保证结果」）· 结算复用 HOLD 24h → 律所对公</div>`;
+}};
+function siEdit(id){
+  const it=id?(DB.serviceItems['L1']||[]).find(x=>x.id===id):null;
+  const m=overlay(`<div class="mask"><div class="modal pop">
+    <div class="m-head"><span class="m-title">${it?'编辑服务商品':'新建服务商品'}</span><button class="m-x" onclick="closeModal(this.closest('.mask'))">${ic('x',14)}</button></div>
+    <div class="field"><label class="label">套餐名称</label><input class="input" id="siName" value="${it?esc(it.name):''}" placeholder="如：咨询 + 诉讼文书 + 立案指导"></div>
+    <div class="field"><label class="label">价格（元）</label><input class="input" id="siPrice" type="number" value="${it?it.price:''}" placeholder="50 - 5,000（防错价区间）"></div>
+    <div class="field"><label class="label">内容清单（点选，至少 1 项）</label>
+      <div class="row wrap" style="gap:6px">${SI_TAGS.map(t=>`<span class="tagchip ${it&&it.contents.includes(t)?'on':''}" onclick="this.classList.toggle('on')">${t}</span>`).join('')}</div></div>
+    <div class="notice plain"><span>${ic('info',14)}</span><span>自主定价非指导价；含「诉讼文书」等文件类内容默认会话+文件交付（走 I3）；在售商品修改=新版本，已购订单不受影响。</span></div>
+    <div class="m-foot"><button class="btn btn-o" onclick="closeModal(this.closest('.mask'))">取消</button><button class="btn btn-p" id="siOk">保存${it?'（新版本）':'并上架'}</button></div></div></div>`);
+  m.querySelector('#siOk').addEventListener('click',()=>{
+    const name=m.querySelector('#siName').value.trim(),price=+m.querySelector('#siPrice').value;
+    const contents=[...m.querySelectorAll('.tagchip.on')].map(e=>e.textContent);
+    if(!name){toast('请填写套餐名称','warn');return;}
+    if(!price||price<50||price>5000){toast('价格超出防错价区间 ¥50-5,000（R-02）','warn');return;}
+    if(!contents.length){toast('请至少选择 1 项内容','warn');return;}
+    if(it){it.name=name;it.price=price;it.contents=contents;it.version=(it.version||1)+1;toast('已保存 · 新版本 v'+it.version+' 生效（已购服务单按快照履约）','ok');}
+    else{DB.serviceItems['L1']=DB.serviceItems['L1']||[];
+      DB.serviceItems['L1'].unshift({id:'SI-'+(10+DB.serviceItems.L1.length+Math.floor(Math.random()*900)),name,price,contents,delivery:contents.some(c=>c!=='咨询')?'CHAT_FILE':'CHAT',active:true,version:1});
+      toast('商品已上架 · 用户端货架与律师目录（H1）同步可见','ok');}
+    closeModal(m);render();
+  });
+}
+function siToggle(id){const it=(DB.serviceItems['L1']||[]).find(x=>x.id===id);if(!it)return;it.active=!it.active;toast(it.active?'已上架 · 货架与目录同步可见':'已下架（已购服务单按快照照常履约）',it.active?'ok':'info');render();}
 
 /* ---- 收入与结算 ---- */
 VIEWS['l-income']={end:'lawyer',render(){
@@ -2358,8 +2684,8 @@ const ADMIN_NAV=[
   ['交易与履约',[['a-monitor','场次实时监控','room'],['a-tickets','纠纷工单','alert'],['a-settle','结算管理','wallet']]],
   ['平台治理',[['a-risk','风控与敏感词','ban'],['a-match','人工撮合','users'],['a-rules','规则中心','scale'],['a-comp','合规审计','shield'],['a-sys','系统支撑','gear']]],
 ];
-const DIR_USER=[['u-login','登录 / 注册'],['u-home','首页'],['u-find','发现拼单'],['u-lawyer','律师主页'],['u-session','场次详情'],['u-group','拼团详情'],['u-create','发起拼团'],['u-orders','我的拼单'],['u-order','订单详情'],['u-room','咨询房间'],['u-msg','消息中心'],['u-me','我的']];
-const DIR_LAWYER=[['l-onboard','入驻与资质'],['l-work','工作台'],['l-sched','时间表'],['l-create','开团配置'],['l-sess','场次管理'],['l-sessd','场次看板'],['l-hall','接单大厅'],['l-room','房间 · AI 工作台'],['l-price','价格配置'],['l-income','收入结算'],['l-me','我的']];
+const DIR_USER=[['u-login','登录 / 注册'],['u-home','首页'],['u-find','发现拼单'],['u-quick','快速1对1解答'],['u-lawyers','找律师 · 非诉小单'],['u-lawyer','律师主页'],['u-session','场次详情'],['u-group','拼团详情'],['u-create','发起拼团'],['u-orders','我的拼单'],['u-order','订单详情'],['u-room','咨询房间'],['u-msg','消息中心'],['u-me','我的']];
+const DIR_LAWYER=[['l-onboard','入驻与资质'],['l-work','工作台'],['l-sched','时间表'],['l-create','开团配置'],['l-sess','场次管理'],['l-sessd','场次看板'],['l-hall','接单大厅'],['l-room','房间 · AI 工作台'],['l-price','价格配置'],['l-services','非诉小单货架'],['l-income','收入结算'],['l-me','我的']];
 const DIR_ADMIN=[['a-login','后台登录'],['a-dash','数据看板'],['a-lawyers','律师与资质'],['a-monitor','实时监控'],['a-tickets','纠纷工单'],['a-settle','结算管理'],['a-risk','风控敏感词'],['a-match','人工撮合'],['a-rules','规则中心'],['a-kb','专项与知识库'],['a-recruit','招募归因'],['a-comp','合规审计'],['a-sys','系统支撑']];
 const LIVE_VIEWS=['u-room','l-room','a-monitor'];
 const anchorOf=()=>LIVE_VIEWS.includes(state.view)?'时间锚点：2026-10-16 周五 20:32 · 直播中':'时间锚点：2026-10-13 周二 · 报名时段';
@@ -2478,13 +2804,13 @@ VIEWS['hub']={end:null,render(){
     <div class="card endcard hov" onclick="go('u-home')">
       <div class="eic" style="background:linear-gradient(135deg,#6B8E5A,#3E5C3A)">${ic('user',22)}</div>
       <div class="h2">用户端 App</div>
-      <div class="small muted mt8" style="line-height:1.8">AI 问题入口（V2 预留）· 浏览拼单 · 发起拼团（子范围 + 快照价）· 支付成团 · 房间提问 @Agent/@律师 · 申请 1对1 · 评价 · 信用 / 积分 / 授权管理</div>
+      <div class="small muted mt8" style="line-height:1.8">AI 问题入口（V2 预留）· 浏览拼单 · 发起拼团（子范围 + 快照价）· <b>批量同司团（同类型×同公司）</b> · <b>快速1对1（律师抢单报价 · 价格不公布）</b> · <b>找律师 · 非诉小单货架</b> · 支付成团 · 房间提问 @Agent/@律师 · 申请 1对1 · 评价 · 信用 / 积分 / 授权管理</div>
       <span class="go">进入体验 ${ic('right',14)}</span>
     </div>
     <div class="card acc endcard hov" onclick="go('l-work')">
       <div class="eic" style="background:linear-gradient(135deg,#D98A8A,#C25E5E)">${ic('brief',22)}</div>
       <div class="h2">律师端 App</div>
-      <div class="small muted mt8" style="line-height:1.8">入驻资质 · 时间表 / 占用锁 · 开团配置 · 接单大厅（12h 响应）· 房间 <b style="color:var(--accent-dk)">Agent 草稿气泡工作台</b> · 价格与 1对1 矩阵 · 收入结算</div>
+      <div class="small muted mt8" style="line-height:1.8">入驻资质 · 时间表 / 占用锁 · 开团配置 · 接单大厅（12h 响应 · <b>快速单报价 · 同司团响应</b>）· 房间 <b style="color:var(--accent-dk)">Agent 草稿气泡工作台</b> · 价格与 1对1 矩阵 · <b>非诉小单货架</b> · 收入结算</div>
       <span class="go">进入体验 ${ic('right',14)}</span>
     </div>
     <div class="card endcard hov" onclick="go('a-dash')">

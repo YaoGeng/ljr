@@ -68,3 +68,16 @@ PUBLISHED/REACHED/PENDING_LAWYER → CONVERTED（C4 认领转化；PENDING_LAWYE
 
 ## 11. 待澄清点
 - ⚠04§8-14 截止延长；发起人在他人加入后的取消路径未定义（新增待澄清，建议走客服工单）。
+
+## 12. 批量同司团扩展（V1.5，2026-10-22 增补；PRD §6.7/§8.10，架构 v2.8 §4.1 注记）
+
+> 扩展形态而非新状态机：`group_kind='BATCH_COMPANY'` 时在既有发布/加入/确认/快照/退款全链上叠加「同用人单位」锚定；施工排期=M3.5-W1（05 §7.5，时点已拍板=M3 三端贯通后串行，D21）。
+
+- **DDL 增列**（随 M3.5 迁移）：`group_buys + group_kind varchar(16) DEFAULT 'STANDARD'`、`+ respondent_company varchar(128)`（批量团必填，规范化后存储）；`enrollments + company_declared varchar(128)`（批量团加入必填）。
+- **R-09 同司锚**：发布须填用人单位（去首尾空格、全半角括号统一后存储，展示原样）；加入者 company_declared 经同一规范化函数比对 respondent_company，不匹配 403 E_COMPANY_MISMATCH。〔PRD §8.10〕
+- **R-10 材料核验**：律师履约前核验劳动关系材料不在本模块（履约面）；发现不同公司 → H3 工单 + 按取消规则处理该成员（D4 既有矩阵，本模块仅提供 company_declared 供核验面读取）。〔PRD §8.10〕
+- **R-11 虚假加入信用**：明知非同司仍加入（材料核验不符坐实）→ G1 信用 **-10**（2026-10-22 D23 拍板；事件由 H3 裁决驱动，本模块不自动判罚）。〔PRD §8.10〕
+- **R-12 成员展示脱敏**：批量团成员昵称脱敏展示（周女士→周**）——展示层规则，成员数据本身不脱敏（纠纷/核验需全量）。〔PRD §8.10〕
+- **零机制变更清单**：状态机（八态九边）、B2 锁、share_price HALF_UP 分摊、12h 确认（C4）、快照、流标/拒绝退款、recreate——全部复用；recreate 复制时 respondent_company 一并复制。
+- **候选后置（已裁定，2026-10-22 D23）**：开放抢单形态（不指定律师，成团后律师应团）V1.5 不排入，翻转需新状态边（PENDING_LAWYER 改 PENDING_GRAB），届时另立设计。
+- 验收补项（M3.5-W1）：同司匹配通过/不匹配 403/规范化函数用例（全半角括号/首尾空格）/recreate 复制 respondent_company/标准团回归零影响。
