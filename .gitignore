@@ -3,6 +3,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 coverage/
+# Playwright 输出（M3-W1 T5：失败现场快照/报告，机器生成不入库）
+test-results/
+playwright-report/
 
 # 环境与密钥（密钥禁入代码；反豁免精确到两条路径，嵌套 .env.example 一律忽略——防真密钥借示例名入库）
 .env

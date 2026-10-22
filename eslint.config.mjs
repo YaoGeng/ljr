@@ -11,6 +11,8 @@ export default [
       '**/dist/**',
       '**/coverage/**',
       '**/.expo/**',
+      '**/test-results/**', // Playwright 输出（M3-W1 T5：失败现场快照，机器生成）
+      '**/playwright-report/**',
       'docs/**',
       'prototype/**',
       '.superpowers/**',

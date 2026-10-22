@@ -1,0 +1,7 @@
+# apps/app/bunfig.toml（M3-W1 T5 新增）：bun test 发现根收窄到 src/。
+# e2e/*.spec.ts 是 Playwright 用例（@playwright/test 在模块作用域注册 suite，
+# bun test 加载即抛「did not expect test.describe.configure() to be called here」），
+# 两个运行器各管各面：bun=src/ 单元测试（不变），Playwright=e2e/ 旅程（编排器拉起）。
+# apps/app 既有测试全部位于 src/（21 文件），root 收窄零既有面损失。
+[test]
+root = "src"
