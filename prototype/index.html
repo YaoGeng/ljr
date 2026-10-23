@@ -1563,7 +1563,7 @@ function switchEnd(end){toast(end==='lawyer'?'演示切换：律师端工作台'
 
 /* ---- 快速1对1解答（2026-10-22 产品扩展：发单 → 律师抢单报价（价格不公布）→ 选定支付 → ≤30min 会话 → 双边评分） ---- */
 let qtTab='post';
-let qo={tags:new Set(),note:'',mode:'text',contact:false};
+let qo={tags:new Set(),note:'',mode:'text',contact:true};
 const QO_TAGS=['拖欠工资','未签劳动合同','违法解除','加班费','社保未缴','经济补偿 N+1','调岗降薪','仲裁时效','证据清单','离职谈判'];
 VIEWS['u-quick']={end:'user',render(opt={}){
   if(opt.tab)qtTab=opt.tab;
@@ -1579,11 +1579,8 @@ VIEWS['u-quick']={end:'user',render(opt={}){
     <div class="field"><label class="label">沟通偏好</label>
       <div class="row" style="gap:8px">${[['text','msg','文本'],['voice','mic','语音']].map(m=>`<span class="chip ${qo.mode===m[0]?'on':''}" onclick="qoMode('${m[0]}')">${ic(m[1],12)}${m[2]}</span>`).join('')}</div></div>
     <div class="field"><label class="label">联系方式</label>
-      <div class="grid2" style="gap:8px">
-        <div class="rc ${!qo.contact?'on':''}" onclick="qoContact(false)"><span class="rk"></span><b class="small">隐藏</b><div class="tiny muted">仅平台内会话沟通</div></div>
-        <div class="rc ${qo.contact?'on':''}" onclick="qoContact(true)"><span class="rk"></span><b class="small">明示</b><div class="tiny muted">${esc(state.user.phone)} · 对抢单律师可见</div></div>
-      </div>
-      <div class="hint">明示=对平台审核通过、可报价的律师可见（脱敏+一键查看 · 2026-10-22 已拍板）；平台外收款引导照常风控拦截。</div></div>
+      <div class="rc ${qo.contact?'on':''}" onclick="qoContact(!qo.contact)"><span class="rk"></span><b class="small">提供联系方式（默认开启）</b><div class="tiny muted">${esc(state.user.phone)} · 加密存储，用于纠纷/客服联系</div></div>
+      <div class="hint">联系方式<b>不对律师直接展示</b>（2026-10-23 已拍板）：仅订阅会员律师可解锁查看（脱敏+一键查看 · 留痕）；平台外收款引导照常风控拦截。</div></div>
     <div class="notice plain"><span>${ic('clock',14)}</span><span>服务时长固定 <b>≤30 分钟</b>，锚定会话开始时刻、到时自动结束；征报价 24h 未选定自动关闭（未支付零资金占用）。</span></div>
     <button class="btn btn-p btn-lg mt16" onclick="qoPublish()">${ic('send',15)} 发布咨询单（等待律师报价）</button>`
   :qoMineList()}`;
@@ -1595,7 +1592,7 @@ function qoPublish(){
   if(!qo.tags.size){toast('请至少选择 1 个问题标签','warn');return;}
   DB.quickOrders.unshift({id:'Q-'+(2002+DB.quickOrders.length),by:state.user.name,mine:true,tags:[...qo.tags],qnote:qo.note,mode:qo.mode,contact:qo.contact,status:'collect',bids:[],at:'刚刚'});
   toast('咨询单已发布 · 律师抢单报价中（收到报价将推送通知）','ok');
-  qo={tags:new Set(),note:'',mode:'text',contact:false};qtTab='mine';render();
+  qo={tags:new Set(),note:'',mode:'text',contact:true};qtTab='mine';render();
 }
 function qoMineList(){
   const list=DB.quickOrders.filter(o=>o.mine);
@@ -1605,7 +1602,7 @@ function qoMineList(){
     return `<div class="card pad mt8">
     <div class="spread"><div class="row wrap" style="gap:4px">${o.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>${QO_PILL[o.status]||''}</div>
     ${o.qnote?`<div class="tiny muted mt8" style="line-height:1.7">${esc(o.qnote)}</div>`:''}
-    ${o.contact?`<div class="tiny muted mt4">${ic('chat',11)} 联系方式已明示（对抢单律师可见）</div>`:''}
+    ${o.contact?`<div class="tiny muted mt4">${ic('chat',11)} 已提供联系方式 · 仅订阅会员律师可查看（脱敏+留痕 · 2026-10-23）</div>`:'<div class="tiny muted mt4">未提供联系方式 · 仅平台内会话沟通</div>'}
     ${o.status==='collect'?(o.bids.length?`
       <div class="divider" style="margin:10px 0"></div>
       <div class="tiny muted mb8">已收 ${o.bids.length} 份报价 · <b>金额仅你可见</b>（律师互相不可见，§8.9 价格不公布）</div>
@@ -1925,26 +1922,30 @@ VIEWS['l-hall']={end:'lawyer',tab:'l-hall',render(){
   <div class="tiny muted tc mt12">双向转化：确认后可将该团转化为公开 B2C 场次，原用户维持快照价迁移，24h 内可申请退款。</div>`
   :hallTab==='quick'?hallQuick(quicks):hallBatch(batches)}`;
 }};
-/* 快速单报价（2026-10-22 产品扩展：价格不公布——报价仅发单用户可见） */
+/* 快速单报价（2026-10-22 产品扩展：价格不公布——报价仅发单用户可见；2026-10-23 拍板：每日 10 次配额+联系方式订阅会员可见） */
+let qoBidUsed=4;
 function hallQuick(list){
   if(!list.length)return '<div class="notice plain mt12">暂无征集中的快速单——新单发布将实时推送本厅</div>';
-  return list.map(o=>`<div class="card acc pad pop">
+  const left=Math.max(0,10-qoBidUsed);
+  return `<div class="notice plain mb12" style="padding:8px 12px">${ic('info',13)}<span>今日剩余报价次数 <b class="acc">${left}/10</b>（每日上限 10 次 · 会员档 30 次/日 · 2026-10-23 拍板）；开通<b>律师会员</b>（¥48.8/月）提升次数档位并解锁查看用户联系方式。<a href="javascript:void(0)" onclick="toast('律师会员（04 §8-21 钩子）：¥48.8/月——每日报价 10→30 次+联系方式查看解锁（曝光加权/AI 材料工具为 V2 权益另计）','ok')" style="text-decoration:underline">了解会员 →</a></span></div>`+list.map(o=>`<div class="card acc pad pop">
     <div class="spread"><span class="tag acc">${ic('spark',11)} 快速咨询单 · ${o.mode==='voice'?'语音':'文本'} · ≤30 分钟</span><span class="pill pill-g">征集中</span></div>
     <div class="row mt8 wrap" style="gap:4px">${o.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>
     <div class="card flat pad mt8" style="background:rgba(255,255,255,.6)"><div class="tiny muted mb4">问题描述</div><div class="small" style="line-height:1.7">${esc(o.qnote||'（未补充描述）')}</div></div>
-    <div class="tiny muted mt8">发起人 ${o.by} · ${o.contact?'<span class="tag acc">联系方式已明示</span>':'联系方式隐藏 · 平台内会话沟通'}</div>
-    <div class="notice plain mt8" style="padding:8px 12px">${ic('info',13)}<span><b>报价金额不公布</b>：仅发单用户可见，律师互相不可见；同单仅一个有效报价，被选定前可撤回重报。</span></div>
+    <div class="tiny muted mt8">发起人 ${o.by} · <span class="tag">联系方式 · 会员可见</span><span class="tiny muted">（订阅会员律师解锁查看 · 未订阅不可见）</span></div>
+    <div class="notice plain mt8" style="padding:8px 12px">${ic('info',13)}<span><b>报价金额不公布</b>：仅发单用户可见，律师互相不可见；同单仅一个有效报价，被选定前可撤回重报（撤回重报计入每日次数）。</span></div>
     <div class="field mt8"><label class="label">你的报价（元 · 一价包干 ≤30 分钟）</label>
       <div class="row" style="gap:8px"><input class="input" id="qbAmt-${o.id}" type="number" placeholder="如 99" style="flex:1"><input class="input" id="qbNote-${o.id}" placeholder="一句话说明（可选）" style="flex:1.4"></div></div>
-    <button class="btn btn-p btn-lg mt8" style="width:100%" onclick="hallBid('${o.id}')">提交报价</button>
+    <button class="btn btn-p btn-lg mt8" style="width:100%" onclick="hallBid('${o.id}')">提交报价（剩余 ${left} 次）</button>
   </div>`).join('');
 }
 function hallBid(oid){
   const o=DB.quickOrders.find(x=>x.id===oid);
   const amt=+$('#qbAmt-'+oid).value;
+  if(qoBidUsed>=10){toast('今日报价次数已用完（10/10）——开通律师会员提升档位（明日重置）','warn');return;}
   if(!amt||amt<=0){toast('请输入有效报价金额','warn');return;}
   if(o.bids.some(b=>b.lawyer==='L1')){toast('同单限一个有效报价：被选定前可撤回重报（演示不再重复提交）','warn');return;}
   o.bids.push({lawyer:'L1',amount:amt,note:$('#qbNote-'+oid).value||'执业 12 年 · 专注劳动争议'});
+  qoBidUsed++;
   toast('报价已提交（金额仅发单用户可见）· 被选定后进入 ≤30 分钟会话','ok');render();
 }
 /* 同司团响应（批量拼团成团后进入本厅，12h 口径与拼团一致） */
