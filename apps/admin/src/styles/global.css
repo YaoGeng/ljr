@@ -1,0 +1,797 @@
+/* ============================================================
+   律聚人 admin 全局样式（M3-W3 T1）
+   取色口径（评审 NIT-3 软化）：
+   - 色板基值（主色/苔绿/文字/点缀红/玻璃底等）一律走 --ljr-* 变量——值由
+     design/tokens.ts 运行时注入，基值改值去 tokens.ts；
+   - 本文件中的 #5e6f58 与 rgba(...) 字面量=原型对应类定义的 alpha 变体档
+     逐字拷贝位（原型 .ad-nav/:hover/:focus/.btn 阴影等即字面量形态，:root 无
+     对应变量可引）——改值须对照 prototype/index.html 同名类同步。
+   布局对照 prototype 后台壳：玻璃卡 sidebar + 顶栏 + 内容区。
+   ============================================================ */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  font-family: var(--ljr-font-family);
+  background: var(--ljr-bg);
+  color: var(--ljr-ink);
+  font-size: 14px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  /* 背景光晕：橄榄绿两晕静态近似（原型漂浮动画的非必要面，后台从简） */
+  background-image:
+    radial-gradient(circle at 8% 0%, rgba(107, 142, 90, 0.18), transparent 42%),
+    radial-gradient(circle at 96% 100%, rgba(168, 184, 155, 0.22), transparent 45%);
+  background-attachment: fixed;
+}
+
+button {
+  font-family: inherit;
+}
+
+::selection {
+  background: rgba(107, 142, 90, 0.25);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(122, 139, 116, 0.3);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---------- 玻璃卡（对照 prototype .card） ---------- */
+.glass-card {
+  background: var(--ljr-glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--ljr-glass-hi);
+  border-radius: 16px;
+  box-shadow: 0 8px 28px rgba(62, 92, 58, 0.07);
+}
+
+/* ---------- 后台壳布局（对照 prototype .admin / .ad-side / .ad-main） ---------- */
+.admin-root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.adm-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 22px;
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--ljr-glass-hi);
+}
+
+.adm-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.5px;
+}
+
+.adm-seal {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, var(--ljr-primary-2), var(--ljr-primary));
+  color: var(--ljr-on-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(62, 92, 58, 0.3);
+}
+
+.adm-topbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--ljr-ink-2);
+}
+
+.admin-body {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 16px 22px 40px;
+}
+
+/* ---------- 侧栏（对照 prototype .ad-side） ---------- */
+.ad-side {
+  width: 220px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 76px;
+  padding: 14px 12px;
+  border-radius: 20px;
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+}
+
+.ad-side .grp {
+  font-size: 10.5px;
+  color: var(--ljr-ink-2);
+  letter-spacing: 2.5px;
+  margin: 14px 10px 5px;
+  font-weight: 600;
+}
+.ad-side .grp:first-child {
+  margin-top: 2px;
+}
+
+.ad-nav {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 8.5px 12px;
+  border: 0;
+  background: transparent;
+  border-radius: 11px;
+  color: #5e6f58;
+  cursor: pointer;
+  font-size: 13px;
+  transition: 0.14s;
+  align-items: center;
+  position: relative;
+}
+.ad-nav:hover:not(:disabled) {
+  background: rgba(62, 92, 58, 0.07);
+  color: var(--ljr-primary);
+}
+.ad-nav.on {
+  background: rgba(62, 92, 58, 0.12);
+  color: var(--ljr-primary);
+  font-weight: 600;
+}
+/* 焦点条=豆沙红极小面积点缀（对照原型 .ad-nav.on::before） */
+.ad-nav.on::before {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: 20%;
+  bottom: 20%;
+  width: 3px;
+  border-radius: 99px;
+  background: var(--ljr-accent);
+}
+.ad-nav:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.ad-nav .grow {
+  flex: 1;
+}
+
+.m4-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ljr-ink-2);
+  background: rgba(122, 139, 116, 0.15);
+  border-radius: 6px;
+  padding: 1px 6px;
+  letter-spacing: 0.5px;
+}
+
+/* ---------- 内容主列（对照 prototype .ad-main） ---------- */
+.ad-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ad-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.ad-head .h1 {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+.ad-head .sub {
+  font-size: 12.5px;
+  color: var(--ljr-ink-2);
+  margin-top: 4px;
+}
+
+/* ---------- 按钮（对照 prototype .btn 族；主按钮=豆沙红极小面积） ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 9px 18px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: 0.18s;
+  background: transparent;
+  color: var(--ljr-ink);
+  white-space: nowrap;
+  user-select: none;
+}
+.btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.btn-p {
+  background: var(--ljr-accent);
+  color: var(--ljr-on-primary);
+  box-shadow: 0 6px 16px rgba(194, 94, 94, 0.3);
+}
+.btn-p:hover:not(:disabled) {
+  background: var(--ljr-accent-dk);
+}
+.btn-g {
+  background: var(--ljr-primary);
+  color: var(--ljr-on-primary);
+  box-shadow: 0 6px 16px rgba(62, 92, 58, 0.26);
+}
+.btn-g:hover:not(:disabled) {
+  background: var(--ljr-primary);
+  filter: brightness(1.08);
+}
+.btn-o {
+  border-color: rgba(62, 92, 58, 0.3);
+  color: var(--ljr-primary);
+  background: rgba(255, 255, 255, 0.42);
+}
+.btn-sm {
+  padding: 5px 13px;
+  font-size: 12.5px;
+  border-radius: 10px;
+}
+.btn-lg {
+  padding: 13px 22px;
+  font-size: 15px;
+  border-radius: 14px;
+  width: 100%;
+}
+
+/* ---------- 表单（对照 prototype .field/.input） ---------- */
+.field {
+  margin-bottom: 14px;
+}
+.field .label {
+  display: block;
+  font-size: 12.5px;
+  color: var(--ljr-ink-2);
+  margin-bottom: 6px;
+}
+.input {
+  width: 100%;
+  padding: 10px 13px;
+  border-radius: 12px;
+  border: 1px solid var(--ljr-line);
+  background: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+  color: var(--ljr-ink);
+  outline: none;
+  transition: 0.16s;
+}
+.input:focus {
+  border-color: var(--ljr-primary-2);
+  box-shadow: 0 0 0 3px rgba(107, 142, 90, 0.16);
+}
+.input.invalid {
+  border-color: rgba(194, 94, 94, 0.4);
+}
+
+/* ---------- 文本工具 ---------- */
+.muted {
+  color: var(--ljr-ink-2);
+}
+.small {
+  font-size: 12.5px;
+}
+.tiny {
+  font-size: 11.5px;
+}
+
+.field-error {
+  font-size: 12px;
+  color: var(--ljr-accent-dk);
+  margin-top: 4px;
+}
+
+/* 危险/错误横幅（红=危险态极小面积语义位） */
+.error-banner {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--ljr-accent-card);
+  border: 1px solid rgba(194, 94, 94, 0.38);
+  color: var(--ljr-accent-dk);
+  font-size: 13px;
+}
+
+/* 中性提示横幅 */
+.notice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.42);
+  border: 1px solid var(--ljr-glass-hi);
+  color: var(--ljr-ink-2);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+/* ---------- 登录页 ---------- */
+.login-wrap {
+  max-width: 420px;
+  margin: 8vh auto 0;
+  padding: 0 16px 40px;
+  width: 100%;
+}
+.login-brand {
+  text-align: center;
+  margin-bottom: 16px;
+}
+.login-seal {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--ljr-primary-2), var(--ljr-primary));
+  color: var(--ljr-on-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(62, 92, 58, 0.3);
+}
+.login-card {
+  padding: 22px 20px;
+}
+
+/* ---------- 指标条（首页轻量指标卡横排） ---------- */
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
+  gap: 14px;
+}
+.kpi {
+  padding: 14px 16px;
+}
+.kpi .k {
+  font-size: 12.5px;
+  color: var(--ljr-ink-2);
+}
+.kpi .v {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  line-height: 1.35;
+  margin-top: 2px;
+}
+.kpi .stub {
+  font-size: 11px;
+  color: var(--ljr-ink-2);
+  margin-top: 4px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ---------- 占位页 ---------- */
+.placeholder-card {
+  padding: 40px 24px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ============================================================
+   H1 审核工作台（M3-W3 T2）：以下类对照 prototype/index.html 同名类
+   逐字拷贝（布局/间距/字号），色值由原型 hex 换 --ljr-* 变量位
+   （原型 var(--primary) 等↔本文件 --ljr-primary 等一一对应）。
+   ============================================================ */
+
+/* ---------- 布局工具（原型 .row/.spread/.grow/.tc 与 mt、mb 间距标尺） ---------- */
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.row.wrap {
+  flex-wrap: wrap;
+}
+.spread {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.grow {
+  flex: 1;
+  min-width: 0;
+}
+.tc {
+  text-align: center;
+}
+.mt4 {
+  margin-top: 4px;
+}
+.mt8 {
+  margin-top: 8px;
+}
+.mt12 {
+  margin-top: 12px;
+}
+.mt16 {
+  margin-top: 16px;
+}
+.mb8 {
+  margin-bottom: 8px;
+}
+.mb12 {
+  margin-bottom: 12px;
+}
+.mb16 {
+  margin-bottom: 16px;
+}
+.h2 {
+  font-size: 16.5px;
+  font-weight: 700;
+}
+.h3 {
+  font-size: 14.5px;
+  font-weight: 600;
+}
+.hr-soft {
+  height: 1px;
+  background: rgba(62, 92, 58, 0.07);
+  margin: 12px 0;
+}
+
+/* ---------- chip 筛选（原型 .chip；on=橄榄绿实底，红不参与） ---------- */
+.chip {
+  padding: 5px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(62, 92, 58, 0.22);
+  background: rgba(255, 255, 255, 0.45);
+  font-size: 12.5px;
+  color: #4c5f47;
+  cursor: pointer;
+  transition: 0.15s;
+  white-space: nowrap;
+}
+.chip:hover {
+  border-color: var(--ljr-primary-2);
+  color: var(--ljr-primary);
+}
+.chip.on {
+  background: var(--ljr-primary);
+  border-color: var(--ljr-primary);
+  color: #fff;
+}
+
+/* ---------- tag / 状态徽标（原型 .tag 族；acc=红点缀极小面积语义位） ---------- */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border-radius: 7px;
+  font-size: 11.5px;
+  background: rgba(107, 142, 90, 0.13);
+  color: var(--ljr-primary);
+  font-weight: 500;
+}
+.tag.acc {
+  background: rgba(194, 94, 94, 0.13);
+  color: var(--ljr-accent-dk);
+}
+.tag.gray {
+  background: rgba(122, 139, 116, 0.14);
+  color: #5e6f58;
+}
+
+/* ---------- 表格（原型 .tblwrap/.table） ---------- */
+.tblwrap {
+  overflow: auto;
+  border-radius: 14px;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  min-width: 640px;
+}
+.table th {
+  font-weight: 600;
+  color: var(--ljr-ink-2);
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--ljr-line);
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+.table td {
+  padding: 11px 14px;
+  border-bottom: 1px solid rgba(62, 92, 58, 0.07);
+  white-space: nowrap;
+}
+.table tbody tr {
+  transition: 0.12s;
+}
+.table tbody tr:hover td {
+  background: rgba(62, 92, 58, 0.045);
+}
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* SLA 数据位（R-01）：正常=橄榄绿；超期=豆沙红危险态（红仅此极小面积） */
+.sla-ok {
+  font-weight: 600;
+  color: var(--ljr-primary);
+}
+.sla-danger {
+  font-weight: 700;
+  color: var(--ljr-accent-dk);
+}
+
+/* 分页条 */
+.pagebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  flex-wrap: wrap;
+}
+
+/* ---------- 按钮补档（原型 .btn-ghost/.btn-danger-o/.btn-xs——T1 未拷，本卡补） ---------- */
+.btn-ghost {
+  background: rgba(62, 92, 58, 0.09);
+  color: var(--ljr-primary);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: rgba(62, 92, 58, 0.15);
+}
+.btn-danger-o {
+  border-color: rgba(194, 94, 94, 0.4);
+  color: var(--ljr-accent-dk);
+  background: rgba(194, 94, 94, 0.06);
+}
+.btn-danger-o:hover:not(:disabled) {
+  background: rgba(194, 94, 94, 0.14);
+}
+.btn-xs {
+  padding: 2px 10px;
+  font-size: 12px;
+  border-radius: 8px;
+  gap: 4px;
+}
+
+/* ---------- 弹层 / 抽屉（原型 .mask/.modal/.mask.right/.drawer/.m-x） ---------- */
+.mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(44, 62, 40, 0.34);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.mask.right {
+  justify-content: flex-end;
+  align-items: stretch;
+  padding: 0;
+}
+.modal {
+  width: min(460px, 94vw);
+  max-height: 86vh;
+  overflow-y: auto;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(26px);
+  -webkit-backdrop-filter: blur(26px);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 22px;
+  padding: 22px;
+  box-shadow: 0 28px 70px rgba(44, 62, 40, 0.24);
+}
+.drawer {
+  width: 560px;
+  max-width: 96vw;
+  height: 100%;
+  overflow-y: auto;
+  background: rgba(249, 250, 246, 0.92);
+  backdrop-filter: blur(26px);
+  -webkit-backdrop-filter: blur(26px);
+  border-left: 1px solid var(--ljr-glass-hi);
+  padding: 24px 26px 40px;
+}
+.m-x {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(62, 92, 58, 0.08);
+  color: var(--ljr-ink-2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: 0.15s;
+  font-size: 16px;
+  line-height: 1;
+}
+.m-x:hover {
+  background: rgba(62, 92, 58, 0.15);
+  color: var(--ljr-ink);
+}
+/* 横幅关闭钮（比 .m-x 小一档的语义位） */
+.banner-x {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 2px 4px;
+  flex-shrink: 0;
+}
+
+/* ---------- 表单补档：textarea（原型 .textarea 与 .input 组合） ---------- */
+.textarea {
+  resize: vertical;
+  min-height: 76px;
+  line-height: 1.6;
+  font-family: inherit;
+}
+
+/* 审核动作单选列表（五枚词汇；danger=红点缀语义位——边框而非实底） */
+.action-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.action-opt {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--ljr-line);
+  background: rgba(255, 255, 255, 0.42);
+  cursor: pointer;
+  transition: 0.14s;
+}
+.action-opt:hover {
+  border-color: var(--ljr-primary-2);
+}
+.action-opt.on {
+  border-color: var(--ljr-primary);
+  background: rgba(62, 92, 58, 0.06);
+}
+.action-opt.on.danger {
+  border-color: rgba(194, 94, 94, 0.45);
+  background: var(--ljr-accent-card);
+}
+.action-opt input[type='radio'] {
+  margin-top: 3px;
+  accent-color: var(--ljr-primary);
+}
+
+/* 档案抽屉四率小格 */
+.kpi4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+/* 危险提示 notice 变体（红极小面积：底 8% 透明度） */
+.notice.acc {
+  background: rgba(194, 94, 94, 0.08);
+  border-color: rgba(194, 94, 94, 0.25);
+  color: var(--ljr-accent-dk);
+}
+
+/* ============================================================
+   H3 纠纷工单（M3-W3 T3）：SLA 分类计数横条 + 处置审计时间线
+   （对照原型细线风格；色走 --ljr-* 变量，红仅超期徽标/危险态极小面积）
+   ============================================================ */
+
+/* 分类计数横条（橄榄绿填充；宽度=该类未结数占最大类占比） */
+.sla-track {
+  height: 8px;
+  border-radius: 99px;
+  background: rgba(62, 92, 58, 0.08);
+  overflow: hidden;
+}
+.sla-fill {
+  height: 100%;
+  border-radius: 99px;
+  background: var(--ljr-primary-2);
+}
+
+/* 处置审计时间线（详情抽屉 ticket_actions：谁在何时做了什么） */
+.tl-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 9px 0;
+  border-bottom: 1px dashed rgba(62, 92, 58, 0.14);
+}
+.tl-item:last-child {
+  border-bottom: 0;
+}
+.tl-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ljr-primary-2);
+  margin-top: 6px;
+  flex-shrink: 0;
+}
+
+/* ---------- 窄屏适配（对照原型 @media 980px：侧栏转横排置顶） ---------- */
+@media (max-width: 980px) {
+  .admin-body {
+    flex-direction: column;
+  }
+  .ad-side {
+    width: 100%;
+    position: static;
+    max-height: none;
+  }
+  .kpis {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .kpi4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

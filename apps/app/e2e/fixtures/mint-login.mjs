@@ -1,9 +1,9 @@
-// apps/app/e2e/fixtures/mint-login.mjs —— dev 取码夹具（M3-W1 T2 建/T3 扩展/W2 T1 扩 --lawyer）：
+// apps/app/e2e/fixtures/mint-login.mjs —— dev 取码夹具（M3-W1 T2 建/T3 扩展/W2 T1 扩 --lawyer/W3 T1 扩 --admin）：
 // 对给定手机号按 identity.service 同款算法（blind=HMAC-SHA256(phone, pepper)、
 // code_hash=sha256(`${code}:${blind}`)）构造验证码并直插 identity.verify_codes，
 // 供本地联调/E2E 经 POST /auth/verify 换 token（core mock SMS 通道无回显面——设计决策文档 triage-1）。
 //
-// 用法：node apps/app/e2e/fixtures/mint-login.mjs <大陆11位手机号> [6位验证码] [--realname] [--lawyer]
+// 用法：node apps/app/e2e/fixtures/mint-login.mjs <大陆11位手机号> [6位验证码] [--realname] [--lawyer] [--admin]
 //   验证码缺省=随机生成；可重复执行（先清同号未消费夹具码再插新码=覆盖式幂等）。
 //   --realname（T3 扩展，幂等）：
 //     ① 确保用户行存在（identity.users 真实列加密形态 INSERT ON CONFLICT——可造第二个用户，
@@ -16,6 +16,13 @@
 //     该号已有 lawyer 行，--lawyer 重跑不报错）。登录后 /auth/verify 返回 roles 含 lawyer，
 //     App 端 Me 页「切换为律师」入口可见（switch-role 真链前置）。角色授予本应经 A3a 审核
 //     动作（LawyerAuditPassed 事件）——dev 造数直插先例同 seed-sessions。
+//   --admin（M3-W3 T1 扩展，幂等，与 --lawyer 同形态第三段演进）：确保用户行存在 +
+//     直插 identity.user_roles admin 行（INSERT ... ON CONFLICT DO NOTHING——V31 口径：
+//     admin=DB 级预置「权限旗标」非激活角色，角色授予不经 A3a/switch-role，admin 不可
+//     自铸自换[identity.guards 防提权注记]——测试造数=夹具直插）。登录后 /auth/verify
+//     返回 roles 含 admin，Web 运营后台（apps/admin）登录门放行。E2E admin 号约定=
+//     13700000001（幂等稳定坐标）；同时种入 user 角色（R-02 默认身份——verify 遇无角色
+//     存量账号会 E_INTERNAL「账号无任何角色」）。
 // 有效期：夹具码 10 分钟（verify 仅校验 expires_at > now()；core 正常签发 TTL=60s，夹具放宽便于联调）。
 // 密钥口径：pepper 经 core dist 运行时装载（见 lib.mjs 头注），秘钥值不出现在任何源码/输出。
 import { createHash, randomInt } from 'node:crypto';
@@ -29,10 +36,13 @@ const FIXTURE_TTL_SEC = 600;
 const args = process.argv.slice(2);
 const withRealname = args.includes('--realname');
 const withLawyer = args.includes('--lawyer');
-const [phoneArg, codeArg] = args.filter((a) => a !== '--realname' && a !== '--lawyer');
+const withAdmin = args.includes('--admin');
+const [phoneArg, codeArg] = args.filter(
+  (a) => a !== '--realname' && a !== '--lawyer' && a !== '--admin',
+);
 if (!phoneArg || !MAINLAND_PHONE.test(phoneArg)) {
   process.stderr.write(
-    '用法: node apps/app/e2e/fixtures/mint-login.mjs <大陆11位手机号> [6位验证码] [--realname] [--lawyer]\n',
+    '用法: node apps/app/e2e/fixtures/mint-login.mjs <大陆11位手机号> [6位验证码] [--realname] [--lawyer] [--admin]\n',
   );
   process.exit(1);
 }
@@ -57,7 +67,8 @@ psql(
 let userId = null;
 let realname = 'skipped';
 let lawyerRole = 'skipped';
-if (withRealname || withLawyer) {
+let adminRole = 'skipped';
+if (withRealname || withLawyer || withAdmin) {
   // ① 用户行（真实列加密形态；首次 /auth/verify 也会建，此处先行备好供实名/角色行挂靠）
   psql(
     `INSERT INTO identity.users (phone_enc, phone_blind_idx, status, age_declared)
@@ -87,6 +98,18 @@ if (withLawyer) {
   lawyerRole = inserted === '' ? 'exists(kept)' : 'lawyer';
 }
 
+if (withAdmin) {
+  // admin 旗标行（M3-W3 T1，与 --lawyer 同形态；幂等：13700000001 重跑 exists(kept) 兼容）
+  const inserted = returningRow(
+    psqlFirst(
+      `INSERT INTO identity.user_roles (user_id, role) VALUES (${userId}, 'admin')
+       ON CONFLICT DO NOTHING
+       RETURNING (user_id::text || ':' || role);`,
+    ),
+  );
+  adminRole = inserted === '' ? 'exists(kept)' : 'admin';
+}
+
 if (withRealname) {
   // ② 实名 VERIFIED（凭据摘要=确定性 sha256，非真实凭据；重提幂等=UNIQUE(user_id) ON CONFLICT 跳过）
   const digest = createHash('sha256').update(`ljr-fixture-realname:${phoneArg}`).digest('hex');
@@ -106,9 +129,10 @@ process.stdout.write(
     phone: phoneArg,
     code,
     ttl_sec: FIXTURE_TTL_SEC,
-    ...(withRealname || withLawyer ? { user_id: userId } : {}),
+    ...(withRealname || withLawyer || withAdmin ? { user_id: userId } : {}),
     ...(withRealname ? { realname } : {}),
     ...(withLawyer ? { lawyer_role: lawyerRole } : {}),
+    ...(withAdmin ? { admin_role: adminRole } : {}),
     verify: 'POST /auth/verify {phone, code} → {access_token, refresh_token, roles}',
   })}\n`,
 );

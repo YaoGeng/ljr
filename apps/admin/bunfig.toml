@@ -1,0 +1,8 @@
+# apps/admin/bunfig.toml（M3-W3 T7 新增，apps/app/bunfig.toml 同款先例）：bun test 发现根
+# 收窄到 src/。e2e/admin-journeys.spec.ts 是 Playwright 用例（@playwright/test 在模块
+# 作用域注册 suite，bun test 加载即抛「Playwright Test did not expect test() to be called
+# here」——本机首跑实证），两个运行器各管各面：bun=src/ 单元测试（110 基线不变），
+# Playwright=e2e/ 六旅程（编排器 run-admin-e2e.mjs 拉起）。apps/admin 既有测试全部位于
+# src/（12 文件），root 收窄零既有面损失。
+[test]
+root = "src"
